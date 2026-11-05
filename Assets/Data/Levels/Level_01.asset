@@ -1,0 +1,73 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 70be23a18564f99488f2111e20592de1, type: 3}
+  m_Name: Level_01
+  m_EditorClassIdentifier: 
+  displayName: LEVEL 01 - BIT FLOW
+  width: 9
+  height: 8
+  tickInterval: 0.35
+  placements:
+  - type: {fileID: 11400000, guid: 138adae525524314b98d514e68781fb3, type: 2}
+    coord: {x: 0, y: 5}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: b2417d6239246d54c837fe94a1f836e9, type: 2}
+    coord: {x: 0, y: 1}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: cdae8e12b73a3f94787ad29d7c5d928d, type: 2}
+    coord: {x: 3, y: 5}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: 7e3473b8ae100234aa994dd6ea61145f, type: 2}
+    coord: {x: 2, y: 1}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: e25817d1fdcd78042ae44997f5900f44, type: 2}
+    coord: {x: 5, y: 1}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: 4edbf1f17ac4aba48ae636d09ea1e8ae, type: 2}
+    coord: {x: 3, y: 7}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: c2ab3d2e4a2c4ff429144184df4d4348, type: 2}
+    coord: {x: 8, y: 5}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: aec08a74b095c1d459f9dff533e70879, type: 2}
+    coord: {x: 8, y: 1}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
+    coord: {x: 0, y: 0}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
+    coord: {x: 8, y: 0}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
+    coord: {x: 0, y: 7}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
+    coord: {x: 8, y: 7}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
+    coord: {x: 5, y: 7}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
+    coord: {x: 6, y: 7}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
+    coord: {x: 7, y: 7}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
+    coord: {x: 4, y: 3}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
+    coord: {x: 5, y: 3}
+    rotationSteps: 0
+  - type: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
+    coord: {x: 6, y: 3}
+    rotationSteps: 0
