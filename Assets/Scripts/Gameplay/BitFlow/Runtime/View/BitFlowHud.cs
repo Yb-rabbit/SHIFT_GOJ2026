@@ -41,6 +41,8 @@ namespace ShiftGo.BitFlow.View
         Text tooltipText;
         ElementView hoveredElement;
 
+        bool uiPrimed;
+
         void Start()
         {
             runner = FindObjectOfType<BitFlowRunner>();
@@ -55,10 +57,25 @@ namespace ShiftGo.BitFlow.View
                 runner.TickCompleted += OnTickCompleted;
                 runner.Finished += OnFinished;
                 runner.ResetPerformed += OnResetPerformed;
-
-                titleText.text = runner.LevelTitle;
-                RefreshTickText();
             }
+
+            TryPrimeUi();
+        }
+
+        /// <summary>
+        /// 把 HUD 的初始读数摆好（关卡名 / TICK / 状态 / 接收器进度）。
+        /// Runner 和 HUD 挂在同一个 GameObject 上，Start 顺序不保证，所以这里可能拿到空的 Simulation，
+        /// 此时返回 false，由 Update 在下一帧重试，避免玩家开局看到空面板。
+        /// </summary>
+        bool TryPrimeUi()
+        {
+            if (runner == null || runner.Simulation == null) return false;
+
+            if (titleText != null) titleText.text = runner.LevelTitle;
+            RefreshReceiverLabels(runner.Simulation);
+            RefreshTickText();
+            RefreshStatus();
+            return true;
         }
 
         void OnDestroy()
@@ -331,13 +348,12 @@ namespace ShiftGo.BitFlow.View
 
         void Update()
         {
+            if (!uiPrimed) uiPrimed = TryPrimeUi();
+
             UpdateTooltip();
 
             if (pauseButtonLabel != null && runner != null)
             {
-                // 关卡名在 Runner.Start 里才就绪，这里补一次
-                if (titleText != null && string.IsNullOrEmpty(titleText.text)) titleText.text = runner.LevelTitle;
-
                 string label = runner.IsFinished ? "DONE" : (runner.IsPaused ? "PLAY" : "PAUSE");
                 if (pauseButtonLabel.text != label) pauseButtonLabel.text = label;
             }
@@ -346,11 +362,13 @@ namespace ShiftGo.BitFlow.View
         void OnPauseClicked()
         {
             if (runner != null) runner.TogglePause();
+            RefreshStatus();
         }
 
         void OnStepClicked()
         {
             if (runner != null) runner.StepOnce();
+            RefreshStatus();
         }
 
         void OnResetClicked()
@@ -358,6 +376,7 @@ namespace ShiftGo.BitFlow.View
             if (runner == null) return;
             if (resultPanel != null) resultPanel.SetActive(false);
             runner.ResetLevel();
+            RefreshStatus();
         }
 
         void OnSpeedChanged(float value)
@@ -476,8 +495,9 @@ namespace ShiftGo.BitFlow.View
             if (runner == null || statusText == null) return;
 
             if (runner.IsFinished) statusText.text = "SETTLED";
-            else if (runner.IsPaused) statusText.text = "PAUSED";
-            else statusText.text = "ROUTING";
+            else if (!runner.IsPaused) statusText.text = "ROUTING";
+            else if (runner.TickIndex == 0) statusText.text = "READY  -  PRESS PLAY";
+            else statusText.text = "PAUSED";
         }
 
         /// <summary>按接收器数量动态建行，每 tick 刷新 "3 / 6" 这类读数。</summary>

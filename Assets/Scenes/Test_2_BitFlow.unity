@@ -464,7 +464,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   levelAsset: {fileID: 11400000, guid: bc51d7376ed5647488b5012e55132198, type: 2}
   baseTickInterval: 0.35
-  autoStart: 1
+  autoStart: 0
 --- !u!114 &2144631614
 MonoBehaviour:
   m_ObjectHideFlags: 0

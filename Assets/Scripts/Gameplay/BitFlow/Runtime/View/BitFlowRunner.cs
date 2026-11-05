@@ -22,8 +22,8 @@ namespace ShiftGo.BitFlow.View
         [Tooltip("1 倍速时每个 tick 的时长（秒）")]
         [SerializeField, Min(0.05f)] float baseTickInterval = 0.35f;
 
-        [Tooltip("进入 Play 模式后是否立即开始推进")]
-        [SerializeField] bool autoStart = true;
+        [Tooltip("进入 Play 后是否立即推进。默认关闭：先停在 TICK 00 的静态布局上，等你按 PLAY 开始观察")]
+        [SerializeField] bool autoStart;
 
         readonly Dictionary<int, BitActorView> bitViews = new Dictionary<int, BitActorView>();
         readonly Dictionary<int, ReceiverDefinition> receiverById = new Dictionary<int, ReceiverDefinition>();
@@ -136,7 +136,9 @@ namespace ShiftGo.BitFlow.View
             bitViews.Clear();
 
             BuildLevel();
-            paused = false;
+
+            // 重播后同样先停住：让你先看清 TICK 00 的布局，再按 PLAY 开始
+            paused = !autoStart;
             ResetPerformed?.Invoke();
         }
 
