@@ -33,6 +33,18 @@ namespace ShiftGo.BitFlow.Core
 
         public static bool IsVertical(this Dir dir) => dir == Dir.Up || dir == Dir.Down;
 
+        /// <summary>中文朝向名（提示框与游戏内编辑器共用）。</summary>
+        public static string ToChineseName(this Dir dir)
+        {
+            switch (dir)
+            {
+                case Dir.Up: return "上";
+                case Dir.Right: return "右";
+                case Dir.Down: return "下";
+                default: return "左";
+            }
+        }
+
         public static bool Contains(this IEnumerable<Dir> dirs, Dir dir)
         {
             foreach (Dir candidate in dirs)

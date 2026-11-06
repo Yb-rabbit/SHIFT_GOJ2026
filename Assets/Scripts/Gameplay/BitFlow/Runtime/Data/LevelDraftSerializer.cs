@@ -1,0 +1,152 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using UnityEngine;
+using ShiftGo.BitFlow.Core;
+
+namespace ShiftGo.BitFlow.Data
+{
+    /// <summary>
+    /// 游戏内编辑出来的自定义关卡存档（JSON）。
+    /// 刻意只写 Application.persistentDataPath：Package/Assets 里的 LevelSO 是美术与关卡的唯一真源，
+    /// 运行时绝不能改动它们，否则编辑器里会莫名其妙多出 diffs。
+    /// </summary>
+    public static class LevelDraftSerializer
+    {
+        public const string DefaultFileName = "custom_level.json";
+        const string FolderName = "ShiftGoLevels";
+
+        /// <summary>默认存档路径（Win/Mac/Linux 在 persistentDataPath/ShiftGoLevels 下）。</summary>
+        public static string DefaultPath => Path.Combine(Application.persistentDataPath, FolderName, DefaultFileName);
+
+        /// <summary>把草稿写成 JSON；失败（IO 异常）返回 false，不抛出去打断游戏。</summary>
+        public static bool Save(LevelDraft draft, string path = null)
+        {
+            if (draft == null) return false;
+
+            try
+            {
+                string target = string.IsNullOrEmpty(path) ? DefaultPath : path;
+                string folder = Path.GetDirectoryName(target);
+                if (!string.IsNullOrEmpty(folder) && !Directory.Exists(folder)) Directory.CreateDirectory(folder);
+
+                File.WriteAllText(target, JsonUtility.ToJson(ToDto(draft), true));
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("[BitFlow] 自定义关卡保存失败: " + exception.Message);
+                return false;
+            }
+        }
+
+        /// <summary>读回草稿；文件不存在或内容坏掉都返回 null（调用方自己提示）。</summary>
+        public static LevelDraft Load(string path = null)
+        {
+            try
+            {
+                string target = string.IsNullOrEmpty(path) ? DefaultPath : path;
+                if (!File.Exists(target)) return null;
+
+                DraftDto dto = JsonUtility.FromJson<DraftDto>(File.ReadAllText(target));
+                return FromDto(dto);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("[BitFlow] 自定义关卡读取失败: " + exception.Message);
+                return null;
+            }
+        }
+
+        public static bool Exists(string path = null)
+        {
+            return File.Exists(string.IsNullOrEmpty(path) ? DefaultPath : path);
+        }
+
+        static DraftDto ToDto(LevelDraft draft)
+        {
+            DraftDto dto = new DraftDto
+            {
+                displayName = draft.DisplayName,
+                width = draft.Width,
+                height = draft.Height,
+                tickInterval = draft.TickInterval,
+            };
+
+            foreach (EditableElement element in draft.Cells)
+            {
+                dto.cells.Add(new CellDto
+                {
+                    kind = (int)element.Kind,
+                    x = element.Coord.X,
+                    y = element.Coord.Y,
+                    primaryDir = (int)element.PrimaryDir,
+                    secondaryDir = (int)element.SecondaryDir,
+                    sequence = element.Sequence,
+                    count = element.Count,
+                    passValue = element.PassValue,
+                });
+            }
+            return dto;
+        }
+
+        static LevelDraft FromDto(DraftDto dto)
+        {
+            if (dto == null) return null;
+
+            LevelDraft draft = new LevelDraft(dto.width, dto.height, dto.tickInterval)
+            {
+                DisplayName = string.IsNullOrEmpty(dto.displayName) ? "CUSTOM LEVEL" : dto.displayName,
+            };
+
+            if (dto.cells == null) return draft;
+
+            foreach (CellDto cell in dto.cells)
+            {
+                if (cell == null) continue;
+
+                // 存档可能是旧版本或手改过的，越界/非法枚举一律丢弃，避免把整关读崩
+                if (!Enum.IsDefined(typeof(CellKind), cell.kind)) continue;
+
+                EditableElement element = EditableElement.CreateDefault((CellKind)cell.kind, new GridPoint(cell.x, cell.y));
+                element.PrimaryDir = ToDir(cell.primaryDir, element.PrimaryDir);
+                element.SecondaryDir = ToDir(cell.secondaryDir, element.SecondaryDir);
+                element.Sequence = string.IsNullOrEmpty(cell.sequence) ? element.Sequence : cell.sequence;
+                element.Count = cell.count < 0 ? 0 : cell.count;
+                element.PassValue = cell.passValue == 0 ? (byte)0 : (byte)1;
+
+                draft.Place(element);
+            }
+            return draft;
+        }
+
+        static Dir ToDir(int raw, Dir fallback)
+        {
+            if (!Enum.IsDefined(typeof(Dir), raw)) return fallback;
+            return (Dir)raw;
+        }
+
+        [Serializable]
+        public sealed class DraftDto
+        {
+            public string displayName;
+            public int width;
+            public int height;
+            public float tickInterval;
+            public List<CellDto> cells = new List<CellDto>();
+        }
+
+        [Serializable]
+        public sealed class CellDto
+        {
+            public int kind;
+            public int x;
+            public int y;
+            public int primaryDir;
+            public int secondaryDir;
+            public string sequence;
+            public int count;
+            public int passValue;
+        }
+    }
+}

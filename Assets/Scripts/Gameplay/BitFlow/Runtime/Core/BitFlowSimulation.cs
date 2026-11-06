@@ -540,6 +540,22 @@ namespace ShiftGo.BitFlow.Core
             return snapshots;
         }
 
+        /// <summary>各发射器的吐位进度（View 用来点亮/变暗元件上的序列点阵）。</summary>
+        public List<EmitterProgress> GetEmitterProgress()
+        {
+            List<EmitterProgress> progress = new List<EmitterProgress>(emitters.Count);
+            foreach (EmitterState state in emitters)
+            {
+                progress.Add(new EmitterProgress
+                {
+                    EmitterId = state.Def.Id,
+                    EmittedCount = state.Cursor,
+                    TotalCount = state.Order.Count,
+                });
+            }
+            return progress;
+        }
+
         /// <summary>各接收器的收料进度（UI 上显示 "3/6"）。</summary>
         public List<ReceiverProgress> GetReceiverProgress()
         {

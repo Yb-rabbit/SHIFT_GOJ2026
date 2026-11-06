@@ -1,14 +1,20 @@
+using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using ShiftGo.BitFlow.Core;
 
 namespace ShiftGo.BitFlow.View
 {
     /// <summary>
-    /// 单个元件的视觉表现：用基础几何体拼出形状 + 方向条，
+    /// 单个元件的视觉表现：用基础几何体拼出形状 + 方向箭头 + 序列点阵，
     /// 并负责三类反馈：接收器进度/锁定变绿、收到错误位时的红色脉冲、悬停时的说明文本。
     /// </summary>
     public sealed class ElementView : MonoBehaviour
     {
+        /// <summary>位值配色与 BitActorView 完全一致：青=1、橙=0。分流器臂、序列点阵、过滤器出口都复用它。</summary>
+        static readonly Color ColorOne = BitActorView.ColorOne;
+        static readonly Color ColorZero = BitActorView.ColorZero;
+
         public int ElementId { get; private set; }
         public ElementDefinition Definition { get; private set; }
         public string Description { get; private set; } = string.Empty;
@@ -21,9 +27,15 @@ namespace ShiftGo.BitFlow.View
         Material progressMaterial;
         Color progressBaseColor;
 
+        /// <summary>序列点阵（发射器=发什么、接收器=要什么）：一颗点对应一位，青=1、橙=0。</summary>
+        readonly List<Transform> sequenceDots = new List<Transform>();
+        readonly List<Material> sequenceDotMaterials = new List<Material>();
+        readonly List<Color> sequenceDotColors = new List<Color>();
+
         float flashTimer;
         Color flashColor = Color.red;
         bool locked;
+        bool highlighted;
 
         public void Build(ElementDefinition definition, string description, Material bodySharedMaterial)
         {
@@ -51,6 +63,11 @@ namespace ShiftGo.BitFlow.View
             return Color.white;
         }
 
+        /// <summary>
+        /// 形状语言（不看文字也能分辨元件，箭头一律带箭头头，方向不会看反）：
+        /// 墙=高立方、发射器=矮宽块、接收器=中块+顶部进度条、分流器=小块+两条臂、
+        /// 非门=菱形、过滤器=薄板且出口箭头颜色=它放行的值。
+        /// </summary>
         void BuildShape(ElementDefinition definition)
         {
             switch (definition)
@@ -61,62 +78,140 @@ namespace ShiftGo.BitFlow.View
 
                 case EmitterDefinition emitter:
                     AddBlock(new Vector3(0.82f, 0.32f, 0.82f), 0.16f);
-                    AddBar(emitter.Facing, 0.55f, new Color(0.55f, 0.85f, 1f), 2.4f, 0.30f);
+                    AddArrow(emitter.Facing, 0.32f, new Color(0.55f, 0.85f, 1f), 2.4f, 0.30f);
+                    // 点阵从左到右＝真实发射顺序（序列是从末字符开始弹的，直接照抄字符串会让玩家看反）
+                    BuildSequenceDots(EmitOrderText(emitter), 0.36f, -0.30f);
                     break;
 
                 case ReceiverDefinition receiver:
                     AddBlock(new Vector3(0.92f, 0.34f, 0.92f), 0.17f);
-                    AddBar(receiver.FeedFace, 0.42f, new Color(0.95f, 0.95f, 1f), 1.6f, 0.26f);
+                    AddArrow(receiver.FeedFace, 0.26f, new Color(0.95f, 0.95f, 1f), 1.6f, 0.30f);
                     BuildProgressBar();
+                    BuildSequenceDots(NormalizeSequence(receiver.TargetSequence), 0.40f, -0.34f);
                     break;
 
                 case SplitterDefinition splitter:
                     AddBlock(new Vector3(0.62f, 0.3f, 0.62f), 0.15f);
-                    AddBar(splitter.OneArm, 0.5f, new Color(0.35f, 0.95f, 1f), 2.2f, 0.24f);
-                    AddBar(splitter.ZeroArm, 0.5f, new Color(1f, 0.65f, 0.3f), 2.2f, 0.24f);
+                    // 臂的颜色就是这条臂接收的值：青=走 1，橙=走 0
+                    AddArrow(splitter.OneArm, 0.34f, ColorOne, 2.2f, 0.26f);
+                    AddArrow(splitter.ZeroArm, 0.34f, ColorZero, 2.2f, 0.26f);
                     break;
 
                 case NotGateDefinition notGate:
-                    AddBlock(new Vector3(0.56f, 0.34f, 0.56f), 0.17f);
-                    AddBar(notGate.OutputDir, 0.5f, new Color(1f, 0.45f, 0.75f), 2.2f, 0.26f);
+                    AddBlock(new Vector3(0.54f, 0.34f, 0.54f), 0.17f, 45f);
+                    AddArrow(notGate.OutputDir, 0.30f, new Color(1f, 0.45f, 0.75f), 2.2f, 0.30f);
                     break;
 
                 case FilterDefinition filter:
-                    AddBlock(new Vector3(0.62f, 0.32f, 0.62f), 0.16f);
-                    AddBar(filter.OutputDir, 0.55f, new Color(0.45f, 1f, 0.6f), 2.2f, 0.28f);
+                    AddBlock(new Vector3(0.84f, 0.16f, 0.84f), 0.08f);
+                    // 出口箭头颜色 = 它放行的值（青=只放 1、橙=只放 0）
+                    AddArrow(filter.OutputDir, 0.34f, filter.PassValue == 0 ? ColorZero : ColorOne, 2.2f, 0.24f);
                     break;
             }
         }
 
-        void AddBlock(Vector3 size, float y)
+        void AddBlock(Vector3 size, float y, float yRotation = 0f)
         {
             GameObject block = GameObject.CreatePrimitive(PrimitiveType.Cube);
             block.name = "block";
             DestroyImmediateSafe(block.GetComponent<Collider>());
             block.transform.SetParent(transform, false);
             block.transform.localPosition = new Vector3(0f, y, 0f);
+            block.transform.localRotation = Quaternion.Euler(0f, yRotation, 0f);
             block.transform.localScale = size;
 
-            Renderer renderer = block.GetComponent<Renderer>();
-            renderer.sharedMaterial = bodyMaterial;
-            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
+            ApplyRenderer(block, bodyMaterial);
         }
 
-        void AddBar(Dir dir, float length, Color color, float emission, float y)
+        /// <summary>方向箭头 = 细杆 + 明显加宽的头。原来只有一根等粗光条，玩家经常把方向看反。</summary>
+        void AddArrow(Dir dir, float length, Color color, float emission, float y)
         {
             Vector3 direction = GridMetrics.DirToWorld(dir);
+            Quaternion rotation = Quaternion.LookRotation(direction, Vector3.up);
+            Material material = MaterialFactory.Emissive(color, emission);
 
-            GameObject bar = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            bar.name = "bar_" + dir;
-            DestroyImmediateSafe(bar.GetComponent<Collider>());
-            bar.transform.SetParent(transform, false);
-            bar.transform.localRotation = Quaternion.LookRotation(direction, Vector3.up);
-            bar.transform.localPosition = direction * (length * 0.5f + 0.18f) + Vector3.up * y;
-            bar.transform.localScale = new Vector3(0.16f, 0.14f, length);
+            GameObject shaft = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            shaft.name = "arrow_" + dir;
+            DestroyImmediateSafe(shaft.GetComponent<Collider>());
+            shaft.transform.SetParent(transform, false);
+            shaft.transform.localRotation = rotation;
+            shaft.transform.localPosition = direction * (0.18f + length * 0.5f) + Vector3.up * y;
+            shaft.transform.localScale = new Vector3(0.14f, 0.12f, length);
+            ApplyRenderer(shaft, material);
 
-            Renderer renderer = bar.GetComponent<Renderer>();
-            renderer.sharedMaterial = MaterialFactory.Emissive(color, emission);
+            GameObject head = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            head.name = "arrowhead_" + dir;
+            DestroyImmediateSafe(head.GetComponent<Collider>());
+            head.transform.SetParent(transform, false);
+            head.transform.localRotation = rotation;
+            head.transform.localPosition = direction * (0.18f + length + 0.11f) + Vector3.up * y;
+            head.transform.localScale = new Vector3(0.34f, 0.2f, 0.22f);
+            ApplyRenderer(head, material);
+        }
+
+        /// <summary>把 "1011" 这样的序列摆成一排小方块：青=1、橙=0，不用悬停就能读出内容。</summary>
+        void BuildSequenceDots(string sequence, float y, float z)
+        {
+            int count = Mathf.Min(sequence.Length, 8);
+            if (count <= 0) return;
+
+            const float step = 0.112f;
+            const float size = 0.085f;
+            float startX = -(count - 1) * step * 0.5f;
+
+            for (int i = 0; i < count; i++)
+            {
+                Color color = sequence[i] == '0' ? ColorZero : ColorOne;
+
+                Material material = new Material(MaterialFactory.LitShader) { name = "M_SeqDot_" + i };
+                MaterialFactory.SetBaseColor(material, color);
+                MaterialFactory.SetEmission(material, color, 2.4f);
+                sequenceDotMaterials.Add(material);
+                sequenceDotColors.Add(color);
+
+                GameObject dot = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                dot.name = "seqdot_" + i;
+                DestroyImmediateSafe(dot.GetComponent<Collider>());
+                dot.transform.SetParent(transform, false);
+                dot.transform.localPosition = new Vector3(startX + i * step, y, z);
+                dot.transform.localScale = Vector3.one * size;
+                ApplyRenderer(dot, material);
+                sequenceDots.Add(dot.transform);
+            }
+        }
+
+        /// <summary>只保留 '0'/'1'，其它字符（空白、逗号）忽略；空序列按 "1" 处理。</summary>
+        static string NormalizeSequence(string source)
+        {
+            if (string.IsNullOrEmpty(source)) return "1";
+
+            StringBuilder builder = new StringBuilder(source.Length);
+            foreach (char c in source)
+            {
+                if (c == '0' || c == '1') builder.Append(c);
+            }
+            return builder.Length > 0 ? builder.ToString() : "1";
+        }
+
+        /// <summary>一轮真实发射顺序（最长为序列长度上限 8 位），用于点阵显示。</summary>
+        static string EmitOrderText(EmitterDefinition emitter)
+        {
+            List<byte> order = emitter.BuildEmitOrder();
+            if (order.Count == 0) return NormalizeSequence(emitter.Sequence);
+
+            int count = Mathf.Min(Mathf.Min(order.Count, emitter.Sequence.Length), 8);
+            StringBuilder builder = new StringBuilder(count);
+            for (int i = 0; i < count; i++)
+            {
+                builder.Append(order[i] == 0 ? '0' : '1');
+            }
+            return builder.ToString();
+        }
+
+        static void ApplyRenderer(GameObject go, Material material)
+        {
+            Renderer renderer = go.GetComponent<Renderer>();
+            renderer.sharedMaterial = material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
         }
@@ -160,6 +255,22 @@ namespace ShiftGo.BitFlow.View
             MaterialFactory.SetEmission(progressMaterial, color, 2.2f);
         }
 
+        /// <summary>发射器已吐出的位数：点阵里对应的小方块变暗，一眼看出"发到第几个了"。</summary>
+        public void SetEmitterProgress(int emitted)
+        {
+            if (sequenceDots.Count == 0) return;
+
+            int sent = Mathf.Clamp(emitted, 0, sequenceDots.Count);
+            for (int i = 0; i < sequenceDots.Count; i++)
+            {
+                bool done = i < sent;
+                Color baseColor = sequenceDotColors[i];
+                Color color = done ? Color.Lerp(baseColor, Color.black, 0.62f) : baseColor;
+                MaterialFactory.SetBaseColor(sequenceDotMaterials[i], color);
+                MaterialFactory.SetEmission(sequenceDotMaterials[i], color, done ? 0.5f : 2.4f);
+            }
+        }
+
         /// <summary>接收器达标后整体变绿锁定。</summary>
         public void SetLocked()
         {
@@ -181,6 +292,16 @@ namespace ShiftGo.BitFlow.View
         {
             flashTimer = 0.45f;
             flashColor = new Color(0.25f, 1f, 0.5f);
+        }
+
+        /// <summary>游戏内编辑器的悬停/选中高亮（只抬自发光，不改数据）。</summary>
+        public void SetHighlighted(bool value)
+        {
+            if (highlighted == value) return;
+            highlighted = value;
+
+            // 取消高亮时立刻恢复本色；正在红闪或已锁定就交给 Update 自己收尾
+            if (!highlighted && flashTimer <= 0f && !locked) ApplyBodyColors();
         }
 
         void ApplyBodyColors()
@@ -207,6 +328,12 @@ namespace ShiftGo.BitFlow.View
                 float pulse = 0.6f + 0.4f * Mathf.Sin(Time.time * 3f);
                 MaterialFactory.SetEmission(bodyMaterial, bodyBaseColor, bodyBaseEmission * pulse);
             }
+            else if (highlighted)
+            {
+                // 游戏内编辑器：悬停/选中的格子提亮，不改任何逻辑数据
+                MaterialFactory.SetBaseColor(bodyMaterial, bodyBaseColor);
+                MaterialFactory.SetEmission(bodyMaterial, bodyBaseColor, bodyBaseEmission + 2.2f);
+            }
         }
 
         /// <summary>
@@ -218,6 +345,13 @@ namespace ShiftGo.BitFlow.View
         {
             DestroyMaterial(bodyMaterial);
             DestroyMaterial(progressMaterial);
+            for (int i = 0; i < sequenceDotMaterials.Count; i++)
+            {
+                DestroyMaterial(sequenceDotMaterials[i]);
+            }
+            sequenceDotMaterials.Clear();
+            sequenceDotColors.Clear();
+            sequenceDots.Clear();
             bodyMaterial = null;
             progressMaterial = null;
         }

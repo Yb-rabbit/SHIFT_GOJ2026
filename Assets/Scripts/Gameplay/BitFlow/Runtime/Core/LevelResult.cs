@@ -18,6 +18,20 @@ namespace ShiftGo.BitFlow.Core
         public bool IsComplete => ReceivedCount >= TargetCount;
     }
 
+    /// <summary>单个发射器的进度快照（View 用来把"序列点阵"里已发出的点变暗）。</summary>
+    public sealed class EmitterProgress
+    {
+        public int EmitterId;
+
+        /// <summary>已经吐出的位数（含重复轮次）。</summary>
+        public int EmittedCount;
+
+        /// <summary>整关要吐的位总数（序列长度 × 重复轮数）。</summary>
+        public int TotalCount;
+
+        public bool IsDone => EmittedCount >= TotalCount;
+    }
+
     /// <summary>一关的结算结果。</summary>
     public sealed class LevelResult
     {

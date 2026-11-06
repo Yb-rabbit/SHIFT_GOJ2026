@@ -106,21 +106,23 @@ namespace ShiftGo.BitFlow.View
             switch (element)
             {
                 case EmitterDefinition emitter:
-                    return $"发射器 #{emitter.Id}\n序列 “{emitter.Sequence}” ×{emitter.RepeatCount}，朝 {emitter.Facing}";
+                    return $"发射器 #{emitter.Id}\n序列 “{emitter.Sequence}” ×{emitter.RepeatCount}，朝 {emitter.Facing}\n点阵（左→右＝发射顺序）：青=1 橙=0，发出的会变暗";
                 case ReceiverDefinition receiver:
-                    return $"接收器 #{receiver.Id}\n需要 “{receiver.TargetSequence}” ×{receiver.TargetCount}，进料面朝 {receiver.FeedFace}";
+                    return $"接收器 #{receiver.Id}\n需要 “{receiver.TargetSequence}” ×{receiver.TargetCount}，进料面朝 {receiver.FeedFace}\n点阵＝目标序列：青=1 橙=0";
                 case SplitterDefinition splitter:
-                    return "分流器 #" + splitter.Id + "\n1 → " + splitter.OneArm + "，0 → " + splitter.ZeroArm;
+                    return "分流器 #" + splitter.Id + "\n青色臂（收 1）→ " + splitter.OneArm + "，橙色臂（收 0）→ " + splitter.ZeroArm;
                 case NotGateDefinition notGate:
-                    return "非门 #" + notGate.Id + "\n取反后向 " + notGate.OutputDir + " 输出";
+                    return "非门 #" + notGate.Id + "\n菱形本体，取反后向 " + notGate.OutputDir + " 输出";
                 case FilterDefinition filter:
-                    return "过滤器 #" + filter.Id + "\n只放行 " + filter.PassValue;
+                    return "过滤器 #" + filter.Id + "\n薄板本体，只放行 " + filter.PassValue
+                        + "（出口箭头为" + (filter.PassValue == 0 ? "橙" : "青") + "）";
                 default:
                     return "墙 #" + element.Id;
             }
         }
 
-        static Color KindColor(CellKind kind)
+        /// <summary>元件类型 → 本体颜色。游戏内编辑器的 ghost / 调色板色块也用它，保证"颜色=类型"处处一致。</summary>
+        public static Color KindColor(CellKind kind)
         {
             switch (kind)
             {

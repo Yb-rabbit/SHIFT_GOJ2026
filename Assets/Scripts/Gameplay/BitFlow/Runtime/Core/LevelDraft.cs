@@ -1,0 +1,343 @@
+using System;
+using System.Collections.Generic;
+
+namespace ShiftGo.BitFlow.Core
+{
+    /// <summary>
+    /// 游戏内编辑器里一格的"可改配置"。
+    /// 各种元件的差异字段（朝向、序列、数量、放行值）都收进同一个对象，
+    /// 这样放置/旋转/删除/存档都能在纯 C# 层完成，也方便 EditMode 单测直接驱动。
+    /// 它只是编辑期的草稿，<see cref="ToDefinition"/> 之后才变成模拟器认识的 <see cref="ElementDefinition"/>。
+    /// </summary>
+    public sealed class EditableElement
+    {
+        public CellKind Kind = CellKind.Wall;
+        public GridPoint Coord;
+
+        /// <summary>主朝向：发射器的吐位方向 / 接收器的进料面 / 非门与过滤器的输出 / 分流器的 OneArm。</summary>
+        public Dir PrimaryDir = Dir.Right;
+
+        /// <summary>副朝向：只给分流器的 ZeroArm 用。</summary>
+        public Dir SecondaryDir = Dir.Down;
+
+        /// <summary>发射器的序列 / 接收器的目标序列。</summary>
+        public string Sequence = "1";
+
+        /// <summary>发射器的重复轮数 / 接收器的期望个数。</summary>
+        public int Count = 1;
+
+        /// <summary>过滤器放行的取值（0 或 1）。</summary>
+        public byte PassValue = 1;
+
+        /// <summary>按类型给一份能直接玩的默认配置。</summary>
+        public static EditableElement CreateDefault(CellKind kind, GridPoint coord)
+        {
+            EditableElement element = new EditableElement
+            {
+                Kind = kind,
+                Coord = coord,
+            };
+
+            switch (kind)
+            {
+                case CellKind.Emitter:
+                    element.PrimaryDir = Dir.Right;
+                    element.Sequence = "1";
+                    element.Count = 1;
+                    break;
+
+                case CellKind.Receiver:
+                    element.PrimaryDir = Dir.Down; // 进料面：位要朝上走进去
+                    element.Sequence = "1";
+                    element.Count = 1;
+                    break;
+
+                case CellKind.Splitter:
+                    element.PrimaryDir = Dir.Up;      // OneArm
+                    element.SecondaryDir = Dir.Right; // ZeroArm
+                    break;
+
+                case CellKind.NotGate:
+                case CellKind.Filter:
+                    element.PrimaryDir = Dir.Right;
+                    break;
+            }
+
+            return element;
+        }
+
+        /// <summary>把逻辑定义读回可编辑配置（进入编辑模式时用来载入现有关卡）。</summary>
+        public static EditableElement FromDefinition(ElementDefinition definition)
+        {
+            if (definition == null) throw new ArgumentNullException(nameof(definition));
+
+            EditableElement element = CreateDefault(definition.Kind, definition.Coord);
+
+            switch (definition)
+            {
+                case EmitterDefinition emitter:
+                    element.PrimaryDir = emitter.Facing;
+                    element.Sequence = emitter.Sequence;
+                    element.Count = emitter.RepeatCount;
+                    break;
+
+                case ReceiverDefinition receiver:
+                    element.PrimaryDir = receiver.FeedFace;
+                    element.Sequence = receiver.TargetSequence;
+                    element.Count = receiver.TargetCount;
+                    break;
+
+                case SplitterDefinition splitter:
+                    element.PrimaryDir = splitter.OneArm;
+                    element.SecondaryDir = splitter.ZeroArm;
+                    break;
+
+                case NotGateDefinition notGate:
+                    element.PrimaryDir = notGate.OutputDir;
+                    break;
+
+                case FilterDefinition filter:
+                    element.PrimaryDir = filter.OutputDir;
+                    element.PassValue = filter.PassValue;
+                    break;
+            }
+
+            return element;
+        }
+
+        public EditableElement Clone()
+        {
+            return new EditableElement
+            {
+                Kind = Kind,
+                Coord = Coord,
+                PrimaryDir = PrimaryDir,
+                SecondaryDir = SecondaryDir,
+                Sequence = Sequence,
+                Count = Count,
+                PassValue = PassValue,
+            };
+        }
+
+        /// <summary>整体顺时针转 90°（主/副朝向一起转，与关卡里的 rotationSteps 语义一致）。</summary>
+        public void Rotate()
+        {
+            PrimaryDir = PrimaryDir.RotateClockwise();
+            SecondaryDir = SecondaryDir.RotateClockwise();
+        }
+
+        /// <summary>生成模拟器用的定义。id 由草稿统一分配，保证同一份草稿每次重建都拿到同样的 id。</summary>
+        public ElementDefinition ToDefinition(int id)
+        {
+            switch (Kind)
+            {
+                case CellKind.Emitter:
+                    return new EmitterDefinition
+                    {
+                        Id = id,
+                        Coord = Coord,
+                        Facing = PrimaryDir,
+                        Sequence = NormalizeSequence(Sequence),
+                        RepeatCount = Math.Max(0, Count),
+                    };
+
+                case CellKind.Receiver:
+                    return new ReceiverDefinition
+                    {
+                        Id = id,
+                        Coord = Coord,
+                        FeedFace = PrimaryDir,
+                        TargetSequence = NormalizeSequence(Sequence),
+                        TargetCount = Math.Max(0, Count),
+                    };
+
+                case CellKind.Splitter:
+                    return new SplitterDefinition
+                    {
+                        Id = id,
+                        Coord = Coord,
+                        OneArm = PrimaryDir,
+                        ZeroArm = SecondaryDir,
+                    };
+
+                case CellKind.NotGate:
+                    return new NotGateDefinition
+                    {
+                        Id = id,
+                        Coord = Coord,
+                        OutputDir = PrimaryDir,
+                    };
+
+                case CellKind.Filter:
+                    return new FilterDefinition
+                    {
+                        Id = id,
+                        Coord = Coord,
+                        OutputDir = PrimaryDir,
+                        PassValue = PassValue == 0 ? (byte)0 : (byte)1,
+                    };
+
+                default:
+                    return new WallDefinition { Id = id, Coord = Coord };
+            }
+        }
+
+        /// <summary>提示框里显示的简短配置说明。</summary>
+        public string Summary()
+        {
+            switch (Kind)
+            {
+                case CellKind.Emitter:
+                    return "发射器  朝" + PrimaryDir.ToChineseName() + "  序列 " + NormalizeSequence(Sequence) + " ×" + Count;
+                case CellKind.Receiver:
+                    return "接收器  进料面" + PrimaryDir.ToChineseName() + "  需要 " + NormalizeSequence(Sequence) + " ×" + Count;
+                case CellKind.Splitter:
+                    return "分流器  1→" + PrimaryDir.ToChineseName() + "  0→" + SecondaryDir.ToChineseName();
+                case CellKind.NotGate:
+                    return "非门  取反后向" + PrimaryDir.ToChineseName() + "输出";
+                case CellKind.Filter:
+                    return "过滤器  只放行 " + PassValue;
+                default:
+                    return "墙";
+            }
+        }
+
+        /// <summary>空序列会让模拟器当作空元件，这里兜底成 "1"，避免出现"看不见的哑元件"。</summary>
+        static string NormalizeSequence(string sequence)
+        {
+            if (string.IsNullOrEmpty(sequence)) return "1";
+
+            for (int i = 0; i < sequence.Length; i++)
+            {
+                if (sequence[i] == '0' || sequence[i] == '1') return sequence;
+            }
+            return "1";
+        }
+    }
+
+    /// <summary>
+    /// 可编辑的关卡草稿：一格最多一个元件，支持放置/替换/删除/旋转，最后转成 <see cref="LevelDefinition"/>。
+    /// 纯 C#、不依赖 ScriptableObject，所以游戏内改完只影响内存，不会把 Assets/Data 下的资产改脏。
+    /// </summary>
+    public sealed class LevelDraft
+    {
+        readonly Dictionary<GridPoint, EditableElement> cells = new Dictionary<GridPoint, EditableElement>();
+
+        public string DisplayName = "CUSTOM LEVEL";
+        public float TickInterval = 0.35f;
+
+        public int Width { get; private set; }
+        public int Height { get; private set; }
+
+        public LevelDraft(int width, int height, float tickInterval = 0.35f)
+        {
+            Width = Math.Max(1, width);
+            Height = Math.Max(1, height);
+            TickInterval = tickInterval <= 0f ? 0.35f : tickInterval;
+        }
+
+        /// <summary>从一份现有关卡载入（进入编辑模式时用）。</summary>
+        public static LevelDraft FromDefinition(LevelDefinition level)
+        {
+            if (level == null) throw new ArgumentNullException(nameof(level));
+
+            LevelDraft draft = new LevelDraft(level.Width, level.Height, level.TickInterval)
+            {
+                DisplayName = level.DisplayName,
+            };
+
+            foreach (ElementDefinition element in level.Elements)
+            {
+                draft.Place(EditableElement.FromDefinition(element));
+            }
+            return draft;
+        }
+
+        public int Count => cells.Count;
+
+        public IEnumerable<EditableElement> Cells => cells.Values;
+
+        public bool InBounds(GridPoint coord)
+        {
+            return coord.X >= 0 && coord.X < Width && coord.Y >= 0 && coord.Y < Height;
+        }
+
+        public EditableElement GetAt(GridPoint coord)
+        {
+            return cells.TryGetValue(coord, out EditableElement element) ? element : null;
+        }
+
+        /// <summary>在格子上放一个默认配置的元件；越界返回 null，该格已有元件则整体替换。</summary>
+        public EditableElement PlaceDefault(CellKind kind, GridPoint coord)
+        {
+            if (!InBounds(coord)) return null;
+
+            EditableElement element = EditableElement.CreateDefault(kind, coord);
+            cells[coord] = element;
+            return element;
+        }
+
+        /// <summary>放入一份现成配置；越界返回 false。</summary>
+        public bool Place(EditableElement element)
+        {
+            if (element == null || !InBounds(element.Coord)) return false;
+            cells[element.Coord] = element;
+            return true;
+        }
+
+        public bool Remove(GridPoint coord)
+        {
+            return cells.Remove(coord);
+        }
+
+        /// <summary>把格子里的元件顺时针转 90°；空格返回 false。</summary>
+        public bool Rotate(GridPoint coord)
+        {
+            if (!cells.TryGetValue(coord, out EditableElement element)) return false;
+            element.Rotate();
+            return true;
+        }
+
+        public int CountOf(CellKind kind)
+        {
+            int count = 0;
+            foreach (EditableElement element in cells.Values)
+            {
+                if (element.Kind == kind) count++;
+            }
+            return count;
+        }
+
+        /// <summary>
+        /// 转成模拟器用的关卡。id 按 (y, x) 排序后从 1 递增分配，
+        /// 因此同一份草稿无论重建多少次，坐标与 id 的对应关系都完全一致（HUD 读数靠它）。
+        /// </summary>
+        public LevelDefinition ToDefinition()
+        {
+            LevelDefinition level = new LevelDefinition
+            {
+                DisplayName = string.IsNullOrEmpty(DisplayName) ? "CUSTOM LEVEL" : DisplayName,
+                Width = Width,
+                Height = Height,
+                TickInterval = TickInterval,
+            };
+
+            List<EditableElement> ordered = new List<EditableElement>(cells.Values);
+            ordered.Sort(CompareByCoord);
+
+            int nextId = 1;
+            foreach (EditableElement element in ordered)
+            {
+                level.Elements.Add(element.ToDefinition(nextId));
+                nextId++;
+            }
+            return level;
+        }
+
+        static int CompareByCoord(EditableElement left, EditableElement right)
+        {
+            if (left.Coord.Y != right.Coord.Y) return left.Coord.Y.CompareTo(right.Coord.Y);
+            return left.Coord.X.CompareTo(right.Coord.X);
+        }
+    }
+}

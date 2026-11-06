@@ -53,6 +53,12 @@ namespace ShiftGo.BitFlow.View
         public bool IsFinished => simulation != null && simulation.IsFinished;
         public int TickIndex => simulation != null ? simulation.TickIndex : 0;
 
+        /// <summary>
+        /// 运行时关卡覆盖（游戏内编辑器用）。非空时优先于 levelAsset，
+        /// 这样编辑结果只活在内存里，REPLAY 也不会把改动丢掉，同时不会写脏 Assets/Data 下的资产。
+        /// </summary>
+        public LevelDefinition RuntimeOverride { get; private set; }
+
         /// <summary>倍速：0.25 ~ 3，tick 时长 = baseTickInterval / speed。</summary>
         public float Speed
         {
@@ -63,6 +69,10 @@ namespace ShiftGo.BitFlow.View
         void Awake()
         {
             builder = GetComponent<LevelBuilder>();
+
+            // 场景里没挂 BIT 模式时自动补一个：保证任何场景直接 Play 都能进编辑模式。
+            // 不想开放编辑就删掉这段，并在场景里移除 BitFlowBuildMode 即可。
+            if (GetComponent<BitFlowBuildMode>() == null) gameObject.AddComponent<BitFlowBuildMode>();
         }
 
         void Start()
@@ -73,7 +83,9 @@ namespace ShiftGo.BitFlow.View
 
         void BuildLevel()
         {
-            definition = levelAsset != null ? levelAsset.ToDefinition() : DemoLevels.CreateLevel01();
+            definition = RuntimeOverride != null
+                ? RuntimeOverride
+                : levelAsset != null ? levelAsset.ToDefinition() : DemoLevels.CreateLevel01();
             if (baseTickInterval <= 0f) baseTickInterval = definition.TickInterval;
 
             receiverById.Clear();
@@ -125,21 +137,51 @@ namespace ShiftGo.BitFlow.View
             AdvanceTick(true, CurrentInterval);
         }
 
-        /// <summary>重播：重建关卡与模拟，从第 0 个 tick 重新开始。</summary>
+        /// <summary>重播：重建关卡与模拟，从第 0 个 tick 重新开始。编辑出来的关卡同样保留。</summary>
         public void ResetLevel()
         {
             StopAllCoroutines();
-            foreach (BitActorView view in bitViews.Values)
-            {
-                if (view != null) Destroy(view.gameObject);
-            }
-            bitViews.Clear();
+            DestroyBitViews();
 
             BuildLevel();
 
             // 重播后同样先停住：让你先看清 TICK 00 的布局，再按 PLAY 开始
             paused = !autoStart;
             ResetPerformed?.Invoke();
+        }
+
+        /// <summary>
+        /// 用一份运行时关卡重建场景并停在 TICK 00（游戏内编辑器每改一次格子就会调用）。
+        /// 只覆盖内存里的 definition，不碰 levelAsset。
+        /// </summary>
+        public void ShowDefinition(LevelDefinition next)
+        {
+            if (next == null) return;
+
+            RuntimeOverride = next;
+            StopAllCoroutines();
+            DestroyBitViews();
+            BuildLevel();
+
+            paused = true;
+            ResetPerformed?.Invoke();
+        }
+
+        /// <summary>切进编辑模式时用：停住时间轴，避免编辑和推进互相打架。</summary>
+        public void PauseForEditing()
+        {
+            if (simulation == null) return;
+            paused = true;
+            timer = 0f;
+        }
+
+        void DestroyBitViews()
+        {
+            foreach (BitActorView view in bitViews.Values)
+            {
+                if (view != null) Destroy(view.gameObject);
+            }
+            bitViews.Clear();
         }
 
         void AdvanceTick(bool snap, float interval)
@@ -208,7 +250,7 @@ namespace ShiftGo.BitFlow.View
                 }
             }
 
-            RefreshReceiverViews();
+            RefreshProgressViews();
         }
 
         IEnumerator SlideRoutine(BitActorView view, Vector3 target, float duration)
@@ -252,8 +294,8 @@ namespace ShiftGo.BitFlow.View
             flash.AddComponent<FlashBurst>().Init(color, 0.42f);
         }
 
-        /// <summary>刷新所有接收器的进度条与锁定状态。</summary>
-        void RefreshReceiverViews()
+        /// <summary>刷新接收器进度条/锁定状态，以及发射器序列点阵的消耗进度。</summary>
+        void RefreshProgressViews()
         {
             foreach (ReceiverProgress progress in simulation.GetReceiverProgress())
             {
@@ -266,6 +308,14 @@ namespace ShiftGo.BitFlow.View
                 {
                     view.SetLocked();
                 }
+            }
+
+            foreach (EmitterProgress progress in simulation.GetEmitterProgress())
+            {
+                ElementView view = builder.GetElement(progress.EmitterId);
+                if (view == null) continue;
+
+                view.SetEmitterProgress(progress.EmittedCount);
             }
         }
 

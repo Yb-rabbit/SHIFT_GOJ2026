@@ -28,6 +28,14 @@ namespace ShiftGo.BitFlow.View
             }
         }
 
+        /// <summary>世界坐标 → 网格坐标（游戏内编辑器用鼠标点格子时走这条路径）。</summary>
+        public static GridPoint WorldToCell(Vector3 world)
+        {
+            return new GridPoint(
+                Mathf.RoundToInt(world.x / CellSize),
+                Mathf.RoundToInt(world.z / CellSize));
+        }
+
         /// <summary>整个网格的世界中心（用来摆摄像机）。</summary>
         public static Vector3 GridCenter(int width, int height, float height0 = 0f)
         {
