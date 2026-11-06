@@ -71,6 +71,7 @@ namespace ShiftGo.BitFlow.Data
                 width = draft.Width,
                 height = draft.Height,
                 tickInterval = draft.TickInterval,
+                stockEnabled = draft.StockEnabled,
             };
 
             foreach (EditableElement element in draft.Cells)
@@ -85,7 +86,18 @@ namespace ShiftGo.BitFlow.Data
                     sequence = element.Sequence,
                     count = element.Count,
                     passValue = element.PassValue,
+                    typeKey = element.TypeKey,
+                    locked = draft.IsLocked(element.Coord),
                 });
+            }
+
+            // 手牌也要进存档：否则读回来的有限元件关会退化成"无限涂刷"
+            if (draft.StockEnabled)
+            {
+                foreach (KeyValuePair<string, int> pair in draft.Stock)
+                {
+                    dto.stock.Add(new StockDto { typeKey = pair.Key, count = pair.Value });
+                }
             }
             return dto;
         }
@@ -98,6 +110,16 @@ namespace ShiftGo.BitFlow.Data
             {
                 DisplayName = string.IsNullOrEmpty(dto.displayName) ? "CUSTOM LEVEL" : dto.displayName,
             };
+
+            // 先登记手牌：SetStock 会把草稿切到"有限手牌"模式，之后放置才按牌数校验
+            if (dto.stockEnabled && dto.stock != null)
+            {
+                foreach (StockDto stack in dto.stock)
+                {
+                    if (stack == null || string.IsNullOrEmpty(stack.typeKey)) continue;
+                    draft.SetStock(stack.typeKey, stack.count);
+                }
+            }
 
             if (dto.cells == null) return draft;
 
@@ -114,9 +136,15 @@ namespace ShiftGo.BitFlow.Data
                 element.Sequence = string.IsNullOrEmpty(cell.sequence) ? element.Sequence : cell.sequence;
                 element.Count = cell.count < 0 ? 0 : cell.count;
                 element.PassValue = cell.passValue == 0 ? (byte)0 : (byte)1;
+                // 存档里带回来类型 Key，玩家局内拾回时才能把牌还回正确的那一摞
+                element.TypeKey = string.IsNullOrEmpty(cell.typeKey) ? string.Empty : cell.typeKey;
 
                 draft.Place(element);
+                if (cell.locked) draft.SetLocked(element.Coord, true);
             }
+
+            // 读档不是玩家的一步：撤销栈从空开始，第一次 Ctrl+Z 不会把存档内容撤掉
+            draft.ClearHistory();
             return draft;
         }
 
@@ -133,7 +161,17 @@ namespace ShiftGo.BitFlow.Data
             public int width;
             public int height;
             public float tickInterval;
+            public bool stockEnabled;
             public List<CellDto> cells = new List<CellDto>();
+            public List<StockDto> stock = new List<StockDto>();
+        }
+
+        /// <summary>一摞手牌：类型 Key + 剩余张数（旧存档没有这一段 → stockEnabled 为 false，按作者模式处理）。</summary>
+        [Serializable]
+        public sealed class StockDto
+        {
+            public string typeKey;
+            public int count;
         }
 
         [Serializable]
@@ -147,6 +185,12 @@ namespace ShiftGo.BitFlow.Data
             public string sequence;
             public int count;
             public int passValue;
+
+            /// <summary>来源类型资产的 Key（旧存档没有这个字段 → 空字符串，拾回时按「无归属」处理）。</summary>
+            public string typeKey;
+
+            /// <summary>是否是关卡预设件（玩家搬不动的那些；旧存档没有 → false，读回来当自由件）。</summary>
+            public bool locked;
         }
     }
 }

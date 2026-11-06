@@ -19,5 +19,8 @@ namespace ShiftGo.BitFlow.Data
 
         [Tooltip("整体旋转：0/1/2/3 对应顺时针 0°/90°/180°/270°")]
         [Range(0, 3)] public int rotationSteps;
+
+        [Tooltip("允许玩家搬动 / 拾回这一格。默认关掉 = 关卡预设件（墙、发射器、接收器都别让玩家碰）")]
+        public bool playerEditable;
     }
 }

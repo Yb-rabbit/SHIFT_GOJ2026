@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 70be23a18564f99488f2111e20592de1, type: 3}
+  m_Name: Level_03
+  m_EditorClassIdentifier: 
+  displayName: LEVEL 03 - SPLITTER
+  width: 9
+  height: 7
+  tickInterval: 0.35
+  placements:
+  - type: {fileID: 11400000, guid: 138adae525524314b98d514e68781fb3, type: 2}
+    coord: {x: 0, y: 2}
+    rotationSteps: 0
+    playerEditable: 0
+  - type: {fileID: 11400000, guid: 4edbf1f17ac4aba48ae636d09ea1e8ae, type: 2}
+    coord: {x: 3, y: 5}
+    rotationSteps: 0
+    playerEditable: 0
+  - type: {fileID: 11400000, guid: c2ab3d2e4a2c4ff429144184df4d4348, type: 2}
+    coord: {x: 6, y: 2}
+    rotationSteps: 0
+    playerEditable: 0
+  supplies:
+  - type: {fileID: 11400000, guid: cdae8e12b73a3f94787ad29d7c5d928d, type: 2}
+    count: 1

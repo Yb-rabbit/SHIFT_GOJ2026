@@ -29,6 +29,12 @@ namespace ShiftGo.BitFlow.Core
         /// <summary>过滤器放行的取值（0 或 1）。</summary>
         public byte PassValue = 1;
 
+        /// <summary>
+        /// 来源类型资产的标识（与 ElementTypeSO.Key 同源）。空字符串表示手工摆的、没有归属的元件。
+        /// 玩家拾回元件时靠它把牌还回正确地那摞，不靠类型猜。
+        /// </summary>
+        public string TypeKey = string.Empty;
+
         /// <summary>按类型给一份能直接玩的默认配置。</summary>
         public static EditableElement CreateDefault(CellKind kind, GridPoint coord)
         {
@@ -72,6 +78,7 @@ namespace ShiftGo.BitFlow.Core
             if (definition == null) throw new ArgumentNullException(nameof(definition));
 
             EditableElement element = CreateDefault(definition.Kind, definition.Coord);
+            element.TypeKey = definition.TypeKey;
 
             switch (definition)
             {
@@ -116,6 +123,7 @@ namespace ShiftGo.BitFlow.Core
                 Sequence = Sequence,
                 Count = Count,
                 PassValue = PassValue,
+                TypeKey = TypeKey,
             };
         }
 
@@ -219,7 +227,7 @@ namespace ShiftGo.BitFlow.Core
     /// 可编辑的关卡草稿：一格最多一个元件，支持放置/替换/删除/旋转，最后转成 <see cref="LevelDefinition"/>。
     /// 纯 C#、不依赖 ScriptableObject，所以游戏内改完只影响内存，不会把 Assets/Data 下的资产改脏。
     /// </summary>
-    public sealed class LevelDraft
+    public sealed partial class LevelDraft
     {
         readonly Dictionary<GridPoint, EditableElement> cells = new Dictionary<GridPoint, EditableElement>();
 
@@ -273,6 +281,7 @@ namespace ShiftGo.BitFlow.Core
             if (!InBounds(coord)) return null;
 
             EditableElement element = EditableElement.CreateDefault(kind, coord);
+            PushHistory();
             cells[coord] = element;
             return element;
         }
@@ -280,20 +289,41 @@ namespace ShiftGo.BitFlow.Core
         /// <summary>放入一份现成配置；越界返回 false。</summary>
         public bool Place(EditableElement element)
         {
+            return Place(element, false);
+        }
+
+        /// <summary>
+        /// 放入一份现成配置，并标记它是不是关卡预设件。
+        /// locked=true 的格子玩家搬不动也删不掉（关卡给定的墙/发射器/接收器都走这条）。
+        /// </summary>
+        public bool Place(EditableElement element, bool locked)
+        {
             if (element == null || !InBounds(element.Coord)) return false;
+
+            PushHistory();
             cells[element.Coord] = element;
+            if (locked) lockedCells.Add(element.Coord);
+            else lockedCells.Remove(element.Coord);
             return true;
         }
 
+        /// <summary>删除格子里的元件；关卡预设件拒绝删除。</summary>
         public bool Remove(GridPoint coord)
         {
+            if (lockedCells.Contains(coord)) return false;
+            if (!cells.ContainsKey(coord)) return false;
+
+            PushHistory();
             return cells.Remove(coord);
         }
 
-        /// <summary>把格子里的元件顺时针转 90°；空格返回 false。</summary>
+        /// <summary>把格子里的元件顺时针转 90°；空格或关卡预设件返回 false。</summary>
         public bool Rotate(GridPoint coord)
         {
+            if (lockedCells.Contains(coord)) return false;
             if (!cells.TryGetValue(coord, out EditableElement element)) return false;
+
+            PushHistory();
             element.Rotate();
             return true;
         }
@@ -328,7 +358,9 @@ namespace ShiftGo.BitFlow.Core
             int nextId = 1;
             foreach (EditableElement element in ordered)
             {
-                level.Elements.Add(element.ToDefinition(nextId));
+                ElementDefinition definition = element.ToDefinition(nextId);
+                definition.TypeKey = element.TypeKey;
+                level.Elements.Add(definition);
                 nextId++;
             }
             return level;

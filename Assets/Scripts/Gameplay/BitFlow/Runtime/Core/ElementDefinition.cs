@@ -32,6 +32,14 @@ namespace ShiftGo.BitFlow.Core
         /// <summary>悬停提示文本（由类型资产生成）。</summary>
         public string Hint = string.Empty;
 
+        /// <summary>
+        /// 来源类型资产的稳定标识（<see cref="Label"/> 是给人看的短名，这个是给代码认的）。
+        /// 空字符串表示「没有来源资产」（例如纯代码搭的演示关）。
+        /// 视图层靠它把程序化几何换成自定义模型/预制体，玩家手牌也靠它把拾回的元件还回正确的牌堆，
+        /// 因此它必须跟资产同生共死，不要随手改。
+        /// </summary>
+        public string TypeKey = string.Empty;
+
         public abstract CellKind Kind { get; }
 
         /// <summary>该元件的出口朝向集合；位从这些面逆行撞入视为违规。</summary>

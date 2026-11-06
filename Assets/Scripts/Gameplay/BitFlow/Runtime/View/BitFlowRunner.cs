@@ -11,12 +11,18 @@ namespace ShiftGo.BitFlow.View
     /// （位从 A 滑到 B、销毁红闪、接收器进度/锁定）。逻辑推进与动画播放完全解耦，
     /// 所以播放/暂停/单步/倍速/重播都只是操作这一条时间轴。
     /// </summary>
+    [DefaultExecutionOrder(-50)]
     [RequireComponent(typeof(LevelBuilder))]
     public sealed class BitFlowRunner : MonoBehaviour
     {
         [Header("关卡")]
         [Tooltip("留空则使用代码内置的演示关卡（DemoLevels.CreateLevel01）")]
         [SerializeField] LevelSO levelAsset;
+
+        [Header("作者工具")]
+        [Tooltip("进关时自动挂上 BUILD MODE（无限涂刷）。正式关卡必须关掉，否则玩家能无限补元件，" +
+                 "有限手牌就形同虚设；LevelFlow 会主动把它关掉")]
+        [SerializeField] bool allowBuildMode = true;
 
         [Header("节奏")]
         [Tooltip("1 倍速时每个 tick 的时长（秒）")]
@@ -70,10 +76,31 @@ namespace ShiftGo.BitFlow.View
         {
             builder = GetComponent<LevelBuilder>();
 
-            // 场景里没挂 BIT 模式时自动补一个：保证任何场景直接 Play 都能进编辑模式。
-            // 不想开放编辑就删掉这段，并在场景里移除 BitFlowBuildMode 即可。
+            // 作者场景直接 Play 就能进编辑模式；正式关卡由 LevelFlow 调 DisableBuildMode 关掉。
+            if (allowBuildMode) EnableBuildMode();
+        }
+
+        /// <summary>挂上游戏内编辑器（幂等）。</summary>
+        public void EnableBuildMode()
+        {
             if (GetComponent<BitFlowBuildMode>() == null) gameObject.AddComponent<BitFlowBuildMode>();
         }
+
+        /// <summary>
+        /// 摘掉游戏内编辑器。先 enabled = false 再 Destroy：这样它的 Start 不会跑，
+        /// 不会出现「刚建好 UI 就被销毁」的一帧闪烁。
+        /// </summary>
+        public void DisableBuildMode()
+        {
+            BitFlowBuildMode mode = GetComponent<BitFlowBuildMode>();
+            if (mode == null) return;
+
+            mode.enabled = false;
+            if (Application.isPlaying) Destroy(mode);
+            else DestroyImmediate(mode);
+        }
+
+        public bool IsBuildModeEnabled => GetComponent<BitFlowBuildMode>() != null;
 
         void Start()
         {
@@ -165,6 +192,31 @@ namespace ShiftGo.BitFlow.View
 
             paused = true;
             ResetPerformed?.Invoke();
+        }
+
+        /// <summary>当前关卡资产（可能为 null，这时用的是代码内置演示关）。</summary>
+        public LevelSO LevelAsset => levelAsset;
+
+        /// <summary>
+        /// 换关：清掉运行时覆盖、指向新资产、按新关卡自己的节奏重建，并停在 TICK 00。
+        /// 「下一关是哪一关」由 <see cref="LevelFlow"/> 决定，这里只负责加载。
+        /// </summary>
+        public bool LoadLevel(LevelSO next)
+        {
+            if (next == null) return false;
+
+            levelAsset = next;
+            RuntimeOverride = null;
+            baseTickInterval = Mathf.Max(0.05f, next.tickInterval);
+
+            StopAllCoroutines();
+            DestroyBitViews();
+            BuildLevel();
+
+            speed = 1f;
+            paused = true;
+            ResetPerformed?.Invoke();
+            return true;
         }
 
         /// <summary>切进编辑模式时用：停住时间轴，避免编辑和推进互相打架。</summary>

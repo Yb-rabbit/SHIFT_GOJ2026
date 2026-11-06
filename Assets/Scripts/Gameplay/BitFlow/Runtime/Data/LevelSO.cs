@@ -27,6 +27,14 @@ namespace ShiftGo.BitFlow.Data
         [Header("元件摆放")]
         public List<ElementPlacement> placements = new List<ElementPlacement>();
 
+        [Header("玩家手牌")]
+        [Tooltip("留空 = 不限量（作者拿来摆草图的演示关）。填了才是有限元件的解谜关：" +
+                 "placements 给的是场景，supplies 给的是玩家能做的事")]
+        public List<ElementSupply> supplies = new List<ElementSupply>();
+
+        /// <summary>有没有给玩家手牌。false 时这个关卡只是演示/作者的沙盒。</summary>
+        public bool HasSupplies => supplies != null && supplies.Count > 0;
+
         /// <summary>
         /// 转成纯逻辑关卡。Id 按摆放顺序从 1 递增分配，
         /// 保证同一份资产每次转换得到的 Id 完全一致（UI 进度条与视图映射都靠它）。
@@ -55,12 +63,47 @@ namespace ShiftGo.BitFlow.Data
 
                 element.Label = placement.type.label;
                 element.Hint = placement.type.Describe();
+                element.TypeKey = placement.type.Key;
 
                 definition.Elements.Add(element);
                 nextId++;
             }
 
             return definition;
+        }
+
+        /// <summary>
+        /// 生成玩家局内草稿：placements 里 locked 的成为预设件（搬不动），其余成为可自由改动的件；
+        /// supplies 变成有限手牌。这是「有限元件解谜」的唯一入口 —— 玩家所有操作都发生在这份草稿上，
+        /// 想验证解法就 ToDefinition() 丢给模拟器，跟作者模式共用同一套渲染/模拟管线。
+        /// </summary>
+        public LevelDraft CreatePlayerDraft()
+        {
+            LevelDraft draft = new LevelDraft(width, height, tickInterval)
+            {
+                DisplayName = string.IsNullOrEmpty(displayName) ? name : displayName,
+            };
+
+            foreach (ElementPlacement placement in placements)
+            {
+                if (placement == null || placement.type == null) continue;
+
+                EditableElement element = placement.type.CreateEditable(
+                    new GridPoint(placement.coord.x, placement.coord.y), placement.rotationSteps);
+                if (element == null) continue;
+
+                draft.Place(element, !placement.playerEditable);
+            }
+
+            foreach (ElementSupply supply in supplies)
+            {
+                if (supply == null || supply.type == null) continue;
+                draft.SetStock(supply.type.Key, supply.count);
+            }
+
+            // 关卡初始化不算玩家的一步：第一次 Ctrl+Z 不该把预设件撤掉
+            draft.ClearHistory();
+            return draft;
         }
 
         /// <summary>按坐标找摆放项（LevelValidator / 编辑器辅助用）。</summary>

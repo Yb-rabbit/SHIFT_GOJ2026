@@ -36,6 +36,8 @@ namespace ShiftGo.BitFlow.View
         GameObject resultPanel;
         Text resultTitle;
         Text resultDetail;
+        GameObject nextLevelButton;
+        LevelFlow flow;
 
         GameObject tooltipPanel;
         Text tooltipText;
@@ -48,6 +50,7 @@ namespace ShiftGo.BitFlow.View
             runner = FindObjectOfType<BitFlowRunner>();
             mainCamera = Camera.main;
             font = LoadFont();
+            flow = FindObjectOfType<LevelFlow>();
 
             EnsureEventSystem();
             BuildUi();
@@ -201,7 +204,13 @@ namespace ShiftGo.BitFlow.View
             SetRect(resultDetail.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
                 new Vector2(-64f, 150f), new Vector2(0f, -96f));
 
-            CreateButton("ResultReplay", panel, "REPLAY", new Vector2(200f, 56f), new Vector2(0f, -228f), OnResetClicked);
+            CreateButton("ResultReplay", panel, "REPLAY", new Vector2(200f, 56f), new Vector2(-115f, -228f), OnResetClicked);
+
+            // 有下一关时才出现：单关演示场景里 LevelFlow 是空的，这个按钮就一直藏着
+            GameObject next = CreateButton("ResultNext", panel, "NEXT LEVEL", new Vector2(220f, 56f),
+                new Vector2(125f, -228f), OnNextClicked).gameObject;
+            nextLevelButton = next;
+            nextLevelButton.SetActive(false);
 
             resultPanel.SetActive(false);
         }
@@ -373,10 +382,27 @@ namespace ShiftGo.BitFlow.View
 
         void OnResetClicked()
         {
-            if (runner == null) return;
             if (resultPanel != null) resultPanel.SetActive(false);
+
+            // 有 LevelFlow 就整关重来（预设件 + 手牌 + 撤销栈全部复原），
+            // 没有就退回旧行为：只把模拟重置到 TICK 00，player 摆的东西留在场上。
+            if (flow != null)
+            {
+                flow.Retry();
+                RefreshStatus();
+                return;
+            }
+
+            if (runner == null) return;
             runner.ResetLevel();
             RefreshStatus();
+        }
+
+        void OnNextClicked()
+        {
+            if (flow == null) return;
+            if (resultPanel != null) resultPanel.SetActive(false);
+            flow.Next();
         }
 
         void OnSpeedChanged(float value)
@@ -439,6 +465,10 @@ namespace ShiftGo.BitFlow.View
             if (resultPanel == null || resultTitle == null || resultDetail == null) return;
 
             resultPanel.SetActive(true);
+            if (nextLevelButton != null)
+            {
+                nextLevelButton.SetActive(result.IsSuccess && flow != null && flow.HasNext);
+            }
             resultTitle.text = result.IsSuccess ? "PASS" : "FAIL";
             resultTitle.color = result.IsSuccess ? GoodColor : BadColor;
 
