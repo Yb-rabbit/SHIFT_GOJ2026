@@ -20,6 +20,15 @@ namespace ShiftGo.BitFlow.View
         static readonly Color GoodColor = new Color(0.35f, 1f, 0.55f);
         static readonly Color BadColor = new Color(1f, 0.32f, 0.35f);
 
+        // ---------------------------------------------------------------- 底部那条横带
+        // 屏幕底部只有一条带子：右边是本 HUD 的控制条，左边是手牌盘（BitFlowCardTray）。
+        // 两者同底边、同高度、同一种底色、左右紧贴 → 看起来就是一条横带，不再上下叠两层。
+        // 112px 是算出来的上限，不是随手取的：9×8 关卡（FOV 42）最前面一排格子落在屏幕约 182px 处。
+        internal const float BottomBandBottom = 26f;
+        internal const float BottomBandHeight = 112f;
+        internal const float BottomBarWidth = 860f;
+        internal const float BottomMargin = 28f;
+
         BitFlowRunner runner;
         Camera mainCamera;
         Font font;
@@ -114,6 +123,9 @@ namespace ShiftGo.BitFlow.View
             GameObject canvasGo = new GameObject("HUD_Canvas");
             Canvas canvas = canvasGo.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            // 0 = 最顶层：结算面板和悬停提示都在这个 Canvas 里，必须压过手牌盘(-1)和作者模式(-2)，
+            // 否则过关了看不见结算、鼠标移到下方面板区提示就消失。
+            canvas.sortingOrder = 0;
 
             CanvasScaler scaler = canvasGo.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
@@ -169,9 +181,11 @@ namespace ShiftGo.BitFlow.View
 
         void BuildBottomBar(Transform root)
         {
+            // 靠右下角对齐（原来是水平居中）：居中会把手牌盘挤到上面去，那就又变成两层了
             RectTransform bar = CreatePanel("BottomBar", root,
-                new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                new Vector2(860f, 92f), new Vector2(0f, 26f));
+                new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f),
+                new Vector2(BottomBarWidth, BottomBandHeight),
+                new Vector2(-BottomMargin, BottomBandBottom));
 
             Button pauseButton = CreateButton("Pause", bar, "PAUSE", new Vector2(150f, 52f), new Vector2(-330f, 0f), OnPauseClicked);
             pauseButtonLabel = pauseButton.GetComponentInChildren<Text>();
@@ -195,6 +209,10 @@ namespace ShiftGo.BitFlow.View
                 new Vector2(620f, 320f), Vector2.zero);
 
             resultPanel = panel.gameObject;
+
+            // 结算面板是模态的最高层：面板自己吃掉点击（CreatePanel 默认是穿透的），
+            // 否则结算摆在那儿，还能点到后面的手牌/场地，点一下又触发一次结算。
+            panel.GetComponent<Image>().raycastTarget = true;
 
             resultTitle = CreateText("ResultTitle", panel, "PASS", 44, TextAnchor.UpperCenter, GoodColor);
             SetRect(resultTitle.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
@@ -417,6 +435,15 @@ namespace ShiftGo.BitFlow.View
             if (mainCamera == null) mainCamera = Camera.main;
             if (mainCamera == null) return;
 
+            // 结算面板亮着的时候不弹提示：提示是先建的兄弟节点，会浮在结算上面。
+            // 这一条和 ShowResult 里的 SetAsLastSibling 是同一条规则的两种写法 —— 结算最高。
+            if (resultPanel != null && resultPanel.activeSelf)
+            {
+                if (tooltipPanel.activeSelf) tooltipPanel.SetActive(false);
+                hoveredElement = null;
+                return;
+            }
+
             ElementView hovered = null;
             Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
             if (Physics.Raycast(ray, out RaycastHit hit, 300f))
@@ -463,6 +490,11 @@ namespace ShiftGo.BitFlow.View
 
             // HUD 自身可能已随场景卸载，这里做防御，避免 MissingReferenceException 刷屏
             if (resultPanel == null || resultTitle == null || resultDetail == null) return;
+
+            // 结算一出就是最高：拉到自己 Canvas 的最后一个兄弟（画在底部横带、左上信息、悬停提示之上），
+            // 并顺手把悬停提示收掉 —— 提示是本 Canvas 里更晚创建的兄弟，不收起会浮在结算上面。
+            resultPanel.transform.SetAsLastSibling();
+            if (tooltipPanel != null) tooltipPanel.SetActive(false);
 
             resultPanel.SetActive(true);
             if (nextLevelButton != null)

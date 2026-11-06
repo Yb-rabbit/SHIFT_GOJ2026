@@ -355,7 +355,9 @@ namespace ShiftGo.BitFlow.View
             GameObject canvasGo = new GameObject("BUILD_Canvas");
             Canvas canvas = canvasGo.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = 10;
+            // 层序只认一条规则：HUD(0) 永远最上，辅助面板往下排（手牌 -1、这里 -2）。
+            // BUILD MODE 只在作者模式出现，正式关卡由 LevelFlow 摘掉，和手牌不会同时抢焦点。
+            canvas.sortingOrder = -2;
 
             CanvasScaler scaler = canvasGo.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;

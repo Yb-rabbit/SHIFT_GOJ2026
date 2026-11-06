@@ -30,11 +30,30 @@ namespace ShiftGo.BitFlow.View
         static readonly Color SelectedCardColor = new Color(0.20f, 0.45f, 0.60f, 0.95f);
         static readonly Color EmptyCardColor = new Color(0.09f, 0.11f, 0.14f, 0.75f);
 
-        const float CardWidth = 148f;
-        const float CardHeight = 62f;
-        const float CardGap = 10f;
-        const float PanelHeight = 132f;
+        // 卡面是 500×500 的方形美术图（图里已经画好图标、名字、副标题，底部留了一条浅灰槽），
+        // 所以卡做成正方形、整张图铺满，张数写进那条预留槽里，不再叠第二份名字。
+        //
+        // 尺寸是从"不许挡住格子"倒推的：带子底边 26 + 高 112 = 顶边 138，
+        // 而 9×8 关卡最前面一排格子在 FOV 42 下落在屏幕约 182px 处，还留 44px 余量。
+        // 以后要加内容请往左右扩，不要再往高里叠 —— 一叠就吃格子。
+        const float CardSize = 104f;
+        const float CardGap = 12f;
+
+        /// <summary>卡片贴带子底边；上面那点空位是留给选中外框探出去的 4px。</summary>
+        const float CardRowY = 4f;
+
         const float CursorHeight = 0.025f;
+
+        /// <summary>
+        /// 卡面底部那条浅灰槽的位置（相对卡面的 0~1 比例，从 500×500 原图量出来的）：
+        /// 左右各留 10%，竖直方向从 7.5% 到 32.5%。张数就写在这里。
+        /// </summary>
+        static readonly Vector2 SlotAnchorMin = new Vector2(0.105f, 0.075f);
+        static readonly Vector2 SlotAnchorMax = new Vector2(0.895f, 0.325f);
+
+        /// <summary>槽是浅灰底，字要用深色才看得清（这是"读得清"的关键，不是配色偏好）。</summary>
+        static readonly Color SlotTextColor = new Color(0.09f, 0.12f, 0.20f);
+        static readonly Color SlotTextEmptyColor = new Color(0.42f, 0.45f, 0.52f);
 
         /// <summary>一张卡 = 一摞牌。Count 显示的是「还没放下的张数」。</summary>
         sealed class CardEntry
@@ -43,7 +62,16 @@ namespace ShiftGo.BitFlow.View
             public string Key;
             public CellKind Kind;
             public GameObject Root;
+
+            /// <summary>卡面贴图（有美术时才有）；没有美术时退回 <see cref="Background"/> 纯色卡。</summary>
+            public Image Art;
+
+            /// <summary>卡的底色（没有卡面时它才是可见的卡面，有卡面时只用它当点击热区）。</summary>
             public Image Background;
+
+            /// <summary>选中时露出的外框（卡面不透明，不能靠改底色表示选中）。</summary>
+            public Image SelectionFrame;
+
             public Text CountLabel;
         }
 
@@ -61,8 +89,6 @@ namespace ShiftGo.BitFlow.View
         string statusMessage = string.Empty;
 
         GameObject panelRoot;
-        Text titleText;
-        Text hintText;
         Text statusText;
         readonly List<CardEntry> cards = new List<CardEntry>();
 
@@ -395,7 +421,10 @@ namespace ShiftGo.BitFlow.View
             GameObject canvasGo = new GameObject("TRAY_Canvas");
             Canvas canvas = canvasGo.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = 9; // 在 BUILD MODE(10) 之下，避免同时存在时抢焦点
+            // 层序只有一条规则，三个 Canvas 都按它来：HUD 的是 0 且必须最上 ——
+            // 结算面板和悬停提示都住在 HUD 里，被手牌盘盖住就是"过关了看不见结算"。
+            // 所以辅助层一律往下排：手牌 -1、作者模式 -2，永远不往上叠。
+            canvas.sortingOrder = -1;
 
             CanvasScaler scaler = canvasGo.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
@@ -406,24 +435,22 @@ namespace ShiftGo.BitFlow.View
             canvasGo.transform.SetParent(transform, false);
             Transform canvasRoot = canvasGo.transform;
 
+            // 底部只有一条带子：本面板从左边距一直铺到 HUD 控制条的左边缘，
+            // 同底边、同高度、同一种底色（PanelColor 与 HUD 完全一致），于是两者连成"一条"。
+            // 这就是全部改动 —— 手牌盘不再单独占一层往上叠，屏幕下部只吃掉 138px，格子全露出来。
+            float insetL = BitFlowHud.BottomMargin;
+            float insetR = BitFlowHud.BottomMargin + BitFlowHud.BottomBarWidth;
             RectTransform panel = CreatePanel("TrayPanel", canvasRoot,
-                new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                new Vector2(620f, PanelHeight), new Vector2(0f, 134f));
+                new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f),
+                new Vector2(-(insetL + insetR), BitFlowHud.BottomBandHeight),
+                new Vector2((insetL - insetR) * 0.5f, BitFlowHud.BottomBandBottom));
             panelRoot = panel.gameObject;
 
-            titleText = CreateText("Title", panel, "手牌", 22, TextAnchor.UpperLeft, AccentColor);
-            SetRect(titleText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
-                new Vector2(200f, 26f), new Vector2(16f, -10f));
-
-            statusText = CreateText("Status", panel, string.Empty, 16, TextAnchor.UpperRight, TextColor);
-            SetRect(statusText.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f),
-                new Vector2(360f, 44f), new Vector2(-16f, -10f));
-
-            hintText = CreateText("Hint", panel,
-                "[左键] 点卡 → 点格子放下 / 点自己的元件拾回   [右键] 拾回   [R] 旋转   [Ctrl+Z] 撤销   [ESC] 放下手里的卡",
-                15, TextAnchor.LowerLeft, MutedColor);
-            SetRect(hintText.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 0f),
-                new Vector2(-32f, 22f), new Vector2(16f, 8f));
+            // 只留一行反馈（已放几件 / 为什么放不下），贴带子右端、控制条左侧；关卡名交给 HUD 左上角，
+            // 操作说明整行删掉：带子只有 112px 高，那一行才是真正把格子挤掉的东西。
+            statusText = CreateText("Status", panel, string.Empty, 15, TextAnchor.MiddleRight, TextColor);
+            SetRect(statusText.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
+                new Vector2(340f, 26f), new Vector2(-16f, 0f));
 
             panelRoot.SetActive(false);
         }
@@ -433,6 +460,7 @@ namespace ShiftGo.BitFlow.View
             foreach (CardEntry entry in cards)
             {
                 if (entry.Root != null) Destroy(entry.Root);
+                if (entry.SelectionFrame != null) Destroy(entry.SelectionFrame.gameObject);
             }
             cards.Clear();
 
@@ -442,47 +470,96 @@ namespace ShiftGo.BitFlow.View
             foreach (ElementSupply supply in level.supplies)
             {
                 if (supply == null || supply.type == null) continue;
-                cards.Add(CreateCard(supply.type, new Vector2(x, 32f)));
-                x += CardWidth + CardGap;
+                cards.Add(CreateCard(supply.type, new Vector2(x, CardRowY)));
+                x += CardSize + CardGap;
             }
 
-            RectTransform panel = (RectTransform)panelRoot.transform;
-            panel.sizeDelta = new Vector2(Mathf.Max(620f, x + 16f), PanelHeight);
+            // 面板宽度由屏幕决定（左右拉伸到 HUD 控制条），卡片从左边排过来，这里不用再改尺寸
         }
 
         CardEntry CreateCard(ElementTypeSO type, Vector2 position)
         {
+            RectTransform panelRect = (RectTransform)panelRoot.transform;
+
+            // 选中框先建：比卡大 8px，卡面不透明，于是只有四周那 4px 的边框会露出来。
+            // 不能用"改底色"表示选中 —— 那会直接盖住卡面美术。
+            Image frame = CreateImage("SelectionFrame_" + type.Key, panelRect, AccentColor);
+            SetRect((RectTransform)frame.transform, Vector2.zero, Vector2.zero, Vector2.zero,
+                new Vector2(CardSize + 8f, CardSize + 8f), position + new Vector2(-4f, -4f));
+            frame.gameObject.SetActive(false);
+
             GameObject go = new GameObject("Card_" + type.Key, typeof(RectTransform), typeof(Image), typeof(Button));
-            go.transform.SetParent(panelRoot.transform, false);
+            go.transform.SetParent(panelRect, false);
 
             RectTransform rect = (RectTransform)go.transform;
-            SetRect(rect, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(CardWidth, CardHeight), position);
+            SetRect(rect, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(CardSize, CardSize), position);
 
-            Image image = go.GetComponent<Image>();
-            image.color = ButtonColor;
+            Image background = go.GetComponent<Image>();
+            background.color = ButtonColor;
+            background.raycastTarget = true; // 整张卡（含透明区）都是点击热区
 
             Button button = go.GetComponent<Button>();
-            button.targetGraphic = image;
+            button.targetGraphic = background;
+            button.transition = Selectable.Transition.None; // 颜色全部由 RefreshCards 管，别被 ColorTint 冲掉
 
             ElementTypeSO captured = type;
             button.onClick.AddListener(() => Arm(captured));
 
-            Text name = CreateText("Name", rect, LabelOf(type), 17, TextAnchor.UpperLeft, TextColor);
-            SetRect(name.rectTransform, new Vector2(0f, 0.5f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(-20f, -8f), new Vector2(0f, -6f));
+            Sprite art = CardArtLibrary.Icon(KindOf(type));
+            Image artImage = null;
+            Text count;
 
-            Text count = CreateText("Count", rect, string.Empty, 24, TextAnchor.LowerRight, AccentColor);
-            SetRect(count.rectTransform, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f),
-                new Vector2(80f, 30f), new Vector2(-10f, 6f));
+            if (art != null)
+            {
+                // 有卡面：整张卡就是美术画的那张图（图标、名字、副标题都在图里），这里只补张数；
+                // 底色退成透明，但仍作为点击热区存在。
+                background.color = new Color(1f, 1f, 1f, 0f);
+
+                artImage = CreateImage("Art", rect, Color.white);
+                artImage.sprite = art;
+                artImage.preserveAspect = true;
+                artImage.raycastTarget = false;
+                SetRect((RectTransform)artImage.transform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
+                    Vector2.zero, Vector2.zero);
+
+                // 张数写进卡面下方预留的那条浅灰槽；槽是浅色底，字必须是深色才看得清
+                // 字号随卡尺寸走：卡 104 → 槽高 26px，22 号字正好填满又不顶格
+                count = CreateText("Count", rect, string.Empty, 22, TextAnchor.MiddleCenter, SlotTextColor);
+                SetRect(count.rectTransform, SlotAnchorMin, SlotAnchorMax, new Vector2(0.5f, 0.5f),
+                    Vector2.zero, Vector2.zero);
+            }
+            else
+            {
+                // 没有卡面：退回"纯色卡 + 居中名字 + 右下张数"，功能一样不缺
+                Text name = CreateText("Name", rect, LabelOf(type), 17, TextAnchor.MiddleCenter, TextColor);
+                SetRect(name.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
+                    new Vector2(-16f, -26f), new Vector2(0f, 6f));
+
+                count = CreateText("Count", rect, string.Empty, 22, TextAnchor.LowerCenter, TextColor);
+                SetRect(count.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f),
+                    new Vector2(-16f, 26f), new Vector2(0f, 8f));
+            }
 
             return new CardEntry
             {
                 Type = type,
                 Key = type.Key,
-                Background = image,
+                Art = artImage,
+                Background = background,
+                SelectionFrame = frame,
                 CountLabel = count,
                 Root = go,
             };
+        }
+
+        /// <summary>
+        /// 这张牌对应哪种元件（决定卡面图）。交给 <see cref="ElementTypeSO"/> 自己判定，
+        /// 手牌盘不重复一套"渲染器类型 → CellKind"的映射，免得以后加元件时两边对不上。
+        /// </summary>
+        static CellKind KindOf(ElementTypeSO type)
+        {
+            EditableElement preview = type.CreateEditable(new GridPoint(0, 0));
+            return preview != null ? preview.Kind : CellKind.Wall;
         }
 
         void RefreshCards()
@@ -495,9 +572,21 @@ namespace ShiftGo.BitFlow.View
                 bool selected = armedType == entry.Type;
                 bool empty = left <= 0;
 
-                entry.Background.color = selected ? SelectedCardColor : (empty ? EmptyCardColor : ButtonColor);
+                // 选中态走外框：卡面是不透明美术图，改底色会把它盖住
+                if (entry.SelectionFrame != null) entry.SelectionFrame.gameObject.SetActive(selected);
+
                 entry.CountLabel.text = "×" + Mathf.Max(0, left);
-                entry.CountLabel.color = empty ? MutedColor : (selected ? AccentColor : TextColor);
+                entry.CountLabel.color = empty ? SlotTextEmptyColor : SlotTextColor;
+
+                if (entry.Art != null)
+                {
+                    // 这摞用完了：卡面整体压暗（名字仍然看得清），扫一眼就知道哪张还能点
+                    entry.Art.color = empty ? new Color(0.42f, 0.42f, 0.42f, 0.85f) : Color.white;
+                }
+                else
+                {
+                    entry.Background.color = selected ? SelectedCardColor : (empty ? EmptyCardColor : ButtonColor);
+                }
             }
         }
 
@@ -511,18 +600,13 @@ namespace ShiftGo.BitFlow.View
             }
             else if (!draft.StockEnabled)
             {
-                statusText.text = "本关没有给玩家手牌（这是演示关）";
+                statusText.text = "演示关：没有手牌";
             }
             else
             {
-                string armed = armedType != null ? "\n手里：" + LabelOf(armedType) : "\n手里：空";
-                statusText.text = "已放 " + draft.Count + " 件" + armed
-                    + (string.IsNullOrEmpty(statusMessage) ? string.Empty : "\n" + statusMessage);
-            }
-
-            if (titleText != null && level != null)
-            {
-                titleText.text = "手牌 ｜ " + (string.IsNullOrEmpty(level.displayName) ? level.name : level.displayName);
+                // 只留"已放几件" + 最后一条反馈；手里拿着哪张由卡片的选中外框表达，不再写一行文字
+                string summary = "已放 " + draft.Count + " 件";
+                statusText.text = string.IsNullOrEmpty(statusMessage) ? summary : summary + " ｜ " + statusMessage;
             }
         }
 
@@ -579,6 +663,18 @@ namespace ShiftGo.BitFlow.View
             rect.pivot = pivot;
             rect.sizeDelta = size;
             rect.anchoredPosition = position;
+        }
+
+        /// <summary>一张纯色 UI 图（卡面 / 选中外框都用它，省得每处重复 new GameObject）。</summary>
+        static Image CreateImage(string name, Transform parent, Color color)
+        {
+            GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(parent, false);
+
+            Image image = go.GetComponent<Image>();
+            image.color = color;
+            image.raycastTarget = false;
+            return image;
         }
 
         Text CreateText(string name, Transform parent, string content, int fontSize, TextAnchor anchor, Color color)

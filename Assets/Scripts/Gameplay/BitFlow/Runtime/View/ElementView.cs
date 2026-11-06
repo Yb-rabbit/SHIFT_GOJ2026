@@ -37,6 +37,22 @@ namespace ShiftGo.BitFlow.View
         bool locked;
         bool highlighted;
 
+        /// <summary>
+        /// 本体最高点（本地 Y）。有自制模型时它就是模型的真实顶面，
+        /// 方向箭头 / 序列点阵 / 进度条 / 悬停碰撞盒都按它往上摆，模型换个高度也不会被穿模。
+        /// </summary>
+        float bodyTopY = 0.3f;
+
+        /// <summary>本体用的是自制模型（模型保留自己的材质，反馈改走地面反馈环）。</summary>
+        bool usesModel;
+
+        /// <summary>
+        /// 自制模型时的反馈载体：元件脚下的一圈发光片。
+        /// 红闪 / 达标变绿 / 悬停提亮都画在它身上，这样模型自己的贴图和颜色一点都不会被改。
+        /// 平时隐藏，只在有反馈时出现，免得场上每格都在发光。
+        /// </summary>
+        Transform feedbackRing;
+
         public void Build(ElementDefinition definition, string description, Material bodySharedMaterial)
         {
             Definition = definition;
@@ -53,6 +69,7 @@ namespace ShiftGo.BitFlow.View
             ApplyBodyColors();
 
             BuildShape(definition);
+            if (usesModel) AddFeedbackRing();
             EnsureHoverCollider();
         }
 
@@ -65,8 +82,14 @@ namespace ShiftGo.BitFlow.View
 
         /// <summary>
         /// 形状语言（不看文字也能分辨元件，箭头一律带箭头头，方向不会看反）：
-        /// 墙=高立方、发射器=矮宽块、接收器=中块+顶部进度条、分流器=小块+两条臂、
-        /// 非门=菱形、过滤器=薄板且出口箭头颜色=它放行的值。
+        /// 墙=高立方、发射器=自制模型（缺模型时退回矮宽块）、接收器=自制模型（缺模型时退回中块+顶部进度条）、
+        /// 分流器=小块+两条臂、非门=菱形、过滤器=薄板且出口箭头颜色=它放行的值。
+        ///
+        /// 发射器 / 接收器优先用 <see cref="ElementModelLibrary"/> 里的自制模型；
+        /// 模型缺失时自动退回原来的几何体拼装，所以删了 fbx 游戏也能跑。
+        /// 模型**不缩放、不染色**（尺寸和材质是美术的），代码只负责落地/居中/转向；
+        /// 箭头、点阵、进度条都摆在 <see cref="bodyTopY"/> 之上：既不会被模型挡住，
+        /// 也不会因为模型比原来的方块高而穿模。
         /// </summary>
         void BuildShape(ElementDefinition definition)
         {
@@ -74,24 +97,42 @@ namespace ShiftGo.BitFlow.View
             {
                 case WallDefinition _:
                     AddBlock(new Vector3(0.96f, 0.55f, 0.96f), 0.275f);
+                    bodyTopY = 0.55f;
                     break;
 
                 case EmitterDefinition emitter:
-                    AddBlock(new Vector3(0.82f, 0.32f, 0.82f), 0.16f);
-                    AddArrow(emitter.Facing, 0.32f, new Color(0.55f, 0.85f, 1f), 2.4f, 0.30f);
+                {
+                    if (!TryAddModel(ElementModelLibrary.EmitterModel, ElementModelLibrary.EmitterYawOffset,
+                            emitter.Facing, ElementModelLibrary.EmitterModelScale))
+                    {
+                        AddBlock(new Vector3(0.82f, 0.32f, 0.82f), 0.16f);
+                        bodyTopY = 0.32f;
+                    }
+
+                    AddArrow(emitter.Facing, 0.32f, new Color(0.55f, 0.85f, 1f), 2.4f, bodyTopY + ArrowLift);
                     // 点阵从左到右＝真实发射顺序（序列是从末字符开始弹的，直接照抄字符串会让玩家看反）
-                    BuildSequenceDots(EmitOrderText(emitter), 0.36f, -0.30f);
+                    BuildSequenceDots(EmitOrderText(emitter), bodyTopY + DotLift, -0.30f);
                     break;
+                }
 
                 case ReceiverDefinition receiver:
-                    AddBlock(new Vector3(0.92f, 0.34f, 0.92f), 0.17f);
-                    AddArrow(receiver.FeedFace, 0.26f, new Color(0.95f, 0.95f, 1f), 1.6f, 0.30f);
-                    BuildProgressBar();
-                    BuildSequenceDots(NormalizeSequence(receiver.TargetSequence), 0.40f, -0.34f);
+                {
+                    if (!TryAddModel(ElementModelLibrary.ReceiverModel, ElementModelLibrary.ReceiverYawOffset,
+                            receiver.FeedFace, ElementModelLibrary.ReceiverModelScale))
+                    {
+                        AddBlock(new Vector3(0.92f, 0.34f, 0.92f), 0.17f);
+                        bodyTopY = 0.34f;
+                    }
+
+                    AddArrow(receiver.FeedFace, 0.26f, new Color(0.95f, 0.95f, 1f), 1.6f, bodyTopY + ArrowLift);
+                    BuildProgressBar(bodyTopY + DotLift);
+                    BuildSequenceDots(NormalizeSequence(receiver.TargetSequence), bodyTopY + DotLift, -0.34f);
                     break;
+                }
 
                 case SplitterDefinition splitter:
                     AddBlock(new Vector3(0.62f, 0.3f, 0.62f), 0.15f);
+                    bodyTopY = 0.30f;
                     // 臂的颜色就是这条臂接收的值：青=走 1，橙=走 0
                     AddArrow(splitter.OneArm, 0.34f, ColorOne, 2.2f, 0.26f);
                     AddArrow(splitter.ZeroArm, 0.34f, ColorZero, 2.2f, 0.26f);
@@ -99,15 +140,72 @@ namespace ShiftGo.BitFlow.View
 
                 case NotGateDefinition notGate:
                     AddBlock(new Vector3(0.54f, 0.34f, 0.54f), 0.17f, 45f);
+                    bodyTopY = 0.34f;
                     AddArrow(notGate.OutputDir, 0.30f, new Color(1f, 0.45f, 0.75f), 2.2f, 0.30f);
                     break;
 
                 case FilterDefinition filter:
                     AddBlock(new Vector3(0.84f, 0.16f, 0.84f), 0.08f);
+                    bodyTopY = 0.16f;
                     // 出口箭头颜色 = 它放行的值（青=只放 1、橙=只放 0）
                     AddArrow(filter.OutputDir, 0.34f, filter.PassValue == 0 ? ColorZero : ColorOne, 2.2f, 0.24f);
                     break;
             }
+        }
+
+        /// <summary>方向箭头比本体顶面再高一点：既不和进度条/点阵打架，也不会被模型挡住。</summary>
+        const float ArrowLift = 0.16f;
+
+        /// <summary>序列点阵 / 进度条贴着本体顶面放，看起来像设备自带的读数。</summary>
+        const float DotLift = 0.02f;
+
+        /// <summary>
+        /// 直接装自制模型（底面落地、水平居中、按 facing 转向）。
+        /// 成功时把 <see cref="bodyTopY"/> 更新成模型真实顶面高度、并标记 <see cref="usesModel"/>；
+        /// 失败返回 false 让调用方退回方块。模型自己的材质不动，反馈交给 <see cref="feedbackRing"/>。
+        /// </summary>
+        bool TryAddModel(string modelName, float yawOffset, Dir facing, float modelScale)
+        {
+            if (!ElementModelLibrary.TryBuild(modelName, yawOffset, facing, transform, modelScale,
+                    out ElementModelLibrary.Fit fit))
+            {
+                return false;
+            }
+
+            usesModel = true;
+            bodyTopY = fit.TopY;
+            return true;
+        }
+
+        /// <summary>
+        /// 脚下的反馈环：模型自己的颜色/贴图是美术的，反馈不能染在模型上，
+        /// 于是把红闪 / 达标变绿 / 悬停提亮集中到脚下一圈发光片上（本体材质实例只给它用）。
+        /// </summary>
+        void AddFeedbackRing()
+        {
+            GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            ring.name = "feedback_ring";
+            DestroyImmediateSafe(ring.GetComponent<Collider>());
+            ring.transform.SetParent(transform, false);
+            ring.transform.localPosition = new Vector3(0f, 0.012f, 0f);
+            ring.transform.localScale = new Vector3(0.92f, 0.006f, 0.92f);
+
+            Renderer renderer = ring.GetComponent<Renderer>();
+            renderer.sharedMaterial = bodyMaterial;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            ring.SetActive(false);
+            feedbackRing = ring.transform;
+        }
+
+        /// <summary>只有正在红闪 / 已锁定 / 悬停时才显示反馈环。</summary>
+        void UpdateFeedbackRing()
+        {
+            if (feedbackRing == null) return;
+
+            bool show = flashTimer > 0f || locked || highlighted;
+            if (feedbackRing.gameObject.activeSelf != show) feedbackRing.gameObject.SetActive(show);
         }
 
         void AddBlock(Vector3 size, float y, float yRotation = 0f)
@@ -216,13 +314,13 @@ namespace ShiftGo.BitFlow.View
             renderer.receiveShadows = false;
         }
 
-        void BuildProgressBar()
+        void BuildProgressBar(float y)
         {
             GameObject bar = GameObject.CreatePrimitive(PrimitiveType.Cube);
             bar.name = "progress";
             DestroyImmediateSafe(bar.GetComponent<Collider>());
             bar.transform.SetParent(transform, false);
-            bar.transform.localPosition = new Vector3(0f, 0.46f, 0f);
+            bar.transform.localPosition = new Vector3(0f, y, 0f);
             bar.transform.localScale = new Vector3(0.02f, 0.05f, 0.24f);
 
             progressBaseColor = new Color(0.35f, 0.95f, 1f);
@@ -234,12 +332,17 @@ namespace ShiftGo.BitFlow.View
             progressBar = bar.transform;
         }
 
+        /// <summary>
+        /// 悬停 / 拾取用的碰撞盒：高度跟着本体走，模型比原来的方块高时也还能点得到。
+        /// 先建的元件不会被后建的视觉撑大，所以只要一格的投影面积（1×1）即可。
+        /// </summary>
         void EnsureHoverCollider()
         {
             if (GetComponent<Collider>() != null) return;
+            float top = Mathf.Max(0.7f, bodyTopY + 0.16f);
             BoxCollider collider = gameObject.AddComponent<BoxCollider>();
-            collider.center = new Vector3(0f, 0.3f, 0f);
-            collider.size = new Vector3(1f, 0.7f, 1f);
+            collider.center = new Vector3(0f, top * 0.5f, 0f);
+            collider.size = new Vector3(1f, top, 1f);
         }
 
         /// <summary>接收器收料进度（按比例拉伸上面的进度条）。</summary>
@@ -313,6 +416,8 @@ namespace ShiftGo.BitFlow.View
         void Update()
         {
             if (bodyMaterial == null) return;
+
+            UpdateFeedbackRing();
 
             if (flashTimer > 0f)
             {
