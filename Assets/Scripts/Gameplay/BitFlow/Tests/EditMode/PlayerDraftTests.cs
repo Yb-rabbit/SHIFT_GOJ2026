@@ -118,6 +118,42 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         [Test]
+        public void CanPlace_AnswersWithoutTouchingStockOrHistory()
+        {
+            LevelDraft draft = new LevelDraft(4, 4);
+            draft.SetStock(SplitterKey, 1);
+            draft.Place(EditableElement.CreateDefault(CellKind.Wall, new GridPoint(0, 0)), true);  // 预设件
+            draft.Place(EditableElement.CreateDefault(CellKind.Wall, new GridPoint(2, 2)), false); // 自己放的
+
+            EditableElement splitter = EditableElement.CreateDefault(CellKind.Splitter, new GridPoint(1, 1));
+            splitter.TypeKey = SplitterKey;
+
+            Assert.AreEqual(PlaceResult.Ok, draft.CanPlace(splitter));
+            Assert.AreEqual(1, draft.Remaining(SplitterKey), "只读判定不能顺手扣牌");
+            Assert.AreEqual(2, draft.Count, "只读判定不能往格子里塞东西");
+
+            EditableElement locked = splitter.Clone();
+            locked.Coord = new GridPoint(0, 0);
+            Assert.AreEqual(PlaceResult.Locked, draft.CanPlace(locked), "关卡预设件那格放不进去");
+
+            EditableElement occupied = splitter.Clone();
+            occupied.Coord = new GridPoint(2, 2);
+            Assert.AreEqual(PlaceResult.Occupied, draft.CanPlace(occupied), "已经占了要先拾回");
+
+            EditableElement outside = splitter.Clone();
+            outside.Coord = new GridPoint(9, 9);
+            Assert.AreEqual(PlaceResult.OutOfBounds, draft.CanPlace(outside), "网格外面");
+
+            // 预览说能放，真的放下就必须能放 —— 两条判断不能有两套规则
+            Assert.AreEqual(PlaceResult.Ok, draft.TryPlace(splitter));
+            Assert.AreEqual(0, draft.Remaining(SplitterKey));
+
+            EditableElement again = splitter.Clone();
+            again.Coord = new GridPoint(3, 1);
+            Assert.AreEqual(PlaceResult.OutOfStock, draft.CanPlace(again), "牌用完了，预览就该变红");
+        }
+
+        [Test]
         public void TryPlace_RejectsLockedAndOccupiedCells()
         {
             LevelDraft draft = new LevelDraft(4, 4);

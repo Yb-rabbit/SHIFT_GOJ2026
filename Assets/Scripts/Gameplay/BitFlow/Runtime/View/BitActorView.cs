@@ -4,15 +4,26 @@ using ShiftGo.BitFlow.Core;
 namespace ShiftGo.BitFlow.View
 {
     /// <summary>
-    /// 单个位的视觉表现：0.4 单位的发光方块，1=青、0=橙。位置由 Runner 每 tick 插值驱动。
+    /// 单个位的视觉表现：0.2 单位的发光方块（半格），1=青、0=橙。位置由 Runner 每 tick 插值驱动。
     /// </summary>
     public sealed class BitActorView : MonoBehaviour
     {
         public static readonly Color ColorOne = new Color(0.20f, 0.88f, 1f);
         public static readonly Color ColorZero = new Color(1f, 0.60f, 0.24f);
 
-        const float Size = 0.4f;
-        const float EmissionBoost = 2.6f;
+        /// <summary>
+        /// 方块边长（世界单位）。0.2 = 半格：位只占格子中间一小块，不挡元件本体、也不盖住网格线。
+        /// </summary>
+        public const float Size = 0.2f;
+
+        /// <summary>悬浮高度：底面离格子面留一点，避免和地板/网格线 z-fighting。</summary>
+        public const float HoverHeight = 0.06f;
+
+        /// <summary>位中心离格子面的高度。Runner 摆爆闪也读它，保证爆闪永远套在位上而不是飘在半空。</summary>
+        public static float CenterY => Size * 0.5f + HoverHeight;
+
+        /// <summary>体积缩到 1/4 后发光面积也只剩 1/4，提一档亮度免得看起来发灰。</summary>
+        const float EmissionBoost = 3.2f;
 
         Transform body;
         Material ownMaterial;
@@ -24,7 +35,7 @@ namespace ShiftGo.BitFlow.View
         public void Init(int bitId, byte initialValue, Vector3 worldPosition)
         {
             BitId = bitId;
-            transform.position = worldPosition + Vector3.up * (Size * 0.5f + 0.06f);
+            transform.position = worldPosition + Vector3.up * CenterY;
 
             if (body == null)
             {

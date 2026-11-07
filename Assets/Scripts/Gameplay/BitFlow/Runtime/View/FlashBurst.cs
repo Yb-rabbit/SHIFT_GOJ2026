@@ -11,12 +11,15 @@ namespace ShiftGo.BitFlow.View
         Color color;
         float duration = 0.4f;
         float elapsed;
-        Vector3 targetScale = Vector3.one * 1.1f;
 
-        public void Init(Color burstColor, float lifeTime)
+        /// <summary>爆闪的最终边长。由调用方按"被闪的东西有多大"传进来，默认 1.1 单位（一格左右）。</summary>
+        float endScale = 1.1f;
+
+        public void Init(Color burstColor, float lifeTime, float size = 1.1f)
         {
             color = burstColor;
             duration = Mathf.Max(0.05f, lifeTime);
+            endScale = Mathf.Max(0.02f, size);
             material = GetComponent<Renderer>()?.sharedMaterial;
         }
 
@@ -25,7 +28,9 @@ namespace ShiftGo.BitFlow.View
             elapsed += Time.deltaTime;
             float k = Mathf.Clamp01(elapsed / duration);
 
-            transform.localScale = Vector3.Lerp(Vector3.one * 0.22f, targetScale, k);
+            // 从 1/5 边长放大到 endScale：既不会一出现就遮住整格，也不会因为尺寸改小而缩没了
+            transform.localScale = Vector3.Lerp(new Vector3(endScale * 0.2f, endScale * 0.2f, endScale * 0.2f),
+                new Vector3(endScale, endScale, endScale), k);
 
             if (material != null)
             {

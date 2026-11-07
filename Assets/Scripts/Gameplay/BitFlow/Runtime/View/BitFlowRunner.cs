@@ -336,14 +336,15 @@ namespace ShiftGo.BitFlow.View
             flash.name = "Flash";
             Destroy(flash.GetComponent<Collider>());
             flash.transform.SetParent(builder.BitsRoot, false);
-            flash.transform.position = position + Vector3.up * 0.32f;
+            // 爆闪贴着位的高度走，尺寸也按位的大小放大 2.2 倍：位缩到半格，闪也不会再是"一格大的白方块"
+            flash.transform.position = position + Vector3.up * BitActorView.CenterY;
 
             Material material = new Material(MaterialFactory.LitShader) { name = "M_Flash" };
             MaterialFactory.SetBaseColor(material, color);
             MaterialFactory.SetEmission(material, color, 5f);
             flash.GetComponent<Renderer>().sharedMaterial = material;
 
-            flash.AddComponent<FlashBurst>().Init(color, 0.42f);
+            flash.AddComponent<FlashBurst>().Init(color, 0.42f, BitActorView.Size * 2.2f);
         }
 
         /// <summary>刷新接收器进度条/锁定状态，以及发射器序列点阵的消耗进度。</summary>

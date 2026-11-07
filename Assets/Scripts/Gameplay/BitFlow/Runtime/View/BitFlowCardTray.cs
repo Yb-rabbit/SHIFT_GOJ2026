@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Events;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using ShiftGo.BitFlow.Core;
@@ -9,51 +8,105 @@ using ShiftGo.BitFlow.Data;
 namespace ShiftGo.BitFlow.View
 {
     /// <summary>
-    /// 玩家手牌盘：把 <see cref="LevelSO.supplies"/> 变成一排有限张数的卡，点卡 → 点格子放下。
+    /// 玩家手牌盘（待排区）：把 <see cref="LevelSO.supplies"/> 变成一排"躺在网格前方地上的卡"，
+    /// 鼠标靠近就把那张卡拿起来贴到镜头前读说明，点卡选中 → 卡缩进屏幕底带继续跟着鼠标 →
+    /// 鼠标扫过哪一格，就在那一格显示半透明的同款元件（能放=类型色，不能放=红），点一下落下。
     ///
-    /// 和 BUILD MODE 的关系：两者都改 <see cref="LevelDraft"/>，但 BUILD MODE 是作者模式（无限涂刷），
-    /// 这里是玩家模式（有限手牌 + 预设件锁定 + 撤销）。正式关卡由 <see cref="LevelFlow"/> 摘掉 BUILD MODE，
-    /// 所以同一份草稿不会被动两遍。
+    /// 为什么做成场景物件而不是底部 UI 条：
+    /// - 卡面本来就是 500×500 的设计稿（图标、名字、说明都在图里），直接贴在地上就是一张实体牌，
+    ///   以后换说明 = 换 Resources/Cards 里的图，不用动任何布局代码；
+    /// - 屏幕底部那条 138px 的 UI 带可以整条让出来，网格不再被压着；
+    /// - 命中判定变成"射线 → 卡片矩形"的纯数学，不再依赖 EventSystem 的 UI 遮挡状态。
     ///
-    /// 交互（已确认的方案 A）：放置不消耗「一次性操作」，放下后可以再左键点它拾回、移动、旋转；
-    /// 手牌张数是硬约束，压力来自牌不够，而不是怕点错 —— 点错就 Ctrl+Z。
-    /// 左键 = 放卡/拾回 ｜ 右键 = 拾回 ｜ R = 转待放朝向或转鼠标下的件 ｜ Ctrl+Z = 撤销 ｜ ESC = 放下手里的卡。
+    /// 几何是算出来的，不是随手摆的（固定机位 (4,10.6,-9)、FOV 42 下，卡排那个深度上 1 世界单位 ≈ 113px）：
+    /// - 卡平躺时必须沿 z 拉长 <see cref="CardLengthFactor"/> 倍，屏幕上才接近正方形、文字才不被压扁；
+    /// - 卡排占屏幕 y 53..157px，而 9×8 最前面一排格子从 188px 开始 —— 所以它一点格子都不挡（留 31px 余量）；
+    /// - 平躺时一张卡只有约 100px，说明读不清，所以鼠标一靠近就"拿起来"读（<see cref="LiftPosition"/>，210px）；
+    /// - 选中以后换成"拿在手里"（<see cref="HeldPosition"/>，149px 沉在底带）—— 挑格子时卡只会挪到鼠标下方，
+    ///   绝不压在格子上，落点全部交给 <see cref="PlacementGhost"/> 的幽灵预览。
+    ///
+    /// 交互（方案 A 不变）：左键 = 拿卡/放卡/拾回 ｜ 右键 = 拾回 或 放下手里的卡 ｜
+    /// R = 转待放朝向或转鼠标下的件 ｜ Ctrl+Z = 撤销 ｜ ESC = 放下手里的卡。
     /// </summary>
     public sealed class BitFlowCardTray : MonoBehaviour
     {
-        static readonly Color PanelColor = new Color(0.055f, 0.07f, 0.10f, 0.92f);
         static readonly Color TextColor = new Color(0.85f, 0.92f, 1f);
         static readonly Color AccentColor = new Color(0.35f, 0.85f, 1f);
         static readonly Color MutedColor = new Color(0.55f, 0.62f, 0.72f);
-        static readonly Color BadColor = new Color(1f, 0.32f, 0.35f);
-        static readonly Color ButtonColor = new Color(0.12f, 0.20f, 0.28f, 0.95f);
-        static readonly Color SelectedCardColor = new Color(0.20f, 0.45f, 0.60f, 0.95f);
-        static readonly Color EmptyCardColor = new Color(0.09f, 0.11f, 0.14f, 0.75f);
+        static readonly Color EmptyTint = new Color(0.40f, 0.40f, 0.40f, 1f);
+        static readonly Color CountTextColor = new Color(0.08f, 0.11f, 0.18f);
+        static readonly Color CountTextEmptyColor = new Color(0.42f, 0.45f, 0.52f);
 
-        // 卡面是 500×500 的方形美术图（图里已经画好图标、名字、副标题，底部留了一条浅灰槽），
-        // 所以卡做成正方形、整张图铺满，张数写进那条预留槽里，不再叠第二份名字。
-        //
-        // 尺寸是从"不许挡住格子"倒推的：带子底边 26 + 高 112 = 顶边 138，
-        // 而 9×8 关卡最前面一排格子在 FOV 42 下落在屏幕约 182px 处，还留 44px 余量。
-        // 以后要加内容请往左右扩，不要再往高里叠 —— 一叠就吃格子。
-        const float CardSize = 104f;
-        const float CardGap = 12f;
+        /// <summary>所有"按像素"写的常量都以 1080 高为基准，实际用时乘 <c>Screen.height / 1080</c>。</summary>
+        const float ReferenceHeight = 1080f;
 
-        /// <summary>卡片贴带子底边；上面那点空位是留给选中外框探出去的 4px。</summary>
-        const float CardRowY = 4f;
+        // ---------------------------------------------------------------- 待排区几何（世界单位 = 格）
 
-        const float CursorHeight = 0.025f;
+        /// <summary>卡面离地一点，避免和地板 z-fighting。</summary>
+        const float RowY = 0.02f;
+
+        /// <summary>一张卡的宽度。0.95 格 → 屏幕约 100px，和原来 104px 的 UI 卡几乎一样大。</summary>
+        const float CardWidth = 0.95f;
+
+        /// <summary>平躺时沿 z 的拉长倍数。1/sin(37°) ≈ 1.66 是屏幕完全不变形的理想值，
+        /// 取 1.15 是因为卡排还要塞进前排格线以下（屏幕 55..156px），拉太长会顶到格子上。</summary>
+        const float CardLengthFactor = 1.15f;
+
+        const float CardGap = 0.12f;
+
+        /// <summary>卡排最靠玩家的一端（世界 z）。比前排格线 -0.5 更靠外，才不压到格子。</summary>
+        const float RowFrontZ = -0.86f;
+
+        /// <summary>鼠标离卡边多远也算"靠近"（世界单位）。</summary>
+        const float HoverMargin = 0.06f;
+
+        // ---------------------------------------------------------------- 拿起（像素，按 1080 归一）
+
+        /// <summary>拿起来以后这张卡在屏幕上的边长（px）。原来 UI 卡 104px，这里约 210px，说明读得清。</summary>
+        const float LiftSizePx = 210f;
+
+        /// <summary>拿起来时卡片中心距屏幕底部的高度（px）。压在底边，不挡网格中部。</summary>
+        const float LiftCenterPx = 150f;
+
+        /// <summary>拿起/放回的时间常数（SmoothDamp，秒）。</summary>
+        const float LiftTime = 0.10f;
+
+        /// <summary>拿起过程中额外抬起的世界高度，做出"被捏起来"的弧线。</summary>
+        const float LiftArc = 0.22f;
 
         /// <summary>
-        /// 卡面底部那条浅灰槽的位置（相对卡面的 0~1 比例，从 500×500 原图量出来的）：
-        /// 左右各留 10%，竖直方向从 7.5% 到 32.5%。张数就写在这里。
+        /// 已经选中（拿在手里）的卡在屏幕上的边长（px）。比 <see cref="LiftSizePx"/> 小得多：
+        /// 这时候玩家是在挑格子，需要的只是"我还拿着哪张"，不是读说明。
+        /// 原来的 124px 在实机上卡面偏小（张数和图标都糊），所以在它基础上再放大 1.2 倍 → 149px。
         /// </summary>
-        static readonly Vector2 SlotAnchorMin = new Vector2(0.105f, 0.075f);
-        static readonly Vector2 SlotAnchorMax = new Vector2(0.895f, 0.325f);
+        const float HeldSizePx = 149f;
 
-        /// <summary>槽是浅灰底，字要用深色才看得清（这是"读得清"的关键，不是配色偏好）。</summary>
-        static readonly Color SlotTextColor = new Color(0.09f, 0.12f, 0.20f);
-        static readonly Color SlotTextEmptyColor = new Color(0.42f, 0.45f, 0.52f);
+        /// <summary>
+        /// 拿在手里的卡中心距屏幕底部的高度（px）。1080 高时卡占 35..185px，
+        /// 而网格最前面一排从 188px 才开始 —— 所以选中之后整片格子完全露出来，
+        /// 加上格子上的幽灵预览，"放在哪"这件事不再被卡片挡住。
+        /// 149px 的卡已经吃满这条带（上下各只剩 3px），所以底部那行反馈再往下让到 16px，
+        /// 见 <see cref="BuildStatusLine"/>。
+        /// </summary>
+        const float HeldCenterPx = 110f;
+
+        /// <summary>张数文字的世界高度（拿起来时约 40px，平躺时约 12px）。</summary>
+        const float CountTextSize = 0.18f;
+
+        /// <summary>
+        /// 张数文字压在卡面哪条线上（占卡高的比例，卡本地 Y；负值 = 卡心往下）。
+        /// 卡面原稿是 500×500，底部那条浅灰槽实测落在 y 335..449px，中心 392px（从上往下 0.784），
+        /// 换成本地坐标就是卡心往下 0.284 个卡高 —— 早先按"下方 25%"猜的 0.375，所以数字整体偏低了。
+        /// </summary>
+        const float CountSlotCenter = -0.284f;
+
+        // ---------------------------------------------------------------- 排版
+
+        const float BandMarginPx = 26f;
+        const float BandGapPx = 16f;
+
+        /// <summary>排版多久重算一次（秒）。开场机位推近、窗口拉伸都靠它自己收敛回来。</summary>
+        const float LayoutRefresh = 0.25f;
 
         /// <summary>一张卡 = 一摞牌。Count 显示的是「还没放下的张数」。</summary>
         sealed class CardEntry
@@ -61,18 +114,27 @@ namespace ShiftGo.BitFlow.View
             public ElementTypeSO Type;
             public string Key;
             public CellKind Kind;
-            public GameObject Root;
 
-            /// <summary>卡面贴图（有美术时才有）；没有美术时退回 <see cref="Background"/> 纯色卡。</summary>
-            public Image Art;
+            /// <summary>驱动位置/朝向的节点（平躺 ↔ 拿起）。</summary>
+            public Transform Root;
 
-            /// <summary>卡的底色（没有卡面时它才是可见的卡面，有卡面时只用它当点击热区）。</summary>
-            public Image Background;
+            /// <summary>卡面四边形。平躺时沿 z 拉长，拿起时是正方形（贴图 1:1，屏幕上也就不变形）。</summary>
+            public Transform Plane;
 
-            /// <summary>选中时露出的外框（卡面不透明，不能靠改底色表示选中）。</summary>
-            public Image SelectionFrame;
+            public Material Material;
+            public TextMesh Count;
+            public Transform Mark;
+            public Material MarkMaterial;
+            public bool HasArt;
 
-            public Text CountLabel;
+            /// <summary>平躺时的落点。可用宽度跟画面比例有关，所以每次重排版都可能变。</summary>
+            public Vector3 SlotPosition;
+            public float SlotWidth = CardWidth;
+            public float SlotLength = CardWidth * CardLengthFactor;
+
+            /// <summary>0 = 躺在待排区，1 = 拿在镜头前。</summary>
+            public float Lift;
+            public float LiftVelocity;
         }
 
         BitFlowRunner runner;
@@ -84,16 +146,40 @@ namespace ShiftGo.BitFlow.View
         LevelDraft draft;
 
         ElementTypeSO armedType;
-        CellKind armedKind;
         int armedRotation;
         string statusMessage = string.Empty;
 
-        GameObject panelRoot;
+        GameObject cardRoot;
         Text statusText;
         readonly List<CardEntry> cards = new List<CardEntry>();
 
         Transform cursor;
         Material cursorMaterial;
+
+        /// <summary>格子上的半透明元件预览：手里有牌、鼠标悬在格子上时才显示。</summary>
+        PlacementGhost ghost;
+
+        CardEntry hovered;
+
+        /// <summary>幽灵预览当前算的是哪一格/哪张牌：鼠标在同一格上移动时不用每帧重建一份草稿。</summary>
+        GridPoint ghostCell;
+        ElementTypeSO ghostType;
+        int ghostRotation = -1;
+        EditableElement ghostPreview;
+        float nextLayoutTime;
+        int lastScreenWidth;
+        int lastScreenHeight;
+
+        /// <summary>平躺姿态：Quad 的法线朝 -Z，绕 X 转 90° 就朝上躺平，贴图上方朝 +Z（远端）。</summary>
+        static readonly Quaternion FlatRotation = Quaternion.Euler(90f, 0f, 0f);
+
+        /// <summary>卡面比地面高一点点，避免和地板抢深度。</summary>
+        const float FaceLift = 0.004f;
+
+        /// <summary>鼠标预览格子的四边形离地高度。</summary>
+        const float CursorHeight = 0.05f;
+
+        // ---------------------------------------------------------------- 生命周期
 
         void Start()
         {
@@ -110,7 +196,15 @@ namespace ShiftGo.BitFlow.View
             }
 
             EnsureEventSystem();
-            BuildUi();
+            BuildStatusLine();
+
+            // 卡排挂在场景里（不是挂在 Canvas 下）：它本来就是场景物件
+            cardRoot = new GameObject("TRAY_Cards");
+            cardRoot.transform.SetParent(transform, false);
+
+            GameObject ghostRoot = new GameObject("TRAY_Ghost");
+            ghostRoot.transform.SetParent(transform, false);
+            ghost = ghostRoot.AddComponent<PlacementGhost>();
 
             if (flow != null)
             {
@@ -147,31 +241,43 @@ namespace ShiftGo.BitFlow.View
             go.AddComponent<StandaloneInputModule>();
         }
 
-        /// <summary>换关：按新关卡重新生成草稿与卡面（预设件、手牌、撤销栈全部重来）。</summary>
+        /// <summary>换关：按新关卡重新生成草稿与卡排（预设件、手牌、撤销栈全部重来）。</summary>
         void OnLevelLoaded(LevelSO next)
         {
             level = next;
             armedType = null;
             armedRotation = 0;
             statusMessage = string.Empty;
+            hovered = null;
+
+            // 新关卡的手牌 / 元件朝向可能整套都变了，旧的预览缓存直接扔掉
+            if (ghost != null) ghost.Clear();
 
             draft = level != null ? level.CreatePlayerDraft() : null;
 
-            if (panelRoot != null) panelRoot.SetActive(draft != null && level.HasSupplies);
+            if (cardRoot != null) cardRoot.SetActive(draft != null && level.HasSupplies);
             if (draft != null) RebuildCards();
 
             RefreshStatus();
             RefreshCards();
-            RefreshCursorColor();
         }
 
         void Update()
         {
             if (draft == null) return;
-            if (runner == null || runner.IsBuildModeEnabled) return; // 作者模式接管时不抢输入
+            if (runner == null || runner.IsBuildModeEnabled)
+            {
+                // 作者模式接管输入时不抢事件，也别留下一个过期的格子预览
+                if (ghost != null) ghost.Hide();
+                return;
+            }
 
             HandleHotkeys();
+            UpdateLayoutIfNeeded();
+            UpdateHover();
+            UpdateCardPoses();
             UpdateCursor();
+            UpdateGhost();
             HandleMouse();
         }
 
@@ -231,6 +337,442 @@ namespace ShiftGo.BitFlow.View
             }
         }
 
+        // ---------------------------------------------------------------- 卡排生成
+
+        void BuildStatusLine()
+        {
+            GameObject canvasGo = new GameObject("TRAY_Canvas");
+            Canvas canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            // 层序只有一条规则：HUD 是 0 且必须最上 —— 结算面板和悬停提示都住在 HUD 里，
+            // 被手牌盘盖住就是"过关了看不见结算"。所以这一层永远往下排。
+            canvas.sortingOrder = -1;
+
+            CanvasScaler scaler = canvasGo.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.matchWidthOrHeight = 0.5f;
+
+            canvasGo.transform.SetParent(transform, false);
+
+            // 底部只剩这一行反馈（已放几件 / 为什么放不下），没有底板也没有边框：
+            // 底部空间现在是场景里那排卡的，UI 再压一块上去就白搬了。
+            // 文字本身落在屏幕 16..32px（截图框 16..40px）：平躺的卡排从 53px 开始，
+            // 拿在手里的卡（149px 见方、中心 110px）底边在 35px，三者错开互不压。
+            statusText = CreateText("Status", canvasGo.transform, string.Empty, 16, TextAnchor.LowerLeft, MutedColor);
+            RectTransform rect = statusText.rectTransform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.zero;
+            rect.pivot = Vector2.zero;
+            rect.sizeDelta = new Vector2(760f, 24f);
+            rect.anchoredPosition = new Vector2(28f, 16f);
+        }
+
+        void RebuildCards()
+        {
+            foreach (CardEntry entry in cards)
+            {
+                if (entry.Root != null) Destroy(entry.Root.gameObject);
+                if (entry.Material != null) Destroy(entry.Material);
+                if (entry.MarkMaterial != null) Destroy(entry.MarkMaterial);
+            }
+            cards.Clear();
+            hovered = null;
+
+            if (level == null || level.supplies == null || cardRoot == null) return;
+
+            foreach (ElementSupply supply in level.supplies)
+            {
+                if (supply == null || supply.type == null) continue;
+                cards.Add(CreateCard(supply.type));
+            }
+
+            RefreshLayout();
+        }
+
+        /// <summary>
+        /// 造一张卡：Root（位置/朝向）→ Face（Quad，卡面）+ Mark（选中时露出的强调条）+ Count（张数）。
+        /// 全部用无光照材质：卡面是美术稿，被场景灯光打一下就变色，屏幕上跟设计稿对不上。
+        /// </summary>
+        CardEntry CreateCard(ElementTypeSO type)
+        {
+            CellKind kind = KindOf(type);
+            Sprite art = CardArtLibrary.Icon(kind);
+
+            GameObject root = new GameObject("Card_" + type.Key);
+            root.transform.SetParent(cardRoot.transform, false);
+
+            GameObject face = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            face.name = "Face";
+            // 命中判定走射线 + 矩形数学，不需要物理碰撞体；留着反而会被别的射线检测撞到
+            Destroy(face.GetComponent<Collider>());
+            face.transform.SetParent(root.transform, false);
+
+            MeshRenderer faceRenderer = face.GetComponent<MeshRenderer>();
+            faceRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            faceRenderer.receiveShadows = false;
+
+            Material material = MaterialFactory.Textured(
+                art != null ? art.texture : null,
+                art != null ? Color.white : LevelBuilder.KindColor(kind),
+                "M_Card_" + type.Key);
+            faceRenderer.sharedMaterial = material;
+
+            // 选中标记：卡排前沿的一根强调条。卡面是不透明美术，只能用"外挂一根条"表达选中，
+            // 直接改卡面底色会把图标和说明一起染掉。
+            GameObject mark = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            mark.name = "Mark";
+            Destroy(mark.GetComponent<Collider>());
+            mark.transform.SetParent(root.transform, false);
+            MeshRenderer markRenderer = mark.GetComponent<MeshRenderer>();
+            markRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            markRenderer.receiveShadows = false;
+
+            Material markMaterial = MaterialFactory.Textured(null, AccentColor, "M_CardMark");
+            markRenderer.sharedMaterial = markMaterial;
+            mark.SetActive(false);
+
+            CardEntry entry = new CardEntry
+            {
+                Type = type,
+                Key = type.Key,
+                Kind = kind,
+                Root = root.transform,
+                Plane = face.transform,
+                Material = material,
+                Mark = mark.transform,
+                MarkMaterial = markMaterial,
+                HasArt = art != null,
+            };
+
+            entry.Count = CreateCountText(root.transform);
+            if (art == null) CreateFallbackLabel(root.transform, LabelOf(type));
+
+            return entry;
+        }
+
+        /// <summary>
+        /// 张数文字：TextMesh 直接躺在卡面上（本地轴和卡面同向），所以卡被拿起来时会跟着一起转正。
+        /// 字号交给 characterSize（fontSize = 0），世界单位直接可控。
+        /// </summary>
+        TextMesh CreateCountText(Transform parent)
+        {
+            GameObject go = new GameObject("Count");
+            go.transform.SetParent(parent, false);
+
+            TextMesh mesh = go.AddComponent<TextMesh>();
+            mesh.font = font;
+            mesh.fontSize = 0;
+            mesh.characterSize = CountTextSize;
+            mesh.anchor = TextAnchor.MiddleCenter;
+            mesh.alignment = TextAlignment.Center;
+            mesh.color = CountTextColor;
+
+            MeshRenderer renderer = go.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = font.material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            return mesh;
+        }
+
+        /// <summary>没有卡面美术时的退路：一块类型色的板 + 名字，至少能玩。</summary>
+        void CreateFallbackLabel(Transform parent, string label)
+        {
+            GameObject go = new GameObject("Label");
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = new Vector3(0f, 0f, -FaceLift);
+
+            TextMesh mesh = go.AddComponent<TextMesh>();
+            mesh.text = label;
+            mesh.font = font;
+            mesh.fontSize = 0;
+            mesh.characterSize = 0.16f;
+            mesh.anchor = TextAnchor.MiddleCenter;
+            mesh.alignment = TextAlignment.Center;
+            mesh.color = TextColor;
+
+            MeshRenderer renderer = go.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = font.material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
+
+        // ---------------------------------------------------------------- 排版
+
+        /// <summary>每 0.25 秒重算一次落点：开场机位推近、窗口拉伸、切分辨率都靠它自己收敛回来。</summary>
+        void UpdateLayoutIfNeeded()
+        {
+            bool resized = Screen.width != lastScreenWidth || Screen.height != lastScreenHeight;
+            if (!resized && Time.unscaledTime < nextLayoutTime) return;
+
+            lastScreenWidth = Screen.width;
+            lastScreenHeight = Screen.height;
+            nextLayoutTime = Time.unscaledTime + LayoutRefresh;
+            RefreshLayout();
+        }
+
+        /// <summary>
+        /// 重算这一排卡落在地面上的位置和大小。
+        /// 宽度预算是「屏幕左边距 → HUD 控制条左边缘」：卡片是能点的东西，
+        /// 被控制条压掉一角就等于点不到，所以宁可整排按比例缩小，也不让它铺到控制条底下。
+        /// 横向落点以网格中心为准（看起来才是"摆在这块板子前面"），再夹进这段可用区间。
+        /// </summary>
+        void RefreshLayout()
+        {
+            if (cards.Count == 0 || mainCamera == null || level == null) return;
+
+            float pxScale = PixelScale();
+
+            float bandLeft = BandMarginPx * pxScale;
+            float bandRight = Screen.width - bandLeft;
+            Rect bar = BitFlowHud.BottomBarScreenRect;
+            if (bar.width > 1f) bandRight = Mathf.Min(bandRight, bar.xMin - BandGapPx * pxScale);
+            if (bandRight - bandLeft < 120f * pxScale) bandRight = bandLeft + 120f * pxScale; // 极端窄屏兜底
+
+            // 每世界单位多少像素：就在卡排那个深度上量一段 1 格的水平距离
+            float rowZ = RowFrontZ - CardWidth * CardLengthFactor * 0.5f;
+            Vector3 probe = new Vector3(0f, RowY, rowZ);
+            float pxPerUnit = Mathf.Abs(
+                mainCamera.WorldToScreenPoint(probe + Vector3.right).x -
+                mainCamera.WorldToScreenPoint(probe).x);
+            if (pxPerUnit < 0.01f) return;
+
+            int count = cards.Count;
+            float width = count * CardWidth + (count - 1) * CardGap;
+            float available = bandRight - bandLeft;
+            float shrink = width * pxPerUnit > available ? available / (width * pxPerUnit) : 1f;
+
+            // 只在放不下时缩；其余情况保持"一格一张卡"的固定比例，牌和格子才看得出大小关系
+            shrink = Mathf.Clamp(shrink, 0.45f, 1f);
+
+            float cardWidth = CardWidth * shrink;
+            float gap = CardGap * shrink;
+            width = count * cardWidth + (count - 1) * gap;
+
+            float gridCenterX = (level.width - 1) * 0.5f;
+            float gridCenterPx = mainCamera.WorldToScreenPoint(new Vector3(gridCenterX, RowY, rowZ)).x;
+            float halfPx = width * pxPerUnit * 0.5f;
+            float centerPx = Mathf.Clamp(gridCenterPx, bandLeft + halfPx, bandRight - halfPx);
+            float centerX = gridCenterX + (centerPx - gridCenterPx) / pxPerUnit;
+
+            for (int i = 0; i < count; i++)
+            {
+                CardEntry entry = cards[i];
+                float length = cardWidth * CardLengthFactor;
+
+                entry.SlotWidth = cardWidth;
+                entry.SlotLength = length;
+                entry.SlotPosition = new Vector3(
+                    centerX + (i - (count - 1) * 0.5f) * (cardWidth + gap),
+                    RowY,
+                    RowFrontZ - length * 0.5f);
+
+                // 躺着的那张立刻落到新位置；已经拿起来的交给 UpdateCardPoses 平滑过渡
+                if (entry.Root != null && entry.Lift < 0.001f) ApplyFlatPose(entry);
+            }
+        }
+
+        float PixelScale()
+        {
+            if (mainCamera != null && mainCamera.pixelHeight > 0) return mainCamera.pixelHeight / ReferenceHeight;
+            return Screen.height / ReferenceHeight;
+        }
+
+        void ApplyFlatPose(CardEntry entry)
+        {
+            entry.Root.position = entry.SlotPosition;
+            entry.Root.rotation = FlatRotation;
+            entry.Plane.localScale = new Vector3(entry.SlotWidth, entry.SlotLength, 1f);
+            PoseDecor(entry);
+        }
+
+        /// <summary>张数和选中条跟着卡面尺寸走：卡拿起来时卡面会从"拉长的矩形"变成正方形，它们也得跟。</summary>
+        void PoseDecor(CardEntry entry)
+        {
+            float width = entry.SlotWidth;
+            float height = Mathf.Lerp(entry.SlotLength, width, entry.Lift);
+
+            if (entry.Count != null)
+            {
+                // 文字中心对准卡面那条浅灰槽的中心（见 CountSlotCenter），卡面拉长/收成正方形都跟着走
+                entry.Count.transform.localPosition = new Vector3(0f, height * CountSlotCenter, -FaceLift);
+            }
+
+            if (entry.Mark != null)
+            {
+                entry.Mark.localScale = new Vector3(width, 0.05f, 1f);
+                entry.Mark.localPosition = new Vector3(0f, -(height * 0.5f) - 0.05f, -FaceLift * 1.5f);
+            }
+        }
+
+        // ---------------------------------------------------------------- 拿起 / 悬停
+
+        /// <summary>
+        /// 每帧把每张卡从"平躺落点"插值到"拿在镜头前"，或者反过来。
+        /// 两种"拿起来"姿势：鼠标靠近只想读说明 → <see cref="LiftPosition"/>（210px 读得清）；
+        /// 已经选中要落子 → <see cref="HeldPosition"/>（缩到 149px 沉在屏幕底带，一格不挡）。
+        /// 目标值切换后仍用 SmoothDamp 过渡，避免闪烁。
+        /// </summary>
+        void UpdateCardPoses()
+        {
+            if (mainCamera == null) return;
+
+            foreach (CardEntry entry in cards)
+            {
+                if (entry.Root == null) continue;
+
+                // 手里已经有一张时，别的卡不再弹起来读说明 —— 否则会同时有两张飞在镜头前
+                bool held = armedType != null && entry.Type == armedType;
+                bool lifted = held || (armedType == null && entry == hovered);
+
+                entry.Lift = Mathf.SmoothDamp(entry.Lift, lifted ? 1f : 0f, ref entry.LiftVelocity, LiftTime);
+
+                float eased = entry.Lift * entry.Lift * (3f - 2f * entry.Lift);
+
+                Vector3 flatPosition = entry.SlotPosition;
+                Vector3 flatScale = new Vector3(entry.SlotWidth, entry.SlotLength, 1f);
+
+                // 拿起时卡面变成正方形（贴图是 1:1 的），屏幕上才不会左右被压窄
+                Vector3 liftScale = new Vector3(entry.SlotWidth, entry.SlotWidth, 1f);
+                Vector3 liftPosition = held ? HeldPosition(entry) : LiftPosition(entry);
+                Quaternion liftRotation = mainCamera.transform.rotation;
+
+                Vector3 position = Vector3.Lerp(flatPosition, liftPosition, eased);
+                // 中途再抬一点：看起来像被手指捏起来，而不是从地上弹到眼前
+                position.y += Mathf.Sin(entry.Lift * Mathf.PI) * LiftArc;
+
+                entry.Root.position = position;
+                entry.Root.rotation = Quaternion.Slerp(FlatRotation, liftRotation, eased);
+                entry.Plane.localScale = Vector3.Lerp(flatScale, liftScale, eased);
+
+                PoseDecor(entry);
+            }
+        }
+
+        /// <summary>
+        /// 悬停读说明的落点：屏幕上的像素位置和大小是定死的（<see cref="LiftSizePx"/> 见方、压在底边），
+        /// 世界坐标这边反推 —— 这样任何分辨率、任何画幅比例下，拿起来的卡都一样大、一样位置。
+        /// </summary>
+        Vector3 LiftPosition(CardEntry entry)
+        {
+            float pxScale = PixelScale();
+            float sizePx = LiftSizePx * pxScale;
+
+            // 横向贴着卡躺在待排区时的位置（左右不跳），只把它夹进屏幕内
+            float pxX = mainCamera.WorldToScreenPoint(entry.SlotPosition).x;
+            pxX = Mathf.Clamp(pxX, sizePx * 0.5f + 16f * pxScale, mainCamera.pixelWidth - sizePx * 0.5f - 16f * pxScale);
+            float pxY = LiftCenterPx * pxScale;
+
+            return ScreenPointToCardPosition(new Vector2(pxX, pxY), LiftSizePx, entry.SlotWidth);
+        }
+
+        /// <summary>
+        /// 已经选中（拿在手里）的落点：缩到 <see cref="HeldSizePx"/> 沉进屏幕底下那条空带，横向跟着鼠标走。
+        /// 网格最前排在 188px、这张卡的上沿在 185px —— 所以选卡之后一个格子都不挡；
+        /// "手里是哪张"也始终看得见（落点由格子上的幽灵预览负责指示）。
+        /// </summary>
+        Vector3 HeldPosition(CardEntry entry)
+        {
+            float pxScale = PixelScale();
+            float sizePx = HeldSizePx * pxScale;
+            float margin = sizePx * 0.5f + BandMarginPx * pxScale;
+
+            float pxX = Mathf.Clamp(Input.mousePosition.x, margin, mainCamera.pixelWidth - margin);
+
+            // 右下角那条 HUD 控制条（播放/暂停/撤销）不能被盖住：卡最多顶到它左边
+            Rect bar = BitFlowHud.BottomBarScreenRect;
+            if (bar.width > 1f)
+            {
+                float limit = bar.xMin - sizePx * 0.5f - BandGapPx * pxScale;
+                if (limit > margin) pxX = Mathf.Min(pxX, limit);
+            }
+
+            return ScreenPointToCardPosition(new Vector2(pxX, HeldCenterPx * pxScale), HeldSizePx, entry.SlotWidth);
+        }
+
+        /// <summary>
+        /// 把"屏幕像素点 + 想要的像素边长"反推成相机前方一个世界坐标（两种拿起姿势共用同一套换算）。
+        /// 距离 d 满足：世界边长 × 画面半高 / (d × tan(fov/2)) = 想要像素边长；
+        /// ReferenceHeight 是 1080 基准，所以像素常量都按"1080 高时多少 px"写，实际大小自动跟着分辨率走。
+        /// </summary>
+        Vector3 ScreenPointToCardPosition(Vector2 pixel, float sizePx, float worldSize)
+        {
+            float tanHalf = Mathf.Tan(mainCamera.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            float distance = worldSize * ReferenceHeight / (2f * tanHalf * sizePx);
+            distance = Mathf.Max(0.5f, distance);
+
+            float ndcX = pixel.x / (mainCamera.pixelWidth * 0.5f) - 1f;
+            float ndcY = pixel.y / (mainCamera.pixelHeight * 0.5f) - 1f;
+            float tanHalfH = tanHalf * mainCamera.aspect;
+
+            Transform cameraTransform = mainCamera.transform;
+            return cameraTransform.position
+                + cameraTransform.forward * distance
+                + cameraTransform.right * (ndcX * tanHalfH * distance)
+                + cameraTransform.up * (ndcY * tanHalf * distance);
+        }
+
+        /// <summary>已经拿起来的那张卡在屏幕上的矩形。鼠标落在里面就维持 hover 状态。</summary>
+        Rect ScreenRectOf(CardEntry entry)
+        {
+            float size = LiftSizePx * PixelScale();
+            Vector3 screen = mainCamera.WorldToScreenPoint(entry.Root.position);
+            return new Rect(screen.x - size * 0.5f, screen.y - size * 0.5f, size, size);
+        }
+
+        void UpdateHover()
+        {
+            hovered = null;
+            if (cards.Count == 0 || mainCamera == null) return;
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
+
+            Vector2 mouse = Input.mousePosition;
+
+            // 已经拿起来的那张优先：鼠标落在它"拿起来以后"的矩形里就继续算它。
+            // 否则卡飞起来离开原地，hover 会立刻断掉，卡就在原地和镜头前反复弹。
+            foreach (CardEntry entry in cards)
+            {
+                // 拿在手里的那张除外：它已经沉到屏幕底带，而 ScreenRectOf 是按"悬停姿势"
+                // （210px、压在底边）算的，位置早就对不上，用它判定会白吞掉一大片格子上的点击。
+                if (armedType != null && entry.Type == armedType) continue;
+
+                if (entry.Lift > 0.35f && ScreenRectOf(entry).Contains(mouse))
+                {
+                    hovered = entry;
+                    return;
+                }
+            }
+
+            if (!TryRayToRowPlane(mouse, out Vector3 point)) return;
+
+            float nearest = float.MaxValue;
+            foreach (CardEntry entry in cards)
+            {
+                Vector3 delta = point - entry.SlotPosition;
+                if (Mathf.Abs(delta.x) > entry.SlotWidth * 0.5f + HoverMargin) continue;
+                if (Mathf.Abs(delta.z) > entry.SlotLength * 0.5f + HoverMargin) continue;
+
+                if (Mathf.Abs(delta.z) < nearest)
+                {
+                    nearest = Mathf.Abs(delta.z);
+                    hovered = entry;
+                }
+            }
+        }
+
+        bool TryRayToRowPlane(Vector2 mouse, out Vector3 point)
+        {
+            point = Vector3.zero;
+            if (mainCamera == null) return false;
+
+            Ray ray = mainCamera.ScreenPointToRay(mouse);
+            Plane plane = new Plane(Vector3.up, new Vector3(0f, RowY, 0f));
+            if (!plane.Raycast(ray, out float distance)) return false;
+
+            point = ray.GetPoint(distance);
+            return true;
+        }
+
         // ---------------------------------------------------------------- 鼠标
 
         void UpdateCursor()
@@ -238,7 +780,10 @@ namespace ShiftGo.BitFlow.View
             if (cursor == null) CreateCursor();
 
             bool overUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
-            if (overUi || !TryPickCell(out GridPoint cell))
+            // 手里有牌时，格子由半透明的元件副本去标记（能放=类型色、不能放=红），
+            // 这层普通高亮方块让位 —— 两层东西叠在同一格上只会互相糊掉。
+            // 鼠标在卡上时也不画：这时候玩家在"看牌"，不是在选位置。
+            if (armedType != null || overUi || hovered != null || !TryPickCell(out GridPoint cell))
             {
                 if (cursor.gameObject.activeSelf) cursor.gameObject.SetActive(false);
                 return;
@@ -248,8 +793,61 @@ namespace ShiftGo.BitFlow.View
             cursor.position = GridMetrics.CellToWorld(cell) + Vector3.up * CursorHeight;
         }
 
+        /// <summary>
+        /// 手里有牌时，在鼠标悬停的那一格上放一个半透明的元件副本（能放=类型色，不能放=红）。
+        /// 这是"选中不挡屏幕"的配套：卡缩进底带以后，落点和占格全靠这个预览告诉玩家。
+        /// </summary>
+        void UpdateGhost()
+        {
+            if (ghost == null) return;
+
+            bool overUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+
+            // 手里没牌 / 在 UI 上 / 在待排区选牌 —— 都没有"要放到哪一格"这回事
+            if (draft == null || armedType == null || mainCamera == null || overUi ||
+                hovered != null || !TryPickCell(out GridPoint cell))
+            {
+                ghost.Hide();
+                return;
+            }
+
+            // 只在"换了格子/换了牌/转了向"时重新生成草稿：同一格上晃鼠标不该每帧产生垃圾
+            if (ghostPreview == null || ghostType != armedType || ghostRotation != armedRotation || !ghostCell.Equals(cell))
+            {
+                ghostPreview = armedType.CreateEditable(cell, armedRotation);
+                ghostType = armedType;
+                ghostRotation = armedRotation;
+                ghostCell = cell;
+            }
+
+            if (ghostPreview == null)
+            {
+                ghost.Hide();
+                return;
+            }
+
+            // 能不能放，走和真正放下时同一条判定（CanPlace 只读：不扣牌、不压撤销栈）
+            ghost.Show(ghostPreview, draft.CanPlace(ghostPreview));
+        }
+
         void HandleMouse()
         {
+            // 鼠标在待排区某张卡上：左键 = 拿在手里，右键 = 放下手里那张
+            if (hovered != null)
+            {
+                if (Input.GetMouseButtonDown(0))
+                {
+                    Arm(hovered.Type);
+                }
+                else if (Input.GetMouseButtonDown(1) && armedType != null)
+                {
+                    armedType = null;
+                    statusMessage = "已放下手里的卡";
+                    RefreshAll();
+                }
+                return;
+            }
+
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
             if (!TryPickCell(out GridPoint cell)) return;
 
@@ -338,12 +936,11 @@ namespace ShiftGo.BitFlow.View
 
             // 拾回的牌直接拿在手里，玩家可以接着投到别处 —— 不用再去点卡面
             armedType = FindSupplyType(picked.TypeKey);
-            armedKind = picked.Kind;
             armedRotation = 0;
 
             Apply(armedType != null
                 ? "已拾回 " + LabelOf(armedType)
-                : "已移除 " + picked.Kind + "（它不属于任何一摞牌）");
+                : "已移除 " + picked.Kind + "（它不属于任何一排牌）");
         }
 
         ElementTypeSO FindSupplyType(string typeKey)
@@ -364,6 +961,16 @@ namespace ShiftGo.BitFlow.View
             return string.IsNullOrEmpty(type.label) ? type.Key : type.label;
         }
 
+        /// <summary>
+        /// 这张牌对应哪种元件（决定卡面图）。交给 <see cref="ElementTypeSO"/> 自己判定，
+        /// 手牌盘不重复一套"渲染器类型 → CellKind"的映射，免得以后加元件时两边对不上。
+        /// </summary>
+        static CellKind KindOf(ElementTypeSO type)
+        {
+            EditableElement preview = type.CreateEditable(new GridPoint(0, 0));
+            return preview != null ? preview.Kind : CellKind.Wall;
+        }
+
         void Arm(ElementTypeSO type)
         {
             if (type == null || draft == null) return;
@@ -378,10 +985,7 @@ namespace ShiftGo.BitFlow.View
             armedRotation = 0;
             if (armedType != null)
             {
-                // 预览色要用元件种类：直接从类型资产生成一份草稿读 Kind，跟真正放下时走同一条路径
-                EditableElement preview = armedType.CreateEditable(new GridPoint(0, 0));
-                armedKind = preview != null ? preview.Kind : CellKind.Wall;
-                statusMessage = "已选中 " + LabelOf(armedType) + "：点格子放下";
+                statusMessage = "已选中 " + LabelOf(armedType) + "：移动鼠标挑格子，点一下放下";
             }
             else
             {
@@ -391,7 +995,7 @@ namespace ShiftGo.BitFlow.View
             RefreshAll();
         }
 
-        // ---------------------------------------------------------------- 落地
+        // ---------------------------------------------------------------- 落地 / 刷新
 
         /// <summary>草稿 → 运行时关卡 → 重建场景（Runner 会顺手重置到 TICK 00 并暂停）。</summary>
         void Apply(string message)
@@ -411,155 +1015,7 @@ namespace ShiftGo.BitFlow.View
         {
             RefreshStatus();
             RefreshCards();
-            RefreshCursorColor();
-        }
-
-        // ---------------------------------------------------------------- UI
-
-        void BuildUi()
-        {
-            GameObject canvasGo = new GameObject("TRAY_Canvas");
-            Canvas canvas = canvasGo.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            // 层序只有一条规则，三个 Canvas 都按它来：HUD 的是 0 且必须最上 ——
-            // 结算面板和悬停提示都住在 HUD 里，被手牌盘盖住就是"过关了看不见结算"。
-            // 所以辅助层一律往下排：手牌 -1、作者模式 -2，永远不往上叠。
-            canvas.sortingOrder = -1;
-
-            CanvasScaler scaler = canvasGo.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.matchWidthOrHeight = 0.5f;
-
-            canvasGo.AddComponent<GraphicRaycaster>();
-            canvasGo.transform.SetParent(transform, false);
-            Transform canvasRoot = canvasGo.transform;
-
-            // 底部只有一条带子：本面板从左边距一直铺到 HUD 控制条的左边缘，
-            // 同底边、同高度、同一种底色（PanelColor 与 HUD 完全一致），于是两者连成"一条"。
-            // 这就是全部改动 —— 手牌盘不再单独占一层往上叠，屏幕下部只吃掉 138px，格子全露出来。
-            float insetL = BitFlowHud.BottomMargin;
-            float insetR = BitFlowHud.BottomMargin + BitFlowHud.BottomBarWidth;
-            RectTransform panel = CreatePanel("TrayPanel", canvasRoot,
-                new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f),
-                new Vector2(-(insetL + insetR), BitFlowHud.BottomBandHeight),
-                new Vector2((insetL - insetR) * 0.5f, BitFlowHud.BottomBandBottom));
-            panelRoot = panel.gameObject;
-
-            // 只留一行反馈（已放几件 / 为什么放不下），贴带子右端、控制条左侧；关卡名交给 HUD 左上角，
-            // 操作说明整行删掉：带子只有 112px 高，那一行才是真正把格子挤掉的东西。
-            statusText = CreateText("Status", panel, string.Empty, 15, TextAnchor.MiddleRight, TextColor);
-            SetRect(statusText.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
-                new Vector2(340f, 26f), new Vector2(-16f, 0f));
-
-            panelRoot.SetActive(false);
-        }
-
-        void RebuildCards()
-        {
-            foreach (CardEntry entry in cards)
-            {
-                if (entry.Root != null) Destroy(entry.Root);
-                if (entry.SelectionFrame != null) Destroy(entry.SelectionFrame.gameObject);
-            }
-            cards.Clear();
-
-            if (level == null || level.supplies == null || panelRoot == null) return;
-
-            float x = 16f;
-            foreach (ElementSupply supply in level.supplies)
-            {
-                if (supply == null || supply.type == null) continue;
-                cards.Add(CreateCard(supply.type, new Vector2(x, CardRowY)));
-                x += CardSize + CardGap;
-            }
-
-            // 面板宽度由屏幕决定（左右拉伸到 HUD 控制条），卡片从左边排过来，这里不用再改尺寸
-        }
-
-        CardEntry CreateCard(ElementTypeSO type, Vector2 position)
-        {
-            RectTransform panelRect = (RectTransform)panelRoot.transform;
-
-            // 选中框先建：比卡大 8px，卡面不透明，于是只有四周那 4px 的边框会露出来。
-            // 不能用"改底色"表示选中 —— 那会直接盖住卡面美术。
-            Image frame = CreateImage("SelectionFrame_" + type.Key, panelRect, AccentColor);
-            SetRect((RectTransform)frame.transform, Vector2.zero, Vector2.zero, Vector2.zero,
-                new Vector2(CardSize + 8f, CardSize + 8f), position + new Vector2(-4f, -4f));
-            frame.gameObject.SetActive(false);
-
-            GameObject go = new GameObject("Card_" + type.Key, typeof(RectTransform), typeof(Image), typeof(Button));
-            go.transform.SetParent(panelRect, false);
-
-            RectTransform rect = (RectTransform)go.transform;
-            SetRect(rect, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(CardSize, CardSize), position);
-
-            Image background = go.GetComponent<Image>();
-            background.color = ButtonColor;
-            background.raycastTarget = true; // 整张卡（含透明区）都是点击热区
-
-            Button button = go.GetComponent<Button>();
-            button.targetGraphic = background;
-            button.transition = Selectable.Transition.None; // 颜色全部由 RefreshCards 管，别被 ColorTint 冲掉
-
-            ElementTypeSO captured = type;
-            button.onClick.AddListener(() => Arm(captured));
-
-            Sprite art = CardArtLibrary.Icon(KindOf(type));
-            Image artImage = null;
-            Text count;
-
-            if (art != null)
-            {
-                // 有卡面：整张卡就是美术画的那张图（图标、名字、副标题都在图里），这里只补张数；
-                // 底色退成透明，但仍作为点击热区存在。
-                background.color = new Color(1f, 1f, 1f, 0f);
-
-                artImage = CreateImage("Art", rect, Color.white);
-                artImage.sprite = art;
-                artImage.preserveAspect = true;
-                artImage.raycastTarget = false;
-                SetRect((RectTransform)artImage.transform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
-                    Vector2.zero, Vector2.zero);
-
-                // 张数写进卡面下方预留的那条浅灰槽；槽是浅色底，字必须是深色才看得清
-                // 字号随卡尺寸走：卡 104 → 槽高 26px，22 号字正好填满又不顶格
-                count = CreateText("Count", rect, string.Empty, 22, TextAnchor.MiddleCenter, SlotTextColor);
-                SetRect(count.rectTransform, SlotAnchorMin, SlotAnchorMax, new Vector2(0.5f, 0.5f),
-                    Vector2.zero, Vector2.zero);
-            }
-            else
-            {
-                // 没有卡面：退回"纯色卡 + 居中名字 + 右下张数"，功能一样不缺
-                Text name = CreateText("Name", rect, LabelOf(type), 17, TextAnchor.MiddleCenter, TextColor);
-                SetRect(name.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
-                    new Vector2(-16f, -26f), new Vector2(0f, 6f));
-
-                count = CreateText("Count", rect, string.Empty, 22, TextAnchor.LowerCenter, TextColor);
-                SetRect(count.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f),
-                    new Vector2(-16f, 26f), new Vector2(0f, 8f));
-            }
-
-            return new CardEntry
-            {
-                Type = type,
-                Key = type.Key,
-                Art = artImage,
-                Background = background,
-                SelectionFrame = frame,
-                CountLabel = count,
-                Root = go,
-            };
-        }
-
-        /// <summary>
-        /// 这张牌对应哪种元件（决定卡面图）。交给 <see cref="ElementTypeSO"/> 自己判定，
-        /// 手牌盘不重复一套"渲染器类型 → CellKind"的映射，免得以后加元件时两边对不上。
-        /// </summary>
-        static CellKind KindOf(ElementTypeSO type)
-        {
-            EditableElement preview = type.CreateEditable(new GridPoint(0, 0));
-            return preview != null ? preview.Kind : CellKind.Wall;
+            UpdateGhost();
         }
 
         void RefreshCards()
@@ -572,20 +1028,16 @@ namespace ShiftGo.BitFlow.View
                 bool selected = armedType == entry.Type;
                 bool empty = left <= 0;
 
-                // 选中态走外框：卡面是不透明美术图，改底色会把它盖住
-                if (entry.SelectionFrame != null) entry.SelectionFrame.gameObject.SetActive(selected);
+                // 选中态走那根强调条：卡面是不透明美术图，改底色会把它一起染掉
+                if (entry.Mark != null) entry.Mark.gameObject.SetActive(selected);
 
-                entry.CountLabel.text = "×" + Mathf.Max(0, left);
-                entry.CountLabel.color = empty ? SlotTextEmptyColor : SlotTextColor;
+                // 用完的整张压暗（还看得出是哪张），其余保持原色 —— 卡面就是设计稿，别动它的颜色
+                MaterialFactory.SetBaseColor(entry.Material, empty ? EmptyTint : Color.white);
 
-                if (entry.Art != null)
+                if (entry.Count != null)
                 {
-                    // 这摞用完了：卡面整体压暗（名字仍然看得清），扫一眼就知道哪张还能点
-                    entry.Art.color = empty ? new Color(0.42f, 0.42f, 0.42f, 0.85f) : Color.white;
-                }
-                else
-                {
-                    entry.Background.color = selected ? SelectedCardColor : (empty ? EmptyCardColor : ButtonColor);
+                    entry.Count.text = "×" + Mathf.Max(0, left);
+                    entry.Count.color = empty ? CountTextEmptyColor : (entry.HasArt ? CountTextColor : TextColor);
                 }
             }
         }
@@ -604,78 +1056,36 @@ namespace ShiftGo.BitFlow.View
             }
             else
             {
-                // 只留"已放几件" + 最后一条反馈；手里拿着哪张由卡片的选中外框表达，不再写一行文字
+                // 只留"已放几件" + 最后一条反馈；手里拿着哪张由卡片的强调条表达，不再写一行文字
                 string summary = "已放 " + draft.Count + " 件";
                 statusText.text = string.IsNullOrEmpty(statusMessage) ? summary : summary + " ｜ " + statusMessage;
             }
         }
 
-        void RefreshCursorColor()
-        {
-            if (cursorMaterial == null) return;
-
-            Color color = armedType != null ? LevelBuilder.KindColor(armedKind) : MutedColor;
-            MaterialFactory.SetBaseColor(cursorMaterial, color);
-            MaterialFactory.SetEmission(cursorMaterial, color, 1.4f);
-        }
-
+        /// <summary>
+        /// 普通高亮的格子方块：只在"手里没牌"的悬停时出现。
+        /// 手里有牌时格子交给 <see cref="PlacementGhost"/> 的幽灵预览（能放=类型色、不能放=红），
+        /// 所以这里恒定是中性灰 —— 不再需要跟着"待放元件是什么"变色。
+        /// </summary>
         void CreateCursor()
         {
             GameObject go = GameObject.CreatePrimitive(PrimitiveType.Quad);
             go.name = "TrayCursor";
             Destroy(go.GetComponent<Collider>());
             go.transform.SetParent(transform, false);
-            go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            go.transform.rotation = FlatRotation;
             go.transform.localScale = new Vector3(0.9f, 0.9f, 1f);
 
             cursorMaterial = new Material(MaterialFactory.LitShader) { name = "M_TrayCursor" };
-            Color color = armedType != null ? LevelBuilder.KindColor(armedKind) : MutedColor;
-            MaterialFactory.SetBaseColor(cursorMaterial, color);
-            MaterialFactory.SetEmission(cursorMaterial, color, 1.4f);
+            MaterialFactory.SetBaseColor(cursorMaterial, MutedColor);
+            MaterialFactory.SetEmission(cursorMaterial, MutedColor, 1.4f);
             go.GetComponent<Renderer>().sharedMaterial = cursorMaterial;
 
             cursor = go.transform;
             go.SetActive(false);
         }
 
-        // ---------------------------------------------------------------- 控件工厂（与 HUD / BUILD MODE 同一套写法）
-
-        RectTransform CreatePanel(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax,
-            Vector2 pivot, Vector2 size, Vector2 position)
-        {
-            GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image));
-            go.transform.SetParent(parent, false);
-
-            RectTransform rect = (RectTransform)go.transform;
-            SetRect(rect, anchorMin, anchorMax, pivot, size, position);
-
-            Image image = go.GetComponent<Image>();
-            image.color = PanelColor;
-            image.raycastTarget = false;
-            return rect;
-        }
-
-        static void SetRect(RectTransform rect, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot,
-            Vector2 size, Vector2 position)
-        {
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.pivot = pivot;
-            rect.sizeDelta = size;
-            rect.anchoredPosition = position;
-        }
-
-        /// <summary>一张纯色 UI 图（卡面 / 选中外框都用它，省得每处重复 new GameObject）。</summary>
-        static Image CreateImage(string name, Transform parent, Color color)
-        {
-            GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image));
-            go.transform.SetParent(parent, false);
-
-            Image image = go.GetComponent<Image>();
-            image.color = color;
-            image.raycastTarget = false;
-            return image;
-        }
+        // ---------------------------------------------------------------- 控件工厂（与 HUD 同一套写法）
 
         Text CreateText(string name, Transform parent, string content, int fontSize, TextAnchor anchor, Color color)
         {
@@ -688,7 +1098,7 @@ namespace ShiftGo.BitFlow.View
             text.fontSize = fontSize;
             text.alignment = anchor;
             text.color = color;
-            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.horizontalOverflow = HorizontalWrapMode.Overflow;
             text.verticalOverflow = VerticalWrapMode.Overflow;
             text.raycastTarget = false;
             return text;

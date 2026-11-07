@@ -20,13 +20,13 @@ namespace ShiftGo.BitFlow.View
         static readonly Color GoodColor = new Color(0.35f, 1f, 0.55f);
         static readonly Color BadColor = new Color(1f, 0.32f, 0.35f);
 
-        // ---------------------------------------------------------------- 底部那条横带
-        // 屏幕底部只有一条带子：右边是本 HUD 的控制条，左边是手牌盘（BitFlowCardTray）。
-        // 两者同底边、同高度、同一种底色、左右紧贴 → 看起来就是一条横带，不再上下叠两层。
-        // 112px 是算出来的上限，不是随手取的：9×8 关卡（FOV 42）最前面一排格子落在屏幕约 182px 处。
+        // ---------------------------------------------------------------- 底部控制条
+        // 屏幕底部现在没有"一条横带"了：待排区搬到场景里（躺在网格前方地面上的卡排），
+        // 底部中间整条让出来，控制条只收在右下角一小块，宽度从 860 压到 600。
+        // 112px 是算出来的上限，不是随手取的：9×8 关卡（FOV 42）最前面一排格子从屏幕约 188px 开始。
         internal const float BottomBandBottom = 26f;
         internal const float BottomBandHeight = 112f;
-        internal const float BottomBarWidth = 860f;
+        internal const float BottomBarWidth = 600f;
         internal const float BottomMargin = 28f;
 
         BitFlowRunner runner;
@@ -41,6 +41,16 @@ namespace ShiftGo.BitFlow.View
 
         RectTransform receiverPanel;
         readonly List<Text> receiverLabels = new List<Text>();
+
+        RectTransform bottomBarRect;
+
+        /// <summary>
+        /// 控制条在屏幕上的矩形（像素，左下为原点）。待排区靠它算"卡排最多能铺多宽"，
+        /// 这样窄画面里最右那张卡也不会被控制条压住 —— 两个模块互不引用具体数值，只认这条矩形。
+        /// </summary>
+        internal static Rect BottomBarScreenRect { get; private set; }
+
+        static readonly Vector3[] cornerBuffer = new Vector3[4];
 
         GameObject resultPanel;
         Text resultTitle;
@@ -186,18 +196,36 @@ namespace ShiftGo.BitFlow.View
                 new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f),
                 new Vector2(BottomBarWidth, BottomBandHeight),
                 new Vector2(-BottomMargin, BottomBandBottom));
+            bottomBarRect = bar;
 
-            Button pauseButton = CreateButton("Pause", bar, "PAUSE", new Vector2(150f, 52f), new Vector2(-330f, 0f), OnPauseClicked);
+            // 两行排布：上面三个按钮，下面速度滑杆。
+            // 宽度从 860 压到 600 是为了把底部中间让给待排区；按钮尺寸只缩了一点，
+            // 因为真正占地方的是原来"一行硬排开"的布局，不是按钮本身。
+            Button pauseButton = CreateButton("Pause", bar, "PAUSE", new Vector2(150f, 44f), new Vector2(-160f, 26f), OnPauseClicked);
             pauseButtonLabel = pauseButton.GetComponentInChildren<Text>();
 
-            CreateButton("Step", bar, "STEP", new Vector2(140f, 52f), new Vector2(-165f, 0f), OnStepClicked);
-            CreateButton("Reset", bar, "REPLAY", new Vector2(150f, 52f), new Vector2(0f, 0f), OnResetClicked);
+            CreateButton("Step", bar, "STEP", new Vector2(130f, 44f), new Vector2(-10f, 26f), OnStepClicked);
+            CreateButton("Reset", bar, "REPLAY", new Vector2(150f, 44f), new Vector2(145f, 26f), OnResetClicked);
 
-            speedText = CreateText("SpeedLabel", bar, "SPEED  x1.0", 18, TextAnchor.MiddleLeft, TextColor);
+            speedText = CreateText("SpeedLabel", bar, "SPEED  x1.0", 16, TextAnchor.MiddleLeft, TextColor);
             SetRect(speedText.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(180f, 26f), new Vector2(100f, 16f));
+                new Vector2(160f, 22f), new Vector2(-240f, -28f));
 
-            CreateSlider(bar, new Vector2(220f, 24f), new Vector2(100f, -16f), 0.25f, 3f, 1f, OnSpeedChanged);
+            CreateSlider(bar, new Vector2(260f, 24f), new Vector2(-70f, -28f), 0.25f, 3f, 1f, OnSpeedChanged);
+        }
+
+        void LateUpdate()
+        {
+            // ScreenSpaceOverlay 的 Canvas 下，GetWorldCorners() 给的就是屏幕像素（左下为原点），
+            // 正是待排区需要的坐标系 —— 所以这里不用去猜 CanvasScaler 把 600 缩放成了多少。
+            if (bottomBarRect == null) return;
+
+            bottomBarRect.GetWorldCorners(cornerBuffer);
+            BottomBarScreenRect = new Rect(
+                cornerBuffer[0].x,
+                cornerBuffer[0].y,
+                cornerBuffer[2].x - cornerBuffer[0].x,
+                cornerBuffer[2].y - cornerBuffer[0].y);
         }
 
         // ---------------------------------------------------------------- 结算面板

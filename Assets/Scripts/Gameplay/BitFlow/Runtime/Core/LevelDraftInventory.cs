@@ -74,10 +74,11 @@ namespace ShiftGo.BitFlow.Core
         }
 
         /// <summary>
-        /// 玩家放一张牌：越界 / 预设格 / 已占用 / 没牌了都会被挡下来，且只有真的放下了才扣牌。
-        /// 自由移动是「先 TryPick 拾回、再 TryPlace 放下」，所以这里不做原地替换。
+        /// 只读判定：这一张现在能不能落在它自己的 <see cref="EditableElement.Coord"/> 上。
+        /// 规则和 <see cref="TryPlace"/> 逐条一致，但**不动任何状态**（不扣牌、不压撤销栈）——
+        /// 放置预览要跟着鼠标在每一格上问一遍"能放吗"，绝不能顺手改数据。
         /// </summary>
-        public PlaceResult TryPlace(EditableElement element)
+        public PlaceResult CanPlace(EditableElement element)
         {
             if (element == null || !InBounds(element.Coord)) return PlaceResult.OutOfBounds;
 
@@ -86,8 +87,24 @@ namespace ShiftGo.BitFlow.Core
             if (cells.ContainsKey(coord)) return PlaceResult.Occupied;
 
             string typeKey = element.TypeKey;
+            if (stockEnabled && !string.IsNullOrEmpty(typeKey) && Remaining(typeKey) <= 0) return PlaceResult.OutOfStock;
+
+            return PlaceResult.Ok;
+        }
+
+        /// <summary>
+        /// 玩家放一张牌：越界 / 预设格 / 已占用 / 没牌了都会被挡下来，且只有真的放下了才扣牌。
+        /// 自由移动是「先 TryPick 拾回、再 TryPlace 放下」，所以这里不做原地替换。
+        /// 校验部分复用 <see cref="CanPlace"/>，保证"预览说能放"和"真的放下"永远是同一套规则。
+        /// </summary>
+        public PlaceResult TryPlace(EditableElement element)
+        {
+            PlaceResult check = CanPlace(element);
+            if (check != PlaceResult.Ok) return check;
+
+            GridPoint coord = element.Coord;
+            string typeKey = element.TypeKey;
             int left = Remaining(typeKey);
-            if (stockEnabled && !string.IsNullOrEmpty(typeKey) && left <= 0) return PlaceResult.OutOfStock;
 
             PushHistory();
             cells[coord] = element;
