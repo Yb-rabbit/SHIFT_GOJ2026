@@ -62,36 +62,104 @@ namespace ShiftGo.BitFlow.View
 
         // ---------------------------------------------------------------- 拿起（像素，按 1080 归一）
 
-        /// <summary>拿起来以后这张卡在屏幕上的边长（px）。原来 UI 卡 104px，这里约 210px，说明读得清。</summary>
-        const float LiftSizePx = 210f;
+        /// <summary>
+        /// 举起来（悬停读说明 / 选中拿着）时，卡面在屏幕上的整体放大倍数。
+        /// 只乘在这两个状态的像素尺寸上（<see cref="LiftSizePx"/> / <see cref="HeldSizePx"/> 及其高度），
+        /// 平躺在待排区的卡不受影响 —— 那一排要和格子保持"一格一张卡"的比例关系。
+        ///
+        /// 1.5 的代价：选中时那张卡从 149px 长到 224px，而屏幕底部留给它的空带只有 188px，
+        /// 所以它会压住网格最前面一排 50~60px（一格出头）。落点始终由格子上的幽灵预览指示，
+        /// 想换回"一格不挡"就把这里调回 1。
+        /// </summary>
+        const float CardFaceScale = 1.5f;
 
-        /// <summary>拿起来时卡片中心距屏幕底部的高度（px）。压在底边，不挡网格中部。</summary>
-        const float LiftCenterPx = 150f;
+        /// <summary>
+        /// 拿起来时卡离相机多远（米）。<b>这个值是"手持感"的关键</b>：卡在屏幕上多大是由像素常量
+        /// （<see cref="LiftSizePx"/> / <see cref="HeldSizePx"/>）定死的，距离只决定它在世界里有多大 ——
+        /// 距离越远，鼠标横移时卡就在场景里扫得越远，看起来像"漂移"而不是"被手举着"。
+        ///
+        /// 早先是反过来按"卡自己的世界尺寸"算距离的：1 格卡（0.95m）算出 9m、两格卡（1.9m）算出 18m。
+        /// 屏幕上看一样大，但鼠标从屏幕左边划到右边时，卡在世界里要横穿 12~24 米 ——
+        /// 网格才 9 米宽、相机到网格中心也才 12.6 米，所以宽卡会直接飘到网格后面被挡住。
+        /// 钉死在镜头前以后，同样的鼠标行程只走 2 米出头，而且不论几格宽都一样。
+        /// </summary>
+        const float LiftDistance = 2.6f;
+
+        /// <summary>已经拿到手里、正在挑格子时离相机多远（米）。比 <see cref="LiftDistance"/> 更近一点，更像捏在指尖。</summary>
+        const float HeldDistance = 1.8f;
+
+        /// <summary>
+        /// 拿起来以后这张卡在屏幕上的边长（px）。原来 UI 卡 104px，这里 315px（= 210 × <see cref="CardFaceScale"/>），
+        /// 举到眼前基本占满一条可见区域，说明字都看得清。
+        /// </summary>
+        const float LiftSizePx = 210f * CardFaceScale;
+
+        /// <summary>拿起来时卡片中心距屏幕底部的高度（px）。乘上 <see cref="CardFaceScale"/> 一起长，底边才不会被顶出屏幕。</summary>
+        const float LiftCenterPx = 150f * CardFaceScale;
 
         /// <summary>拿起/放回的时间常数（SmoothDamp，秒）。</summary>
         const float LiftTime = 0.10f;
 
-        /// <summary>拿起过程中额外抬起的世界高度，做出"被捏起来"的弧线。</summary>
-        const float LiftArc = 0.22f;
+        /// <summary>
+        /// 拿起过程中额外抬起的世界高度，做出"被捏起来"的弧线。
+        /// 世界弧高在屏幕上会被放大成 <c>弧高 / 距离</c>：卡现在被放到镜头前 1.8~2.6m，
+        /// 同样的米数比原来（9m 外）显眼两倍多，所以从 0.22 收到 0.09，屏幕上的观感才和以前一致。
+        /// </summary>
+        const float LiftArc = 0.09f;
 
         /// <summary>
-        /// 已经选中（拿在手里）的卡在屏幕上的边长（px）。比 <see cref="LiftSizePx"/> 小得多：
+        /// 已经选中（拿在手里）的卡在屏幕上的边长（px）。比 <see cref="LiftSizePx"/> 小：
         /// 这时候玩家是在挑格子，需要的只是"我还拿着哪张"，不是读说明。
-        /// 原来的 124px 在实机上卡面偏小（张数和图标都糊），所以在它基础上再放大 1.2 倍 → 149px。
+        /// 基数 149px 是 124px 实机偏小后放大的结果（124 × 1.2），再整体乘 <see cref="CardFaceScale"/>。
         /// </summary>
-        const float HeldSizePx = 149f;
+        const float HeldSizePx = 149f * CardFaceScale;
 
         /// <summary>
-        /// 拿在手里的卡中心距屏幕底部的高度（px）。1080 高时卡占 35..185px，
-        /// 而网格最前面一排从 188px 才开始 —— 所以选中之后整片格子完全露出来，
-        /// 加上格子上的幽灵预览，"放在哪"这件事不再被卡片挡住。
-        /// 149px 的卡已经吃满这条带（上下各只剩 3px），所以底部那行反馈再往下让到 16px，
-        /// 见 <see cref="BuildStatusLine"/>。
+        /// 拿在手里的卡中心距屏幕底部的高度（px）：按卡高加上 16px 底边留白自动算 ——
+        /// 留白要够宽，摆动时绕视轴歪几度（<see cref="HeldSwayRoll"/>）包围盒会长高约 11px，
+        /// 8px 时卡的下角会被屏幕底边切掉一截。
+        /// 224px 的卡已经装不进原来的底带（网格最前排从 188px 开始），它会压住最前排 50~60px ——
+        /// 这是 <see cref="CardFaceScale"/> 放大 1.5 倍必然的取舍，落点仍由幽灵预览指示。
+        /// 底部那行反馈落在 16..32px，卡只在横向摆到最左时才会靠近它。
         /// </summary>
-        const float HeldCenterPx = 110f;
+        const float HeldCenterPx = HeldSizePx * 0.5f + 16f;
 
-        /// <summary>张数文字的世界高度（拿起来时约 40px，平躺时约 12px）。</summary>
-        const float CountTextSize = 0.18f;
+        /// <summary>
+        /// 拿在手里的卡跟着鼠标横向摆动的幅度。1 = 卡贴着鼠标横扫整屏；0.26 = 只在屏幕中间那一段小幅晃。
+        /// 卡本来就已经贴在镜头前 <see cref="HeldDistance"/> 处了，再让它跨满全屏反而不像"手举着牌"，
+        /// 所以收在四分之一上下：鼠标从屏幕最左划到最右，卡总共只挪半屏的一半左右。
+        /// </summary>
+        const float HeldSwayGain = 0.26f;
+
+        /// <summary>摆动和微转的平滑时间（SmoothDamp，秒）。留一点惯性，鼠标猛甩时牌不会硬跳过去。</summary>
+        const float HeldSwayTime = 0.10f;
+
+        /// <summary>
+        /// 摆到最左/最右时，牌面绕视轴的倾斜角（度）。
+        /// 平面卡上这是最看得出"手持感"的一味，代价是包围盒变高（224px 的卡转 3° 会长高约 11px）。
+        /// 卡面放大 <see cref="CardFaceScale"/> 倍之后它本来就压着网格最前排，
+        /// 这点余量不再影响观感，所以比早先"一格不挡"的版本放得松：想更明显可以试到 5~6°。
+        /// </summary>
+        const float HeldSwayRoll = 3f;
+
+        /// <summary>
+        /// 摆到最左/最右时，牌面朝鼠标那一侧微转的角度（度）。
+        /// 零厚度的卡 yaw 只会让它略微收窄（8° 约 1%），作用主要是给一点侧面透视；
+        /// 角度再大就只收窄不长高了，所以压在 8° 是为了别让卡看得出"变窄"。
+        /// </summary>
+        const float HeldSwayYaw = 8f;
+
+        /// <summary>
+        /// 张数文字的世界高度，按"卡面是满尺寸（<see cref="CardWidth"/>）"时算：平躺约 7px、拿起来约 19px。
+        /// 卡面缩小（卡排自适应、拿起来贴到镜头前）时 <c>PoseDecor</c> 会按同一比例缩字号，
+        /// 屏幕上看到的字才不会跟着卡一起变大到出框。
+        ///
+        /// 0.11 是这么来的：卡面这一轮整体放大 <see cref="CardFaceScale"/>（1.5 倍），
+        /// 而字号是按卡面比例缩的，1.5 倍卡会让数字在屏幕上也胖一圈；0.18 除以 1.5 约 0.12
+        /// 才是"屏幕上大小不变"，再往下压一点到 0.11，就是这么"小一号"。
+        /// 改卡面尺寸时记得连这个一起算，否则数字会显得忽大忽小。
+        /// </summary>
+        const float CountTextSize = 0.11f;
 
         /// <summary>
         /// 张数文字压在卡面哪条线上（占卡高的比例，卡本地 Y；负值 = 卡心往下）。
@@ -123,6 +191,11 @@ namespace ShiftGo.BitFlow.View
 
             public Material Material;
             public TextMesh Count;
+
+            /// <summary>没有卡面美术时顶上的那行类型名。它挂在 Root 下（尺度＝世界米），
+            /// 所以卡面缩小/放大时必须跟着等比缩，见 <c>PoseDecor</c>。</summary>
+            public Transform Label;
+
             public Transform Mark;
             public Material MarkMaterial;
             public bool HasArt;
@@ -135,6 +208,13 @@ namespace ShiftGo.BitFlow.View
             /// <summary>0 = 躺在待排区，1 = 拿在镜头前。</summary>
             public float Lift;
             public float LiftVelocity;
+
+            /// <summary>
+            /// 手举着牌时的横向摆动量（-1 = 摆到最左，1 = 摆到最右），已经平滑过。
+            /// 位置和牌面微转都由它驱动，所以两者永远同步，不会出现"卡挪了但没转"的割裂感。
+            /// </summary>
+            public float Sway;
+            public float SwayVelocity;
         }
 
         BitFlowRunner runner;
@@ -358,7 +438,8 @@ namespace ShiftGo.BitFlow.View
             // 底部只剩这一行反馈（已放几件 / 为什么放不下），没有底板也没有边框：
             // 底部空间现在是场景里那排卡的，UI 再压一块上去就白搬了。
             // 文字本身落在屏幕 16..32px（截图框 16..40px）：平躺的卡排从 53px 开始，
-            // 拿在手里的卡（149px 见方、中心 110px）底边在 35px，三者错开互不压。
+            // 拿在手里的卡（<see cref="HeldSizePx"/> 见方、底边留 8px）也压不到左边这一小段 ——
+            // 卡横向只在屏幕中间那一片摆（HeldSwayGain），和左边的状态文字错开。
             statusText = CreateText("Status", canvasGo.transform, string.Empty, 16, TextAnchor.LowerLeft, MutedColor);
             RectTransform rect = statusText.rectTransform;
             rect.anchorMin = Vector2.zero;
@@ -446,7 +527,7 @@ namespace ShiftGo.BitFlow.View
             };
 
             entry.Count = CreateCountText(root.transform);
-            if (art == null) CreateFallbackLabel(root.transform, LabelOf(type));
+            if (art == null) entry.Label = CreateFallbackLabel(root.transform, LabelOf(type));
 
             return entry;
         }
@@ -476,7 +557,7 @@ namespace ShiftGo.BitFlow.View
         }
 
         /// <summary>没有卡面美术时的退路：一块类型色的板 + 名字，至少能玩。</summary>
-        void CreateFallbackLabel(Transform parent, string label)
+        Transform CreateFallbackLabel(Transform parent, string label)
         {
             GameObject go = new GameObject("Label");
             go.transform.SetParent(parent, false);
@@ -495,6 +576,7 @@ namespace ShiftGo.BitFlow.View
             renderer.sharedMaterial = font.material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
+            return go.transform;
         }
 
         // ---------------------------------------------------------------- 排版
@@ -586,22 +668,38 @@ namespace ShiftGo.BitFlow.View
             PoseDecor(entry);
         }
 
-        /// <summary>张数和选中条跟着卡面尺寸走：卡拿起来时卡面会从"拉长的矩形"变成正方形，它们也得跟。</summary>
+        /// <summary>
+        /// 张数、选中条、退路文字都跟着卡面尺寸走。
+        /// 卡面不只在"拉长矩形 ↔ 正方形"之间变：拿起来时它还要缩到镜头前的真实尺寸
+        /// （0.95m → 0.19m 左右），所以这里不能再用槽宽算，得读卡面当前的实际缩放 ——
+        /// 位置和大小同源，才不会出现"卡缩到镜头前、文字却还是原来那么大"的穿帮。
+        /// </summary>
         void PoseDecor(CardEntry entry)
         {
-            float width = entry.SlotWidth;
-            float height = Mathf.Lerp(entry.SlotLength, width, entry.Lift);
+            // 卡面的 localScale 已经包含了"槽宽 → 拿起尺寸"的全部插值结果，直接拿它当准。
+            Vector3 face = entry.Plane != null
+                ? entry.Plane.localScale
+                : new Vector3(entry.SlotWidth, entry.SlotLength, 1f);
+
+            float width = face.x;
+            float height = face.y;
+
+            // 相对"满尺寸卡面"的缩放比：字号和选中条厚度按它等比缩，否则卡一小文字就顶出卡面
+            float k = CardWidth > 0.0001f ? width / CardWidth : 1f;
 
             if (entry.Count != null)
             {
                 // 文字中心对准卡面那条浅灰槽的中心（见 CountSlotCenter），卡面拉长/收成正方形都跟着走
                 entry.Count.transform.localPosition = new Vector3(0f, height * CountSlotCenter, -FaceLift);
+                entry.Count.transform.localScale = Vector3.one * k;
             }
+
+            if (entry.Label != null) entry.Label.localScale = Vector3.one * k;
 
             if (entry.Mark != null)
             {
-                entry.Mark.localScale = new Vector3(width, 0.05f, 1f);
-                entry.Mark.localPosition = new Vector3(0f, -(height * 0.5f) - 0.05f, -FaceLift * 1.5f);
+                entry.Mark.localScale = new Vector3(width, 0.05f * k, 1f);
+                entry.Mark.localPosition = new Vector3(0f, -(height * 0.5f) - 0.05f * k, -FaceLift * 1.5f);
             }
         }
 
@@ -609,8 +707,8 @@ namespace ShiftGo.BitFlow.View
 
         /// <summary>
         /// 每帧把每张卡从"平躺落点"插值到"拿在镜头前"，或者反过来。
-        /// 两种"拿起来"姿势：鼠标靠近只想读说明 → <see cref="LiftPosition"/>（210px 读得清）；
-        /// 已经选中要落子 → <see cref="HeldPosition"/>（缩到 149px 沉在屏幕底带，一格不挡）。
+        /// 两种"拿起来"姿势：鼠标靠近只想读说明 → <see cref="LiftPosition"/>（315px 读得清）；
+        /// 已经选中要落子 → <see cref="HeldPosition"/>（224px 沉在屏幕下沿）。
         /// 目标值切换后仍用 SmoothDamp 过渡，避免闪烁。
         /// </summary>
         void UpdateCardPoses()
@@ -629,13 +727,34 @@ namespace ShiftGo.BitFlow.View
 
                 float eased = entry.Lift * entry.Lift * (3f - 2f * entry.Lift);
 
+                // 鼠标横向偏移归一化到 -1..1，只用来推"手里那张"左右摆 —— 卡不再贴着鼠标横扫整屏。
+                // 平滑一下让摆动带点惯性；没拿在手里时目标归零，牌自己慢慢收回正中。
+                float swayTarget = held
+                    ? Mathf.Clamp(Input.mousePosition.x / Mathf.Max(1f, mainCamera.pixelWidth) * 2f - 1f, -1f, 1f)
+                    : 0f;
+                entry.Sway = Mathf.SmoothDamp(entry.Sway, swayTarget, ref entry.SwayVelocity, HeldSwayTime);
+
                 Vector3 flatPosition = entry.SlotPosition;
                 Vector3 flatScale = new Vector3(entry.SlotWidth, entry.SlotLength, 1f);
 
+                // 卡面尺寸不再直接等于槽宽：它由"离相机多远 + 屏幕上占多少像素"反推出来，
+                // 所以两种姿势各有各的尺寸，和落点一起由下面两个函数给出。
+                // 位置和大小必须成对取值 —— 分开算就会出现"屏幕上看着一样大、实际在世界另一头"。
+                float faceSize;
+                Vector3 liftPosition = held ? HeldPosition(entry.Sway, out faceSize) : LiftPosition(entry, out faceSize);
+
                 // 拿起时卡面变成正方形（贴图是 1:1 的），屏幕上才不会左右被压窄
-                Vector3 liftScale = new Vector3(entry.SlotWidth, entry.SlotWidth, 1f);
-                Vector3 liftPosition = held ? HeldPosition(entry) : LiftPosition(entry);
+                Vector3 liftScale = new Vector3(faceSize, faceSize, 1f);
+
+                // 牌面微转：绕视轴歪一点（平面卡上最看得出来），再朝鼠标那侧转一点点补侧面透视。
+                // 乘 eased 是让卡在"飞过来"的半路上不带歪，落定之后手感才慢慢显出来；
+                // 和位置共用同一个 Sway，所以"挪多远"和"歪多少"永远同步。
                 Quaternion liftRotation = mainCamera.transform.rotation;
+                if (held)
+                {
+                    float swayDeg = entry.Sway * eased;
+                    liftRotation *= Quaternion.Euler(0f, swayDeg * HeldSwayYaw, -swayDeg * HeldSwayRoll);
+                }
 
                 Vector3 position = Vector3.Lerp(flatPosition, liftPosition, eased);
                 // 中途再抬一点：看起来像被手指捏起来，而不是从地上弹到眼前
@@ -651,9 +770,10 @@ namespace ShiftGo.BitFlow.View
 
         /// <summary>
         /// 悬停读说明的落点：屏幕上的像素位置和大小是定死的（<see cref="LiftSizePx"/> 见方、压在底边），
-        /// 世界坐标这边反推 —— 这样任何分辨率、任何画幅比例下，拿起来的卡都一样大、一样位置。
+        /// 卡就贴在 <see cref="LiftDistance"/> 那个深度上 —— 这样任何分辨率、任何画幅比例下，
+        /// 拿起来的卡都一样大、一样位置，也不会因为卡有几格宽就跑到不同的距离去。
         /// </summary>
-        Vector3 LiftPosition(CardEntry entry)
+        Vector3 LiftPosition(CardEntry entry, out float worldSize)
         {
             float pxScale = PixelScale();
             float sizePx = LiftSizePx * pxScale;
@@ -663,21 +783,29 @@ namespace ShiftGo.BitFlow.View
             pxX = Mathf.Clamp(pxX, sizePx * 0.5f + 16f * pxScale, mainCamera.pixelWidth - sizePx * 0.5f - 16f * pxScale);
             float pxY = LiftCenterPx * pxScale;
 
-            return ScreenPointToCardPosition(new Vector2(pxX, pxY), LiftSizePx, entry.SlotWidth);
+            worldSize = WorldSizeAt(LiftDistance, LiftSizePx);
+            return CardPlanePoint(new Vector2(pxX, pxY), LiftDistance);
         }
 
         /// <summary>
-        /// 已经选中（拿在手里）的落点：缩到 <see cref="HeldSizePx"/> 沉进屏幕底下那条空带，横向跟着鼠标走。
-        /// 网格最前排在 188px、这张卡的上沿在 185px —— 所以选卡之后一个格子都不挡；
-        /// "手里是哪张"也始终看得见（落点由格子上的幽灵预览负责指示）。
+        /// 已经选中（拿在手里）的落点：缩到 <see cref="HeldSizePx"/> 沉在屏幕下沿。
+        /// 卡面按 <see cref="CardFaceScale"/> 放大 1.5 倍后（224px），它会压住网格最前面一排约 40px：
+        /// 屏幕底部本来只有 188px 高，224px 的卡物理上塞不进去 —— 换来的是一眼看得清卡面。
+        /// "手里是哪张"和"会落在哪"都没有丢：前者看这张卡，后者看格子上的幽灵预览。
+        ///
+        /// 横向不再贴着鼠标（那样卡会跟着光标横扫整屏，看着像在场景里漂）：
+        /// 卡停在屏幕底部正中，鼠标只按 <see cref="HeldSwayGain"/> 推它左右小幅摆。
+        /// 距离钉在 <see cref="HeldDistance"/>，鼠标划满全屏卡在世界里也只走一米出头 —— 就是"手举着牌左右看"。
         /// </summary>
-        Vector3 HeldPosition(CardEntry entry)
+        /// <param name="sway">-1 = 摆到最左，1 = 摆到最右（见 <see cref="CardEntry.Sway"/>）。</param>
+        Vector3 HeldPosition(float sway, out float worldSize)
         {
             float pxScale = PixelScale();
             float sizePx = HeldSizePx * pxScale;
             float margin = sizePx * 0.5f + BandMarginPx * pxScale;
 
-            float pxX = Mathf.Clamp(Input.mousePosition.x, margin, mainCamera.pixelWidth - margin);
+            float centerX = mainCamera.pixelWidth * 0.5f;
+            float pxX = Mathf.Clamp(centerX + sway * centerX * HeldSwayGain, margin, mainCamera.pixelWidth - margin);
 
             // 右下角那条 HUD 控制条（播放/暂停/撤销）不能被盖住：卡最多顶到它左边
             Rect bar = BitFlowHud.BottomBarScreenRect;
@@ -687,19 +815,29 @@ namespace ShiftGo.BitFlow.View
                 if (limit > margin) pxX = Mathf.Min(pxX, limit);
             }
 
-            return ScreenPointToCardPosition(new Vector2(pxX, HeldCenterPx * pxScale), HeldSizePx, entry.SlotWidth);
+            worldSize = WorldSizeAt(HeldDistance, HeldSizePx);
+            return CardPlanePoint(new Vector2(pxX, HeldCenterPx * pxScale), HeldDistance);
         }
 
         /// <summary>
-        /// 把"屏幕像素点 + 想要的像素边长"反推成相机前方一个世界坐标（两种拿起姿势共用同一套换算）。
-        /// 距离 d 满足：世界边长 × 画面半高 / (d × tan(fov/2)) = 想要像素边长；
-        /// ReferenceHeight 是 1080 基准，所以像素常量都按"1080 高时多少 px"写，实际大小自动跟着分辨率走。
+        /// 相机前方 distance 米处、屏幕上正好占 sizePx（1080 基准像素）的世界边长。
+        /// 屏幕占多少像素只取决于"世界边长 / 距离"这个比值，和分辨率无关：
+        /// sizePx 乘了 pxScale、画面像素高度也乘了 pxScale，正好约掉。
         /// </summary>
-        Vector3 ScreenPointToCardPosition(Vector2 pixel, float sizePx, float worldSize)
+        float WorldSizeAt(float distance, float sizePx)
         {
             float tanHalf = Mathf.Tan(mainCamera.fieldOfView * 0.5f * Mathf.Deg2Rad);
-            float distance = worldSize * ReferenceHeight / (2f * tanHalf * sizePx);
-            distance = Mathf.Max(0.5f, distance);
+            return sizePx * (2f * tanHalf * distance / ReferenceHeight);
+        }
+
+        /// <summary>
+        /// 把"屏幕像素点 + 一个固定距离"换成相机前方那个世界坐标。
+        /// 距离由调用方钉死（<see cref="LiftDistance"/> / <see cref="HeldDistance"/>），
+        /// 鼠标只决定卡在这个"手持平面"上的落点 —— 屏幕位置照样跟手，但世界里的行程只有几十厘米。
+        /// </summary>
+        Vector3 CardPlanePoint(Vector2 pixel, float distance)
+        {
+            float tanHalf = Mathf.Tan(mainCamera.fieldOfView * 0.5f * Mathf.Deg2Rad);
 
             float ndcX = pixel.x / (mainCamera.pixelWidth * 0.5f) - 1f;
             float ndcY = pixel.y / (mainCamera.pixelHeight * 0.5f) - 1f;

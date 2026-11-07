@@ -22,12 +22,33 @@ namespace ShiftGo.BitFlow.View
 
         // ---------------------------------------------------------------- 底部控制条
         // 屏幕底部现在没有"一条横带"了：待排区搬到场景里（躺在网格前方地面上的卡排），
-        // 底部中间整条让出来，控制条只收在右下角一小块，宽度从 860 压到 600。
+        // 底部中间整条让出来，控制条只收在右下角一小块，宽度从 860 压到 600（关掉倍速滑杆后进一步收到 480）。
         // 112px 是算出来的上限，不是随手取的：9×8 关卡（FOV 42）最前面一排格子从屏幕约 188px 开始。
         internal const float BottomBandBottom = 26f;
-        internal const float BottomBandHeight = 112f;
-        internal const float BottomBarWidth = 600f;
         internal const float BottomMargin = 28f;
+
+        /// <summary>
+        /// 底部控制条上的「倍速滑杆」开关。<b>暂时关掉</b>（先不给玩家调速），但整套实现一个字没删：
+        /// <see cref="CreateSlider"/>、<see cref="OnSpeedChanged"/>、<c>speedText</c> 都还在，
+        /// 改回 <c>true</c> 就原样恢复 —— 尺寸和按钮排布会跟着下面几个常量一起自动还原。
+        /// 用 static readonly 而不是 const：const 会被编译器折叠成 if(false)，触发 CS0162 警告。
+        /// </summary>
+        internal static readonly bool ShowSpeedControl = false;
+
+        /// <summary>
+        /// 控制条尺寸跟着滑杆走：有滑杆时是「上排按钮 + 下排滑杆」的两行条（600×112）；
+        /// 关掉后只剩一排按钮，条自动收成 480×64，右下角不会拖着一块空的深色底板。
+        /// 待排区是在运行期读 <see cref="BottomBarScreenRect"/> 来避让的，收到哪它就跟到哪，
+        /// 不需要改 BitFlowCardTray 一个字节。
+        /// </summary>
+        internal static readonly float BottomBandHeight = ShowSpeedControl ? 112f : 64f;
+        internal static readonly float BottomBarWidth = ShowSpeedControl ? 600f : 480f;
+
+        /// <summary>
+        /// 按钮行的纵向位置（相对条中心）：两行条里贴在上一行（26），
+        /// 只剩一排按钮时垂直居中（0）—— 否则按钮会顶到上边缘之外。
+        /// </summary>
+        static readonly float ButtonRowY = ShowSpeedControl ? 26f : 0f;
 
         BitFlowRunner runner;
         Camera mainCamera;
@@ -198,20 +219,24 @@ namespace ShiftGo.BitFlow.View
                 new Vector2(-BottomMargin, BottomBandBottom));
             bottomBarRect = bar;
 
-            // 两行排布：上面三个按钮，下面速度滑杆。
-            // 宽度从 860 压到 600 是为了把底部中间让给待排区；按钮尺寸只缩了一点，
-            // 因为真正占地方的是原来"一行硬排开"的布局，不是按钮本身。
-            Button pauseButton = CreateButton("Pause", bar, "PAUSE", new Vector2(150f, 44f), new Vector2(-160f, 26f), OnPauseClicked);
+            // 排布：三个按钮一行。y 走 ButtonRowY —— 有滑杆时贴上一行（26），
+            // 滑杆关掉后整行垂直居中（0），否则 64 高的条里按钮会顶出上边缘。
+            Button pauseButton = CreateButton("Pause", bar, "PAUSE", new Vector2(150f, 44f), new Vector2(-160f, ButtonRowY), OnPauseClicked);
             pauseButtonLabel = pauseButton.GetComponentInChildren<Text>();
 
-            CreateButton("Step", bar, "STEP", new Vector2(130f, 44f), new Vector2(-10f, 26f), OnStepClicked);
-            CreateButton("Reset", bar, "REPLAY", new Vector2(150f, 44f), new Vector2(145f, 26f), OnResetClicked);
+            CreateButton("Step", bar, "STEP", new Vector2(130f, 44f), new Vector2(-10f, ButtonRowY), OnStepClicked);
+            CreateButton("Reset", bar, "REPLAY", new Vector2(150f, 44f), new Vector2(145f, ButtonRowY), OnResetClicked);
 
-            speedText = CreateText("SpeedLabel", bar, "SPEED  x1.0", 16, TextAnchor.MiddleLeft, TextColor);
-            SetRect(speedText.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(160f, 22f), new Vector2(-240f, -28f));
+            // 倍速滑杆：暂时关闭（见 ShowSpeedControl），标签和滑杆一起挂在这个开关下。
+            // OnSpeedChanged / CreateSlider 保留未删，重新打开时不需要再补任何东西。
+            if (ShowSpeedControl)
+            {
+                speedText = CreateText("SpeedLabel", bar, "SPEED  x1.0", 16, TextAnchor.MiddleLeft, TextColor);
+                SetRect(speedText.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 0.5f),
+                    new Vector2(160f, 22f), new Vector2(-240f, -28f));
 
-            CreateSlider(bar, new Vector2(260f, 24f), new Vector2(-70f, -28f), 0.25f, 3f, 1f, OnSpeedChanged);
+                CreateSlider(bar, new Vector2(260f, 24f), new Vector2(-70f, -28f), 0.25f, 3f, 1f, OnSpeedChanged);
+            }
         }
 
         void LateUpdate()

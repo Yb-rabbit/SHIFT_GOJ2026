@@ -41,12 +41,50 @@ namespace ShiftGo.EditorTools
 
             Dictionary<string, ElementTypeSO> types = CreateElementTypes();
             CreateLevelAsset(types);
-            CreateScene();
-            RegisterScene();
+
+            // 只有真的生成了场景才去动 Build Settings：场景已存在时 RegisterScene 会把
+            // Test_2 顶到第一位，等于悄悄改掉打包入口场景（玩家场景本该排第一）。
+            if (CreateScene()) RegisterScene();
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log("[BitFlowAssetBuilder] 完成：Level_01.asset + Test_2_BitFlow.unity");
+        }
+
+        /// <summary>
+        /// 逃生门：清掉 Level_01 的摆放再重新种一遍。会丢掉所有手改，只在
+        /// 「想把关卡恢复成设计文档原样」或「新克隆项目种子里数据坏了」时用。
+        /// </summary>
+        [MenuItem("SHIFT GO/Setup/⚠ 强制重建 Level_01（覆盖手改）", priority = 90)]
+        public static void ForceRebuildLevel01()
+        {
+            LevelSO level = AssetDatabase.LoadAssetAtPath<LevelSO>(LevelAssetPath);
+            if (level == null)
+            {
+                Debug.LogError("[BitFlowAssetBuilder] 没有 " + LevelAssetPath + "，先跑「2. 生成关卡资产 + 演示场景」");
+                return;
+            }
+
+            bool confirmed = EditorUtility.DisplayDialog(
+                "强制重建 Level_01",
+                "这会清空 Level_01.asset 里现有的 "
+                    + (level.placements != null ? level.placements.Count : 0)
+                    + " 个摆放，并写回代码里的原始演示关。\n\n手改内容不可撤销，确定吗？",
+                "清空并重建", "取消");
+
+            if (!confirmed) return;
+
+            Undo.RecordObject(level, "Force Rebuild Level_01");
+            level.placements = new List<ElementPlacement>();
+            level.supplies = new List<ElementSupply>();
+            EditorUtility.SetDirty(level);
+
+            Dictionary<string, ElementTypeSO> types = CreateElementTypes();
+            CreateLevelAsset(types);
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log("[BitFlowAssetBuilder] Level_01 已强制重建");
         }
 
         static void EnsureFolder(string path)
@@ -74,78 +112,122 @@ namespace ShiftGo.EditorTools
         {
             Dictionary<string, ElementTypeSO> types = new Dictionary<string, ElementTypeSO>();
 
+            // 守卫：类型资产只在「还没初始化」（label 为空）时写默认配置。
+            // 已经配置过的一律不碰 —— 作者可能改过序列、朝向、目标个数，重跑菜单不该打回去。
             EmitterTypeSO emitter1 = EnsureAsset<EmitterTypeSO>(ElementFolder + "/Type_Emitter_E1.asset");
-            emitter1.label = "E1";
-            emitter1.facing = Dir.Right;
-            emitter1.sequence = "1011";
-            emitter1.repeatCount = 2;
-            EditorUtility.SetDirty(emitter1);
+            if (string.IsNullOrEmpty(emitter1.label))
+            {
+                emitter1.label = "E1";
+                emitter1.facing = Dir.Right;
+                emitter1.sequence = "1011";
+                emitter1.repeatCount = 2;
+                EditorUtility.SetDirty(emitter1);
+            }
             types["E1"] = emitter1;
 
             EmitterTypeSO emitter2 = EnsureAsset<EmitterTypeSO>(ElementFolder + "/Type_Emitter_E2.asset");
-            emitter2.label = "E2";
-            emitter2.facing = Dir.Right;
-            emitter2.sequence = "100";
-            emitter2.repeatCount = 1;
-            EditorUtility.SetDirty(emitter2);
+            if (string.IsNullOrEmpty(emitter2.label))
+            {
+                emitter2.label = "E2";
+                emitter2.facing = Dir.Right;
+                emitter2.sequence = "100";
+                emitter2.repeatCount = 1;
+                EditorUtility.SetDirty(emitter2);
+            }
             types["E2"] = emitter2;
 
             SplitterTypeSO splitter = EnsureAsset<SplitterTypeSO>(ElementFolder + "/Type_Splitter_L1.asset");
-            splitter.label = "L1";
-            splitter.oneArm = Dir.Up;
-            splitter.zeroArm = Dir.Right;
-            EditorUtility.SetDirty(splitter);
+            if (string.IsNullOrEmpty(splitter.label))
+            {
+                splitter.label = "L1";
+                splitter.oneArm = Dir.Up;
+                splitter.zeroArm = Dir.Right;
+                EditorUtility.SetDirty(splitter);
+            }
             types["L1"] = splitter;
 
             NotGateTypeSO notGate = EnsureAsset<NotGateTypeSO>(ElementFolder + "/Type_NotGate_N1.asset");
-            notGate.label = "N1";
-            notGate.outputDir = Dir.Right;
-            EditorUtility.SetDirty(notGate);
+            if (string.IsNullOrEmpty(notGate.label))
+            {
+                notGate.label = "N1";
+                notGate.outputDir = Dir.Right;
+                EditorUtility.SetDirty(notGate);
+            }
             types["N1"] = notGate;
 
             FilterTypeSO filter = EnsureAsset<FilterTypeSO>(ElementFolder + "/Type_Filter_F1.asset");
-            filter.label = "F1";
-            filter.outputDir = Dir.Right;
-            filter.passValue = 1;
-            EditorUtility.SetDirty(filter);
+            if (string.IsNullOrEmpty(filter.label))
+            {
+                filter.label = "F1";
+                filter.outputDir = Dir.Right;
+                filter.passValue = 1;
+                EditorUtility.SetDirty(filter);
+            }
             types["F1"] = filter;
 
             ReceiverTypeSO receiver1 = EnsureAsset<ReceiverTypeSO>(ElementFolder + "/Type_Receiver_R1.asset");
-            receiver1.label = "R1";
-            receiver1.feedFace = Dir.Down;
-            receiver1.targetSequence = "1";
-            receiver1.targetCount = 6;
-            EditorUtility.SetDirty(receiver1);
+            if (string.IsNullOrEmpty(receiver1.label))
+            {
+                receiver1.label = "R1";
+                receiver1.feedFace = Dir.Down;
+                receiver1.targetSequence = "1";
+                receiver1.targetCount = 6;
+                EditorUtility.SetDirty(receiver1);
+            }
             types["R1"] = receiver1;
 
             ReceiverTypeSO receiver2 = EnsureAsset<ReceiverTypeSO>(ElementFolder + "/Type_Receiver_R2.asset");
-            receiver2.label = "R2";
-            receiver2.feedFace = Dir.Left;
-            receiver2.targetSequence = "0";
-            receiver2.targetCount = 2;
-            EditorUtility.SetDirty(receiver2);
+            if (string.IsNullOrEmpty(receiver2.label))
+            {
+                receiver2.label = "R2";
+                receiver2.feedFace = Dir.Left;
+                receiver2.targetSequence = "0";
+                receiver2.targetCount = 2;
+                EditorUtility.SetDirty(receiver2);
+            }
             types["R2"] = receiver2;
 
             ReceiverTypeSO receiver3 = EnsureAsset<ReceiverTypeSO>(ElementFolder + "/Type_Receiver_R3.asset");
-            receiver3.label = "R3";
-            receiver3.feedFace = Dir.Left;
-            receiver3.targetSequence = "1";
-            receiver3.targetCount = 2;
-            EditorUtility.SetDirty(receiver3);
+            if (string.IsNullOrEmpty(receiver3.label))
+            {
+                receiver3.label = "R3";
+                receiver3.feedFace = Dir.Left;
+                receiver3.targetSequence = "1";
+                receiver3.targetCount = 2;
+                EditorUtility.SetDirty(receiver3);
+            }
             types["R3"] = receiver3;
 
             WallTypeSO wall = EnsureAsset<WallTypeSO>(ElementFolder + "/Type_Wall.asset");
-            wall.label = "WALL";
-            EditorUtility.SetDirty(wall);
+            if (string.IsNullOrEmpty(wall.label))
+            {
+                wall.label = "WALL";
+                EditorUtility.SetDirty(wall);
+            }
             types["WALL"] = wall;
 
             return types;
         }
 
-        /// <summary>生成 Level_01.asset：坐标与旋转态写在这里，类型资产保持可复用。</summary>
+        /// <summary>
+        /// 生成 Level_01.asset：坐标与旋转态写在这里，类型资产保持可复用。
+        ///
+        /// 守卫：资产里已经有摆放就**什么都不改**。关卡内容是作者手改出来的，
+        /// 这段代码只是「新克隆项目时的一次性种子」；旧版每次跑菜单都会重写，
+        /// 手改等于白改。要重置请走 <see cref="ForceRebuildLevel01"/>。
+        /// </summary>
         static void CreateLevelAsset(Dictionary<string, ElementTypeSO> types)
         {
             LevelSO level = EnsureAsset<LevelSO>(LevelAssetPath);
+
+            if (level.placements != null && level.placements.Count > 0)
+            {
+                Debug.Log("[BitFlowAssetBuilder] Level_01.asset 已有 " + level.placements.Count
+                    + " 个摆放，跳过生成、不覆盖手改"
+                    + "（要重置请用菜单 SHIFT GO/Setup/⚠ 强制重建 Level_01）");
+                return;
+            }
+
             level.displayName = "LEVEL 01 - BIT FLOW";
             level.width = 9;
             level.height = 8;
@@ -225,9 +307,19 @@ namespace ShiftGo.EditorTools
                 + "，用时 " + result.TickCount + " ticks");
         }
 
-        /// <summary>生成可直接 Play 的演示场景。</summary>
-        static void CreateScene()
+        /// <summary>生成可直接 Play 的演示场景。返回 true = 这次真的生成了（调用方才去改 Build Settings）。</summary>
+        static bool CreateScene()
         {
+            // 守卫：场景文件已经存在就绝不动它。CreateScene 走的是 NewScene(EmptyScene, Single)，
+            // 会先把当前场景整个关掉再重建成 4 个基础对象 —— 手调的相机、模型朝向/缩放、
+            // VFX 位置全都会没。只在场景不存在时生成一次。
+            if (!string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(ScenePath)))
+            {
+                Debug.Log("[BitFlowAssetBuilder] " + ScenePath
+                    + " 已存在，跳过场景重建（要重置请手动删除该场景文件后再跑）");
+                return false;
+            }
+
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             // 环境光：整体压暗，靠自发光与 Bloom 出效果
@@ -256,6 +348,7 @@ namespace ShiftGo.EditorTools
             EditorSceneManager.MarkSceneDirty(scene);
             bool saved = EditorSceneManager.SaveScene(scene, ScenePath);
             Debug.Log("[BitFlowAssetBuilder] 场景保存" + (saved ? "成功：" : "失败：") + ScenePath);
+            return saved;
         }
 
         static void CreateCamera()

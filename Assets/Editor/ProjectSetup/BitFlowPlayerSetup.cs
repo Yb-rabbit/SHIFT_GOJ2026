@@ -55,11 +55,62 @@ namespace ShiftGo.EditorTools
             LevelSO level04 = CreateLevel04(types);
 
             LevelCatalogSO catalog = CreateCatalog(level02, level03, level04);
-            CreatePlayerScene(level02, catalog);
+
+            // 只有真的生成了玩家场景才动 Build Settings（否则会把别人排好的入口场景顶掉）
+            if (CreatePlayerScene(level02, catalog)) RegisterScene();
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log("[BitFlowPlayerSetup] 完成：Level_02~04 + LevelCatalog + Test_3_BitFlowPlayer.unity");
+        }
+
+        /// <summary>
+        /// 逃生门：清空三关的摆放与手牌，再按代码里的教学关重新种一遍。
+        /// 会丢掉所有手改，只在「想恢复原始教学关」时用。
+        /// </summary>
+        [MenuItem("SHIFT GO/Setup/⚠ 强制重建教学关（覆盖手改）", priority = 91)]
+        public static void ForceRebuildTeachingLevels()
+        {
+            string[] names = { "Level_02", "Level_03", "Level_04" };
+            List<LevelSO> found = new List<LevelSO>();
+            int totalLoads = 0;
+
+            foreach (string name in names)
+            {
+                LevelSO level = AssetDatabase.LoadAssetAtPath<LevelSO>(LevelFolder + "/" + name + ".asset");
+                if (level == null)
+                {
+                    Debug.LogWarning("[BitFlowPlayerSetup] 没有 " + name + ".asset，跳过");
+                    continue;
+                }
+                found.Add(level);
+                totalLoads += level.placements != null ? level.placements.Count : 0;
+            }
+
+            if (found.Count == 0)
+            {
+                Debug.LogError("[BitFlowPlayerSetup] 三个教学关资产都没找到，先跑「3. 生成教学关 + 玩家场景」");
+                return;
+            }
+
+            bool confirmed = EditorUtility.DisplayDialog(
+                "强制重建教学关",
+                "这会清空 Level_02~04 现有的 " + totalLoads + " 个摆放与全部手牌，"
+                    + "并按代码里的原始教学关重写。\n\n手改内容不可撤销，确定吗？",
+                "清空并重建", "取消");
+
+            if (!confirmed) return;
+
+            foreach (LevelSO level in found)
+            {
+                Undo.RecordObject(level, "Force Rebuild Teaching Levels");
+                level.placements = new List<ElementPlacement>();
+                level.supplies = new List<ElementSupply>();
+                EditorUtility.SetDirty(level);
+            }
+
+            BuildAll();
+            Debug.Log("[BitFlowPlayerSetup] 三个教学关已强制重建");
         }
 
         // ---------------------------------------------------------------- 资产小工具
@@ -84,38 +135,41 @@ namespace ShiftGo.EditorTools
             return asset;
         }
 
-        /// <summary>读齐生成教学关要用的类型资产；缺哪个就现场补一个，不依赖第 2 步的执行顺序。</summary>
+        /// <summary>
+        /// 读齐生成教学关要用的类型资产；缺哪个就现场补一个，不依赖第 2 步的执行顺序。
+        /// 守卫：只在资产「还没初始化」（label 为空）时写默认配置，已配置过的一律不碰。
+        /// </summary>
         static Dictionary<string, ElementTypeSO> LoadElementTypes()
         {
             Dictionary<string, ElementTypeSO> types = new Dictionary<string, ElementTypeSO>();
 
             EmitterTypeSO emitter1 = EnsureAsset<EmitterTypeSO>(ElementFolder + "/Type_Emitter_E1.asset");
-            if (emitter1.label != "E1") ConfigureEmitter(emitter1, "E1", Dir.Right, "1011", 2);
+            if (string.IsNullOrEmpty(emitter1.label)) ConfigureEmitter(emitter1, "E1", Dir.Right, "1011", 2);
             types["E1"] = emitter1;
 
             SplitterTypeSO splitter1 = EnsureAsset<SplitterTypeSO>(ElementFolder + "/Type_Splitter_L1.asset");
-            if (splitter1.label != "L1") ConfigureSplitter(splitter1, "L1", Dir.Up, Dir.Right);
+            if (string.IsNullOrEmpty(splitter1.label)) ConfigureSplitter(splitter1, "L1", Dir.Up, Dir.Right);
             types["L1"] = splitter1;
 
             FilterTypeSO filter1 = EnsureAsset<FilterTypeSO>(ElementFolder + "/Type_Filter_F1.asset");
-            if (filter1.label != "F1") ConfigureFilter(filter1, "F1", Dir.Right, 1);
+            if (string.IsNullOrEmpty(filter1.label)) ConfigureFilter(filter1, "F1", Dir.Right, 1);
             types["F1"] = filter1;
 
             ReceiverTypeSO receiver1 = EnsureAsset<ReceiverTypeSO>(ElementFolder + "/Type_Receiver_R1.asset");
-            if (receiver1.label != "R1") ConfigureReceiver(receiver1, "R1", Dir.Down, "1", 6);
+            if (string.IsNullOrEmpty(receiver1.label)) ConfigureReceiver(receiver1, "R1", Dir.Down, "1", 6);
             types["R1"] = receiver1;
 
             ReceiverTypeSO receiver2 = EnsureAsset<ReceiverTypeSO>(ElementFolder + "/Type_Receiver_R2.asset");
-            if (receiver2.label != "R2") ConfigureReceiver(receiver2, "R2", Dir.Left, "0", 2);
+            if (string.IsNullOrEmpty(receiver2.label)) ConfigureReceiver(receiver2, "R2", Dir.Left, "0", 2);
             types["R2"] = receiver2;
 
             // 教学关需要的两个新类型：左侧进料的六位 1 接收器、只放行 0 的过滤器
             ReceiverTypeSO receiver4 = EnsureAsset<ReceiverTypeSO>(ElementFolder + "/Type_Receiver_R4.asset");
-            if (receiver4.label != "R4") ConfigureReceiver(receiver4, "R4", Dir.Left, "1", 6);
+            if (string.IsNullOrEmpty(receiver4.label)) ConfigureReceiver(receiver4, "R4", Dir.Left, "1", 6);
             types["R4"] = receiver4;
 
             FilterTypeSO filter0 = EnsureAsset<FilterTypeSO>(ElementFolder + "/Type_Filter_F0.asset");
-            if (filter0.label != "F0") ConfigureFilter(filter0, "F0", Dir.Right, 0);
+            if (string.IsNullOrEmpty(filter0.label)) ConfigureFilter(filter0, "F0", Dir.Right, 0);
             types["F0"] = filter0;
 
             WallTypeSO wall = EnsureAsset<WallTypeSO>(ElementFolder + "/Type_Wall.asset");
@@ -181,11 +235,32 @@ namespace ShiftGo.EditorTools
         static LevelSO EnsureLevel(string fileName, string displayName, int width, int height, float tickInterval)
         {
             LevelSO level = EnsureAsset<LevelSO>(LevelFolder + "/" + fileName + ".asset");
+
+            // 守卫：已有内容的关卡连尺寸都不动。作者可能调过网格，重新生成时不该打回去。
+            if (level.placements != null && level.placements.Count > 0) return level;
+
             level.displayName = displayName;
             level.width = width;
             level.height = height;
             level.tickInterval = tickInterval;
             return level;
+        }
+
+        /// <summary>
+        /// 守卫：这一关已经有摆放了就完全不动它（连摆放、手牌、自检一起跳过）。
+        /// 生成器只是「新克隆项目时的一次性种子」，之后资产就是唯一真相；
+        /// 旧版每次跑菜单都重写摆放 + 手牌，作者手改等于白改。
+        /// 要重置请走菜单 SHIFT GO/Setup/⚠ 强制重建教学关。
+        /// </summary>
+        static bool SkipIfAuthored(LevelSO level, string tag)
+        {
+            if (level.placements == null || level.placements.Count == 0) return false;
+
+            Debug.Log("[BitFlowPlayerSetup] " + tag + " 已有 " + level.placements.Count
+                + " 个摆放 + " + (level.supplies != null ? level.supplies.Count : 0)
+                + " 张手牌，跳过生成、不覆盖手改"
+                + "（要重置请用菜单 SHIFT GO/Setup/⚠ 强制重建教学关）");
+            return true;
         }
 
         // ---------------------------------------------------------------- 三关教学
@@ -197,6 +272,7 @@ namespace ShiftGo.EditorTools
         static LevelSO CreateLevel02(Dictionary<string, ElementTypeSO> types)
         {
             LevelSO level = EnsureLevel("Level_02", "LEVEL 02 - FILTER", 7, 5, 0.35f);
+            if (SkipIfAuthored(level, "Level_02")) return level;
 
             level.placements = new List<ElementPlacement>
             {
@@ -224,6 +300,7 @@ namespace ShiftGo.EditorTools
         static LevelSO CreateLevel03(Dictionary<string, ElementTypeSO> types)
         {
             LevelSO level = EnsureLevel("Level_03", "LEVEL 03 - SPLITTER", 9, 7, 0.35f);
+            if (SkipIfAuthored(level, "Level_03")) return level;
 
             level.placements = new List<ElementPlacement>
             {
@@ -254,6 +331,7 @@ namespace ShiftGo.EditorTools
         static LevelSO CreateLevel04(Dictionary<string, ElementTypeSO> types)
         {
             LevelSO level = EnsureLevel("Level_04", "LEVEL 04 - TURN & FILTER", 9, 6, 0.35f);
+            if (SkipIfAuthored(level, "Level_04")) return level;
 
             level.placements = new List<ElementPlacement>
             {
@@ -339,8 +417,18 @@ namespace ShiftGo.EditorTools
         /// 生成玩家场景：BUILD MODE 默认关掉（allowBuildMode = false），放置交给手牌盘；
         /// HUD 的 RETRY / NEXT LEVEL 走 <see cref="LevelFlow"/>，于是整个关卡循环就是 catalog 的顺序。
         /// </summary>
-        static void CreatePlayerScene(LevelSO firstLevel, LevelCatalogSO catalog)
+        static bool CreatePlayerScene(LevelSO firstLevel, LevelCatalogSO catalog)
         {
+            // 守卫：玩家场景已存在就绝不重建。NewScene(EmptyScene, Single) 会先关掉当前场景
+            // 再重建成空白场景 + 6 个基础对象，手调的模型朝向/缩放、相机、VFX 全都会没。
+            if (!string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(PlayerScenePath)))
+            {
+                Debug.Log("[BitFlowPlayerSetup] " + PlayerScenePath
+                    + " 已存在，跳过场景重建（要重置请手动删除该场景文件后再跑）；"
+                    + "若 LevelCatalog 顺序有变，请手动确认 BitFlowRunner.levelAsset 指向第一关");
+                return false;
+            }
+
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             RenderSettings.ambientMode = AmbientMode.Flat;
@@ -371,7 +459,7 @@ namespace ShiftGo.EditorTools
             EditorSceneManager.MarkSceneDirty(scene);
             bool saved = EditorSceneManager.SaveScene(scene, PlayerScenePath);
             Debug.Log("[BitFlowPlayerSetup] 玩家场景保存" + (saved ? "成功：" : "失败：") + PlayerScenePath);
-            RegisterScene();
+            return saved;
         }
 
         static void SetObjectReference(SerializedObject target, string propertyName, UnityEngine.Object value)

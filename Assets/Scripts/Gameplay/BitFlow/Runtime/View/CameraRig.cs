@@ -15,10 +15,11 @@ namespace ShiftGo.BitFlow.View
 
         [Header("机位")]
         [Tooltip("最终机位相对网格中心的偏移")]
-        [SerializeField] Vector3 finalOffset = new Vector3(0f, 9.5f, -12.5f);
+        // 俯角固定 37.2°（y:z ≈ 0.76），只靠整体比例推近/拉远；overviewOffset 同步按同一比例缩放。
+        [SerializeField] Vector3 finalOffset = new Vector3(0f, 7.6f, -10f);
 
         [Tooltip("开场机位相对网格中心的偏移（更远更高）")]
-        [SerializeField] Vector3 overviewOffset = new Vector3(0f, 18f, -22f);
+        [SerializeField] Vector3 overviewOffset = new Vector3(0f, 14.4f, -17.6f);
 
         [Tooltip("视线目标相对网格中心的抬高量")]
         [SerializeField] float lookHeight = 1.1f;
