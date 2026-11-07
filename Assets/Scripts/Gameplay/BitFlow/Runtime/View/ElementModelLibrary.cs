@@ -8,6 +8,12 @@ namespace ShiftGo.BitFlow.View
     /// <summary>
     /// 自制低模（<c>Assets/Arts/Resources/Models/*.fbx</c>）的加载与"摆正"。
     ///
+    /// <para><b>当前状态：暂时不接线。</b>元件外观已回退回几何体拼装（<see cref="ElementView"/> 取的是
+    /// 594680b 之前那一版）：FBX 模型的尺寸和材质由美术定、格子里的可读性比不过方块+箭头，
+    /// 所以先搁着。资产和这套库都留着，要恢复只需让 <see cref="ElementView"/> 再调 <see cref="TryBuild"/>，
+    /// 做法就是把 ElementView.cs 恢复成 594680b 版本（<c>git checkout 594680b -- .../ElementView.cs</c>）。
+    /// 卡牌美术（CardArtLibrary + Resources/Cards）与这里无关，一直是开着的。</para>
+    ///
     /// 模型是美术资产，**颜色属于美术，比例也尽量保留**：
     /// 不换材质；尺寸只做一次等比归一化（水平方向占满 <see cref="CellFootprint"/> 格），
     /// 绝不单独压高度 —— 单独压高度会把模型压成矮扁的玩具（这就是上一版看起来"完全不对"的原因）。
