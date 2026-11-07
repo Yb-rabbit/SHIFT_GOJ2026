@@ -21,10 +21,18 @@ MonoBehaviour:
     coord: {x: 0, y: 2}
     rotationSteps: 0
     playerEditable: 0
+    overrideSequence: 1
+    sequence: 1
+    overrideCount: 1
+    count: 6
   - type: {fileID: 11400000, guid: d71006145954bbc46a166471edbab091, type: 2}
     coord: {x: 6, y: 2}
     rotationSteps: 0
     playerEditable: 0
+    overrideSequence: 0
+    sequence: 1
+    overrideCount: 0
+    count: 1
   supplies:
   - type: {fileID: 11400000, guid: e25817d1fdcd78042ae44997f5900f44, type: 2}
     count: 1

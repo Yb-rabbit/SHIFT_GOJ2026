@@ -65,6 +65,10 @@ namespace ShiftGo.BitFlow.Data
                 element.Hint = placement.type.Describe();
                 element.TypeKey = placement.type.Key;
 
+                // 关卡设计权：这一格在编辑器里填的序列 / 次数，覆盖类型资产的默认值。
+                // 没填过的格子这里是个空操作，所以老关卡行为完全不变。
+                placement.ApplyOverrides(element);
+
                 definition.Elements.Add(element);
                 nextId++;
             }
@@ -92,13 +96,19 @@ namespace ShiftGo.BitFlow.Data
                     new GridPoint(placement.coord.x, placement.coord.y), placement.rotationSteps);
                 if (element == null) continue;
 
+                // 和 ToDefinition() 用同一份覆盖逻辑，保证作者视角与玩家视角参数一致
+                placement.ApplyOverrides(element);
+
                 draft.Place(element, !placement.playerEditable);
             }
 
             foreach (ElementSupply supply in supplies)
             {
                 if (supply == null || supply.type == null) continue;
-                draft.SetStock(supply.type.Key, supply.count);
+
+                // 累加而不是覆盖：库存按类型 Key 记账，同一个类型写两条就是「再多给几张」。
+                // 覆盖会让作者手滑加两次时玩家少一张牌（Level_05 就踩过这个坑）。
+                draft.AddStock(supply.type.Key, supply.count);
             }
 
             // 关卡初始化不算玩家的一步：第一次 Ctrl+Z 不该把预设件撤掉

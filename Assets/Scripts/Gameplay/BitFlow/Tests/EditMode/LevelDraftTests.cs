@@ -67,7 +67,7 @@ namespace ShiftGo.BitFlow.Tests
                 {
                     Assert.AreEqual(emitter.Facing, copy.PrimaryDir, "发射器朝向丢失");
                     Assert.AreEqual(emitter.Sequence, copy.Sequence, "发射器序列丢失");
-                    Assert.AreEqual(emitter.RepeatCount, copy.Count, "发射器轮数丢失");
+                    Assert.AreEqual(emitter.EmitCount, copy.Count, "发射器位数丢失");
                 }
                 else if (element is ReceiverDefinition receiver)
                 {

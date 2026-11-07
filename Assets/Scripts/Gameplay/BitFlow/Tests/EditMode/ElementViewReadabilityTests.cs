@@ -73,7 +73,7 @@ namespace ShiftGo.BitFlow.Tests
                 Coord = new GridPoint(1, 1),
                 Facing = Dir.Right,
                 Sequence = "1011",
-                RepeatCount = 1,
+                EmitCount = 4,
             };
 
             ElementView view = BuildView(emitter);
@@ -98,7 +98,7 @@ namespace ShiftGo.BitFlow.Tests
                 Coord = new GridPoint(1, 1),
                 Facing = Dir.Up,
                 Sequence = "101010101100",
-                RepeatCount = 1,
+                EmitCount = 12,
             };
 
             ElementView view = BuildView(emitter);
@@ -116,7 +116,7 @@ namespace ShiftGo.BitFlow.Tests
                 Coord = new GridPoint(1, 1),
                 Facing = Dir.Right,
                 Sequence = "1111",
-                RepeatCount = 1,
+                EmitCount = 4,
             };
 
             ElementView view = BuildView(emitter);
@@ -200,6 +200,75 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         [Test]
+        public void ReceiverView_NeverLooksLikeAnEmitter()
+        {
+            // 接收器是"收"，绝不能画朝外的箭头 —— 发射器就是"矮块 + 朝外箭头"，
+            // 两边都往外指的话玩家只能靠进度条猜谁是收、谁是发（四支白箭头还会把本体糊成一朵白花）。
+            Dir[] dirs = (Dir[])System.Enum.GetValues(typeof(Dir));
+            foreach (bool acceptAnyFace in new[] { true, false })
+            {
+                ReceiverDefinition receiver = new ReceiverDefinition
+                {
+                    Id = 7,
+                    Coord = new GridPoint(1, 1),
+                    FeedFace = Dir.Left,
+                    TargetSequence = "1",
+                    TargetCount = 2,
+                    AcceptAnyFace = acceptAnyFace,
+                };
+
+                ElementView view = BuildView(receiver);
+
+                foreach (Dir dir in dirs)
+                {
+                    Assert.IsNull(view.transform.Find("arrow_" + dir),
+                        "接收器（AcceptAnyFace=" + acceptAnyFace + "）不该有朝外的箭杆，会跟发射器撞脸");
+                    Assert.IsNull(view.transform.Find("arrowhead_" + dir),
+                        "接收器（AcceptAnyFace=" + acceptAnyFace + "）不该有朝外的箭头头，会跟发射器撞脸");
+                }
+
+                Object.DestroyImmediate(root);
+                root = null;
+            }
+        }
+
+        [Test]
+        public void ReceiverView_StrictModeSealsTheOtherThreeSides()
+        {
+            // 收几面靠"形状"表达：全向=四个口全开，严格=堵掉三个只留进料面。
+            // 所以严格模式应该正好多出三块封口 —— 比让玩家去数箭头指哪边快得多。
+            int openSides = CountBodyBlocks(true);
+            int strictSides = CountBodyBlocks(false);
+
+            Assert.AreEqual(openSides + 3, strictSides,
+                "严格模式应比全向模式多堵三块（另外三个口），否则玩家看不出只有一边能进");
+        }
+
+        int CountBodyBlocks(bool acceptAnyFace)
+        {
+            ReceiverDefinition receiver = new ReceiverDefinition
+            {
+                Id = 8,
+                Coord = new GridPoint(1, 1),
+                FeedFace = Dir.Left,
+                TargetSequence = "1",
+                TargetCount = 2,
+                AcceptAnyFace = acceptAnyFace,
+            };
+
+            ElementView view = BuildView(receiver);
+            int count = 0;
+            foreach (Transform child in view.transform)
+            {
+                if (child.name == "block") count++;
+            }
+
+            Object.DestroyImmediate(root);
+            root = null;
+            return count;
+        }
+
+        [Test]
         public void Simulation_ReportsEmitterProgress()
         {
             LevelDefinition level = new LevelDefinition { Width = 6, Height = 1 };
@@ -209,7 +278,7 @@ namespace ShiftGo.BitFlow.Tests
                 Coord = new GridPoint(0, 0),
                 Facing = Dir.Right,
                 Sequence = "1001",
-                RepeatCount = 2,
+                EmitCount = 8,
             });
 
             BitFlowSimulation simulation = new BitFlowSimulation(level);

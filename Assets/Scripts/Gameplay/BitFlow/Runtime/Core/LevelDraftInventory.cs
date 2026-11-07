@@ -54,6 +54,23 @@ namespace ShiftGo.BitFlow.Core
             stock[typeKey] = Math.Max(0, count);
         }
 
+        /// <summary>
+        /// 往某一摞牌里「加」张数，而不是覆盖。
+        ///
+        /// 关卡资产登记手牌必须走这里：库存是按类型 Key 记账的（两摞都用分流器时就该合成一摞），
+        /// 所以 supplies 里同一个类型出现两次是「再给几张」，不是「换一个数字」——
+        /// 覆盖式登记会让玩家凭空少牌。存档载入仍用 <see cref="SetStock"/>：
+        /// 存档里每个 Key 只出现一次，语义就是"这就是全部剩余"。
+        /// </summary>
+        public void AddStock(string typeKey, int count)
+        {
+            if (string.IsNullOrEmpty(typeKey)) return;
+
+            stockEnabled = true;
+            int left = stock.TryGetValue(typeKey, out int existing) ? existing : 0;
+            stock[typeKey] = left + Math.Max(0, count);
+        }
+
         /// <summary>某摞牌还剩几张；返回 -1 表示不限量（作者模式，或这个 Key 没有归属）。</summary>
         public int Remaining(string typeKey)
         {

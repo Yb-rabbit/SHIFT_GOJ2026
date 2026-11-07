@@ -19,13 +19,24 @@ namespace ShiftGo.EditorTools
     ///             -executeMethod ShiftGo.EditorTools.BitFlowAssetBuilder.BuildAll -logFile "&lt;日志&gt;"
     ///
     /// 产出：
-    ///   Assets/Data/Elements/*.asset      —— 元件类型配置（只含类型信息，不含坐标）
+    ///   Assets/Data/Elements/&lt;种类&gt;/*.asset —— 元件类型配置（按元件种类分目录，只含类型信息，不含坐标）
     ///   Assets/Data/Levels/Level_01.asset —— 演示关摆放表（坐标 + 旋转态）
     ///   Assets/Scenes/Test_2_BitFlow.unity—— 可直接 Play 的演示场景
     /// </summary>
     public static class BitFlowAssetBuilder
     {
+        /// <summary>元件类型资产根目录。</summary>
         const string ElementFolder = "Assets/Data/Elements";
+
+        // 类型资产按「元件种类」分子目录存放：CreateAssetMenu 的 SHIFT GO/Elements/xxx
+        // 与这里的目录一一对应，新建/查找/统计缺口都在同一条线上。
+        const string EmitterFolder = ElementFolder + "/Emitter";
+        const string ReceiverFolder = ElementFolder + "/Receiver";
+        const string SplitterFolder = ElementFolder + "/Splitter";
+        const string NotGateFolder = ElementFolder + "/NotGate";
+        const string FilterFolder = ElementFolder + "/Filter";
+        const string WallFolder = ElementFolder + "/Wall";
+
         const string LevelFolder = "Assets/Data/Levels";
         const string LevelAssetPath = LevelFolder + "/Level_01.asset";
         const string ScenePath = "Assets/Scenes/Test_2_BitFlow.unity";
@@ -36,6 +47,12 @@ namespace ShiftGo.EditorTools
         {
             EnsureFolder("Assets/Data");
             EnsureFolder(ElementFolder);
+            EnsureFolder(EmitterFolder);
+            EnsureFolder(ReceiverFolder);
+            EnsureFolder(SplitterFolder);
+            EnsureFolder(NotGateFolder);
+            EnsureFolder(FilterFolder);
+            EnsureFolder(WallFolder);
             EnsureFolder(LevelFolder);
             EnsureFolder("Assets/Scenes");
 
@@ -114,7 +131,7 @@ namespace ShiftGo.EditorTools
 
             // 守卫：类型资产只在「还没初始化」（label 为空）时写默认配置。
             // 已经配置过的一律不碰 —— 作者可能改过序列、朝向、目标个数，重跑菜单不该打回去。
-            EmitterTypeSO emitter1 = EnsureAsset<EmitterTypeSO>(ElementFolder + "/Type_Emitter_E1.asset");
+            EmitterTypeSO emitter1 = EnsureAsset<EmitterTypeSO>(EmitterFolder + "/Type_Emitter_E1.asset");
             if (string.IsNullOrEmpty(emitter1.label))
             {
                 emitter1.label = "E1";
@@ -125,7 +142,7 @@ namespace ShiftGo.EditorTools
             }
             types["E1"] = emitter1;
 
-            EmitterTypeSO emitter2 = EnsureAsset<EmitterTypeSO>(ElementFolder + "/Type_Emitter_E2.asset");
+            EmitterTypeSO emitter2 = EnsureAsset<EmitterTypeSO>(EmitterFolder + "/Type_Emitter_E2.asset");
             if (string.IsNullOrEmpty(emitter2.label))
             {
                 emitter2.label = "E2";
@@ -136,7 +153,7 @@ namespace ShiftGo.EditorTools
             }
             types["E2"] = emitter2;
 
-            SplitterTypeSO splitter = EnsureAsset<SplitterTypeSO>(ElementFolder + "/Type_Splitter_L1.asset");
+            SplitterTypeSO splitter = EnsureAsset<SplitterTypeSO>(SplitterFolder + "/Type_Splitter_L1.asset");
             if (string.IsNullOrEmpty(splitter.label))
             {
                 splitter.label = "L1";
@@ -146,7 +163,7 @@ namespace ShiftGo.EditorTools
             }
             types["L1"] = splitter;
 
-            NotGateTypeSO notGate = EnsureAsset<NotGateTypeSO>(ElementFolder + "/Type_NotGate_N1.asset");
+            NotGateTypeSO notGate = EnsureAsset<NotGateTypeSO>(NotGateFolder + "/Type_NotGate_N1.asset");
             if (string.IsNullOrEmpty(notGate.label))
             {
                 notGate.label = "N1";
@@ -155,7 +172,7 @@ namespace ShiftGo.EditorTools
             }
             types["N1"] = notGate;
 
-            FilterTypeSO filter = EnsureAsset<FilterTypeSO>(ElementFolder + "/Type_Filter_F1.asset");
+            FilterTypeSO filter = EnsureAsset<FilterTypeSO>(FilterFolder + "/Type_Filter_F1.asset");
             if (string.IsNullOrEmpty(filter.label))
             {
                 filter.label = "F1";
@@ -165,7 +182,7 @@ namespace ShiftGo.EditorTools
             }
             types["F1"] = filter;
 
-            ReceiverTypeSO receiver1 = EnsureAsset<ReceiverTypeSO>(ElementFolder + "/Type_Receiver_R1.asset");
+            ReceiverTypeSO receiver1 = EnsureAsset<ReceiverTypeSO>(ReceiverFolder + "/Type_Receiver_R1.asset");
             if (string.IsNullOrEmpty(receiver1.label))
             {
                 receiver1.label = "R1";
@@ -176,7 +193,7 @@ namespace ShiftGo.EditorTools
             }
             types["R1"] = receiver1;
 
-            ReceiverTypeSO receiver2 = EnsureAsset<ReceiverTypeSO>(ElementFolder + "/Type_Receiver_R2.asset");
+            ReceiverTypeSO receiver2 = EnsureAsset<ReceiverTypeSO>(ReceiverFolder + "/Type_Receiver_R2.asset");
             if (string.IsNullOrEmpty(receiver2.label))
             {
                 receiver2.label = "R2";
@@ -187,7 +204,7 @@ namespace ShiftGo.EditorTools
             }
             types["R2"] = receiver2;
 
-            ReceiverTypeSO receiver3 = EnsureAsset<ReceiverTypeSO>(ElementFolder + "/Type_Receiver_R3.asset");
+            ReceiverTypeSO receiver3 = EnsureAsset<ReceiverTypeSO>(ReceiverFolder + "/Type_Receiver_R3.asset");
             if (string.IsNullOrEmpty(receiver3.label))
             {
                 receiver3.label = "R3";
@@ -198,7 +215,7 @@ namespace ShiftGo.EditorTools
             }
             types["R3"] = receiver3;
 
-            WallTypeSO wall = EnsureAsset<WallTypeSO>(ElementFolder + "/Type_Wall.asset");
+            WallTypeSO wall = EnsureAsset<WallTypeSO>(WallFolder + "/Type_Wall.asset");
             if (string.IsNullOrEmpty(wall.label))
             {
                 wall.label = "WALL";

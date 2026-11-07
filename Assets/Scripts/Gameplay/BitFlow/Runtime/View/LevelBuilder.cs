@@ -106,9 +106,12 @@ namespace ShiftGo.BitFlow.View
             switch (element)
             {
                 case EmitterDefinition emitter:
-                    return $"发射器 #{emitter.Id}\n序列 “{emitter.Sequence}” ×{emitter.RepeatCount}，朝 {emitter.Facing}\n点阵（左→右＝发射顺序）：青=1 橙=0，发出的会变暗";
+                    return $"发射器 #{emitter.Id}\n序列 “{emitter.Sequence}” 共 {emitter.EmitCount} 位，朝 {emitter.Facing}\n点阵（左→右＝发射顺序）：青=1 橙=0，发出的会变暗";
                 case ReceiverDefinition receiver:
-                    return $"接收器 #{receiver.Id}\n需要 “{receiver.TargetSequence}” ×{receiver.TargetCount}，进料面朝 {receiver.FeedFace}\n点阵＝目标序列：青=1 橙=0";
+                    string mouth = receiver.AcceptAnyFace
+                        ? "四面都能进"
+                        : "只从 " + receiver.FeedFace + " 面进";
+                    return $"接收器 #{receiver.Id}\n需要 “{receiver.TargetSequence}” ×{receiver.TargetCount}，{mouth}\n点阵＝目标序列：青=1 橙=0";
                 case SplitterDefinition splitter:
                     return "分流器 #" + splitter.Id + "\n青色臂（收 1）→ " + splitter.OneArm + "，橙色臂（收 0）→ " + splitter.ZeroArm;
                 case NotGateDefinition notGate:

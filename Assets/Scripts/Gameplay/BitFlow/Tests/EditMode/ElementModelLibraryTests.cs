@@ -157,7 +157,7 @@ namespace ShiftGo.BitFlow.Tests
         {
             ElementDefinition[] elements =
             {
-                new EmitterDefinition { Id = 11, Coord = new GridPoint(1, 1), Facing = Dir.Right, Sequence = "1", RepeatCount = 1 },
+                new EmitterDefinition { Id = 11, Coord = new GridPoint(1, 1), Facing = Dir.Right, Sequence = "1", EmitCount = 1 },
                 new ReceiverDefinition { Id = 12, Coord = new GridPoint(1, 1), FeedFace = Dir.Down, TargetSequence = "1", TargetCount = 1 },
             };
 
@@ -189,7 +189,7 @@ namespace ShiftGo.BitFlow.Tests
         {
             LevelDefinition level = new LevelDefinition { Width = 4, Height = 4 };
             level.Elements.Add(new EmitterDefinition
-                { Id = 21, Coord = new GridPoint(1, 1), Facing = Dir.Right, Sequence = "1", RepeatCount = 1 });
+                { Id = 21, Coord = new GridPoint(1, 1), Facing = Dir.Right, Sequence = "1", EmitCount = 1 });
             level.Elements.Add(new ReceiverDefinition
                 { Id = 22, Coord = new GridPoint(2, 1), FeedFace = Dir.Down, TargetSequence = "1", TargetCount = 1 });
 

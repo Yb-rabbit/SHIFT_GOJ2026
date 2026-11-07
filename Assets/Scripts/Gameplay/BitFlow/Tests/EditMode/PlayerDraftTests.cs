@@ -61,8 +61,23 @@ namespace ShiftGo.BitFlow.Tests
             EditableElement element = EditableElement.CreateDefault(CellKind.Emitter, coord);
             element.PrimaryDir = Dir.Right;
             element.Sequence = sequence;
-            element.Count = repeatCount;
+            // 第三个参数沿用「重复轮数」，而 EditableElement.Count 现在是「发射总位数」，
+            // 在这里换算一次（1011 ×2 → 8 位），调用点就不用跟着改。
+            element.Count = repeatCount * BitCount(sequence);
             return element;
+        }
+
+        /// <summary>序列里有效 0/1 的个数（至少 1，和模拟器的兜底一致）。</summary>
+        static int BitCount(string sequence)
+        {
+            if (string.IsNullOrEmpty(sequence)) return 1;
+
+            int count = 0;
+            foreach (char c in sequence)
+            {
+                if (c == '0' || c == '1') count++;
+            }
+            return count > 0 ? count : 1;
         }
 
         /// <summary>接收器：feedFace 是「位从哪一面进来」＝位前进方向的反面（进料面）。</summary>
@@ -98,6 +113,49 @@ namespace ShiftGo.BitFlow.Tests
             Assert.IsTrue(draft.StockEnabled);
             Assert.AreEqual(2, draft.Remaining(SplitterKey));
             Assert.AreEqual(0, draft.Remaining("Type_NotGate_N1"), "没登记的类型就是 0 张");
+        }
+
+        /// <summary>
+        /// 同一类型再给一摞是「加牌」，不是「改数字」。库存按类型 Key 记账，
+        /// 覆盖式登记会让 supplies 里写了两条同类型的关卡少发牌（Level_05 曾经就是这样）。
+        /// </summary>
+        [Test]
+        public void AddStock_AccumulatesInsteadOfOverwriting()
+        {
+            LevelDraft draft = new LevelDraft(4, 4);
+
+            draft.AddStock(SplitterKey, 1);
+            draft.AddStock(SplitterKey, 3);
+
+            Assert.IsTrue(draft.StockEnabled, "加过牌就是有限手牌模式");
+            Assert.AreEqual(4, draft.Remaining(SplitterKey), "同类型两条手牌应该累加成 4 张");
+
+            draft.AddStock(FilterKey, 2);
+            Assert.AreEqual(4, draft.Remaining(SplitterKey), "给别的类型加牌不能动这一摞");
+            Assert.AreEqual(2, draft.Remaining(FilterKey), "不同类型还是各自独立");
+        }
+
+        /// <summary>关卡资产里同一个类型写了两条，玩家拿到的应该是两条之和（一摞）。</summary>
+        [Test]
+        public void CreatePlayerDraft_MergesDuplicateSupplies()
+        {
+            WallTypeSO wall = UnityEngine.ScriptableObject.CreateInstance<WallTypeSO>();
+            LevelSO level = UnityEngine.ScriptableObject.CreateInstance<LevelSO>();
+            level.width = 4;
+            level.height = 4;
+            level.supplies = new System.Collections.Generic.List<ElementSupply>
+            {
+                new ElementSupply { type = wall, count = 1 },
+                new ElementSupply { type = wall, count = 2 },
+            };
+
+            LevelDraft draft = level.CreatePlayerDraft();
+
+            Assert.IsTrue(draft.StockEnabled);
+            Assert.AreEqual(3, draft.Remaining(wall.Key), "两条同类型手牌在草稿里合成一摞 3 张");
+
+            UnityEngine.Object.DestroyImmediate(level);
+            UnityEngine.Object.DestroyImmediate(wall);
         }
 
         [Test]

@@ -462,9 +462,15 @@ namespace ShiftGo.BitFlow.View
 
             if (level == null || level.supplies == null || cardRoot == null) return;
 
+            // 库存按类型 Key 记账，同一个类型写两条 = 一摞牌里多几张。
+            // 这里必须按 Key 去重：不然会画出两张一模一样的卡，还共用同一个数字（看着像计数坏了）。
+            HashSet<string> drawn = new HashSet<string>();
+
             foreach (ElementSupply supply in level.supplies)
             {
                 if (supply == null || supply.type == null) continue;
+                if (!drawn.Add(supply.type.Key)) continue;
+
                 cards.Add(CreateCard(supply.type));
             }
 

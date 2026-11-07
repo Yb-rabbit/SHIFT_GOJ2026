@@ -252,8 +252,8 @@ namespace ShiftGo.EditorTools
 
         // ------------------------------------------------------------------ 配色
 
-        /// <summary>按类型资产的具体子类上色。用具体类型而不是 Kind，避免每次重绘都造一遍 ElementDefinition。</summary>
-        static Color ColorOf(ElementTypeSO type)
+        /// <summary>按类型资产的具体子类上色（关卡编辑器窗口也用它，保证两边配色一致）。</summary>
+        internal static Color ColorOf(ElementTypeSO type)
         {
             if (type is EmitterTypeSO) return new Color(0.22f, 0.52f, 0.82f);
             if (type is ReceiverTypeSO) return new Color(0.85f, 0.48f, 0.20f);

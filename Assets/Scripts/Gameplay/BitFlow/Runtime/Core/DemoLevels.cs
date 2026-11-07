@@ -29,24 +29,25 @@ namespace ShiftGo.BitFlow.Core
                 TickInterval = 0.5f,
             };
 
-            // 发射器：序列从字符串末字符开始弹出，"1011"×2 → 1,1,0,1,1,1,0,1
+            // 发射器：序列从字符串末字符开始弹出组成循环单元，"1011" → 1,1,0,1；
+            // 循环填充到 EmitCount=8 位 → 1,1,0,1,1,1,0,1
             level.Elements.Add(new EmitterDefinition
             {
                 Id = Emitter1Id,
                 Coord = new GridPoint(0, 5),
                 Facing = Dir.Right,
                 Sequence = "1011",
-                RepeatCount = 2,
+                EmitCount = 8,
             });
 
-            // "100"×1 → 0,0,1；随后被非门取反成 1,1,0
+            // "100" → 0,0,1，共 3 位；随后被非门取反成 1,1,0
             level.Elements.Add(new EmitterDefinition
             {
                 Id = Emitter2Id,
                 Coord = new GridPoint(0, 1),
                 Facing = Dir.Right,
                 Sequence = "100",
-                RepeatCount = 1,
+                EmitCount = 3,
             });
 
             // 分流器：1 向上进 R1，0 向右进 R2

@@ -23,7 +23,7 @@ namespace ShiftGo.BitFlow.Core
         /// <summary>发射器的序列 / 接收器的目标序列。</summary>
         public string Sequence = "1";
 
-        /// <summary>发射器的重复轮数 / 接收器的期望个数。</summary>
+        /// <summary>发射器的发射总位数 / 接收器的期望个数。</summary>
         public int Count = 1;
 
         /// <summary>过滤器放行的取值（0 或 1）。</summary>
@@ -85,7 +85,7 @@ namespace ShiftGo.BitFlow.Core
                 case EmitterDefinition emitter:
                     element.PrimaryDir = emitter.Facing;
                     element.Sequence = emitter.Sequence;
-                    element.Count = emitter.RepeatCount;
+                    element.Count = emitter.EmitCount;
                     break;
 
                 case ReceiverDefinition receiver:
@@ -146,7 +146,7 @@ namespace ShiftGo.BitFlow.Core
                         Coord = Coord,
                         Facing = PrimaryDir,
                         Sequence = NormalizeSequence(Sequence),
-                        RepeatCount = Math.Max(0, Count),
+                        EmitCount = Math.Max(0, Count),
                     };
 
                 case CellKind.Receiver:
@@ -196,9 +196,9 @@ namespace ShiftGo.BitFlow.Core
             switch (Kind)
             {
                 case CellKind.Emitter:
-                    return "发射器  朝" + PrimaryDir.ToChineseName() + "  序列 " + NormalizeSequence(Sequence) + " ×" + Count;
+                    return "发射器  朝" + PrimaryDir.ToChineseName() + "  序列 " + NormalizeSequence(Sequence) + " 共 " + Count + " 位";
                 case CellKind.Receiver:
-                    return "接收器  进料面" + PrimaryDir.ToChineseName() + "  需要 " + NormalizeSequence(Sequence) + " ×" + Count;
+                    return "接收器  进料面" + PrimaryDir.ToChineseName() + "  需要 " + NormalizeSequence(Sequence) + " 共 " + Count + " 位";
                 case CellKind.Splitter:
                     return "分流器  1→" + PrimaryDir.ToChineseName() + "  0→" + SecondaryDir.ToChineseName();
                 case CellKind.NotGate:

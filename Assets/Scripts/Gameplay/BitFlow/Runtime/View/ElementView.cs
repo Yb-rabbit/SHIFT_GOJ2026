@@ -65,8 +65,8 @@ namespace ShiftGo.BitFlow.View
 
         /// <summary>
         /// 形状语言（不看文字也能分辨元件，箭头一律带箭头头，方向不会看反）：
-        /// 墙=高立方、发射器=矮宽块、接收器=中块+顶部进度条、分流器=小块+两条臂、
-        /// 非门=菱形、过滤器=薄板且出口箭头颜色=它放行的值。
+        /// 墙=高立方、发射器=矮宽实心块+朝外箭头、接收器=四角柱围出的托盘（全向时四个口全开，
+        /// 严格模式堵掉三个口只留进料面）、分流器=小块+两条臂、非门=菱形、过滤器=薄板且出口箭头颜色=它放行的值。
         /// </summary>
         void BuildShape(ElementDefinition definition)
         {
@@ -84,8 +84,9 @@ namespace ShiftGo.BitFlow.View
                     break;
 
                 case ReceiverDefinition receiver:
-                    AddBlock(new Vector3(0.92f, 0.34f, 0.92f), 0.17f);
-                    AddArrow(receiver.FeedFace, 0.26f, new Color(0.95f, 0.95f, 1f), 1.6f, 0.30f);
+                    // 接收器 = 四角柱围出的四开口托盘：它没有正面（四面都能收），本体就必须四向对称。
+                    // 和发射器的「实心矮块 + 朝外箭头」正好相反 —— 一个张着嘴接，一个扁扁地往外吐。
+                    AddMouth(receiver);
                     BuildProgressBar();
                     BuildSequenceDots(NormalizeSequence(receiver.TargetSequence), 0.40f, -0.34f);
                     break;
@@ -112,15 +113,64 @@ namespace ShiftGo.BitFlow.View
 
         void AddBlock(Vector3 size, float y, float yRotation = 0f)
         {
+            AddBlockAt(size, new Vector3(0f, y, 0f), yRotation);
+        }
+
+        void AddBlockAt(Vector3 size, Vector3 localPosition, float yRotation = 0f)
+        {
             GameObject block = GameObject.CreatePrimitive(PrimitiveType.Cube);
             block.name = "block";
             DestroyImmediateSafe(block.GetComponent<Collider>());
             block.transform.SetParent(transform, false);
-            block.transform.localPosition = new Vector3(0f, y, 0f);
+            block.transform.localPosition = localPosition;
             block.transform.localRotation = Quaternion.Euler(0f, yRotation, 0f);
             block.transform.localScale = size;
 
             ApplyRenderer(block, bodyMaterial);
+        }
+
+        /// <summary>
+        /// 接收器的「四开口托盘」：四根角柱围出上/右/下/左四个缺口，中间垫一块矮底盘。
+        /// 为什么不是实心块：接收器四面都能收，本体就不该有正面；四个开口本身就是「哪边都能进」的信号，
+        /// 而实心矮块会和发射器撞脸（发射器也是扁块），玩家只能靠顶上的进度条去猜。
+        /// 严格模式（只认进料面）不画箭头，而是把另外三个口用同色块堵死 —— 看形状就知道只有一边通，
+        /// 比让玩家去数箭头指哪边更快，也不会像四支白箭头那样把本体糊成一朵白花。
+        /// </summary>
+        void AddMouth(ReceiverDefinition receiver)
+        {
+            const float ringOffset = 0.32f;
+            const float ringSize = 0.30f;
+            // 0.30 比发射器那个矮块（0.32）还矮一点：斜视角下"盘子"比"坑"好读。
+            // 试过 0.36 的深口，结果进度条和序列点全被近端角块挡住 —— 凹得好看但看不见东西，亏。
+            const float ringHeight = 0.30f;
+
+            for (int i = 0; i < 4; i++)
+            {
+                float x = (i & 1) == 0 ? -ringOffset : ringOffset;
+                float z = (i & 2) == 0 ? -ringOffset : ringOffset;
+                AddBlockAt(new Vector3(ringSize, ringHeight, ringSize), new Vector3(x, ringHeight * 0.5f, z));
+            }
+
+            // 底盘几乎和四角齐平（只低 0.14）—— 留一点"凹陷"的暗示，但不藏东西
+            AddBlockAt(new Vector3(0.70f, 0.16f, 0.70f), new Vector3(0f, 0.08f, 0f));
+
+            if (receiver.AcceptAnyFace) return;
+
+            // 严格模式：三个不收货的口堵死，只留进料面那一个开口。
+            // 堵块特意比角柱高 0.08 —— 俯视时三个口盖着"盖板"、剩下那个口是平的，一眼看出只有一边通；
+            // 一样高的话它就和实心方块毫无区别了（试过，看不出来）。
+            const float capHeight = ringHeight + 0.08f;
+            Vector3[] sides = { Vector3.right, Vector3.left, Vector3.forward, Vector3.back };
+            Vector3 feed = GridMetrics.DirToWorld(receiver.FeedFace);
+            foreach (Vector3 side in sides)
+            {
+                if (side == feed) continue;
+                float nx = Mathf.Abs(side.x) > 0.5f ? ringSize : 0.34f;
+                float nz = Mathf.Abs(side.z) > 0.5f ? ringSize : 0.34f;
+                AddBlockAt(
+                    new Vector3(nx, capHeight, nz),
+                    new Vector3(side.x * ringOffset, capHeight * 0.5f, side.z * ringOffset));
+            }
         }
 
         /// <summary>方向箭头 = 细杆 + 明显加宽的头。原来只有一根等粗光条，玩家经常把方向看反。</summary>
@@ -193,13 +243,13 @@ namespace ShiftGo.BitFlow.View
             return builder.Length > 0 ? builder.ToString() : "1";
         }
 
-        /// <summary>一轮真实发射顺序（最长为序列长度上限 8 位），用于点阵显示。</summary>
+        /// <summary>真实发射顺序的前 8 位（EmitCount 可能很长，点阵只画得下 8 个）。</summary>
         static string EmitOrderText(EmitterDefinition emitter)
         {
             List<byte> order = emitter.BuildEmitOrder();
             if (order.Count == 0) return NormalizeSequence(emitter.Sequence);
 
-            int count = Mathf.Min(Mathf.Min(order.Count, emitter.Sequence.Length), 8);
+            int count = Mathf.Min(order.Count, 8);
             StringBuilder builder = new StringBuilder(count);
             for (int i = 0; i < count; i++)
             {
@@ -222,13 +272,15 @@ namespace ShiftGo.BitFlow.View
             bar.name = "progress";
             DestroyImmediateSafe(bar.GetComponent<Collider>());
             bar.transform.SetParent(transform, false);
-            bar.transform.localPosition = new Vector3(0f, 0.46f, 0f);
-            bar.transform.localScale = new Vector3(0.02f, 0.05f, 0.24f);
+            // 躺在托盘里（略高于底盘、略低于四角），像「往里填」而不是顶着一根横条
+            bar.transform.localPosition = new Vector3(0f, 0.20f, 0f);
+            bar.transform.localScale = new Vector3(0.02f, 0.06f, 0.22f);
 
             progressBaseColor = new Color(0.35f, 0.95f, 1f);
             progressMaterial = new Material(MaterialFactory.LitShader) { name = "M_Progress" };
             MaterialFactory.SetBaseColor(progressMaterial, progressBaseColor);
-            MaterialFactory.SetEmission(progressMaterial, progressBaseColor, 2.2f);
+            // 1.6 而不是 2.2：满格会转绿，太亮的时候绿和青在过曝里分不出来
+            MaterialFactory.SetEmission(progressMaterial, progressBaseColor, 1.6f);
 
             bar.GetComponent<Renderer>().sharedMaterial = progressMaterial;
             progressBar = bar.transform;
@@ -248,11 +300,12 @@ namespace ShiftGo.BitFlow.View
             if (progressBar == null) return;
 
             float ratio = target <= 0 ? 0f : Mathf.Clamp01((float)received / target);
-            progressBar.localScale = new Vector3(Mathf.Max(0.02f, 0.9f * ratio), 0.05f, 0.24f);
+            // 0.6 是方口内宽：填满时正好顶到两侧角块，读起来就是「这口装满了」
+            progressBar.localScale = new Vector3(Mathf.Max(0.02f, 0.6f * ratio), 0.06f, 0.22f);
 
             Color color = ratio >= 1f ? new Color(0.3f, 1f, 0.45f) : progressBaseColor;
             MaterialFactory.SetBaseColor(progressMaterial, color);
-            MaterialFactory.SetEmission(progressMaterial, color, 2.2f);
+            MaterialFactory.SetEmission(progressMaterial, color, 1.6f);
         }
 
         /// <summary>发射器已吐出的位数：点阵里对应的小方块变暗，一眼看出"发到第几个了"。</summary>

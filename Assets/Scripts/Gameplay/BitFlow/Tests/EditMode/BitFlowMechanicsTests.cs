@@ -37,7 +37,7 @@ namespace ShiftGo.BitFlow.Tests
                 Coord = new GridPoint(x, y),
                 Facing = facing,
                 Sequence = sequence,
-                RepeatCount = repeat,
+                EmitCount = repeat,
             };
             level.Elements.Add(emitter);
             return emitter;
@@ -117,6 +117,8 @@ namespace ShiftGo.BitFlow.Tests
                 Id = 1,
                 Coord = new GridPoint(2, 0),
                 FeedFace = Dir.Left,
+                // 默认是四面可收；这里显式关掉，专门验证"严格模式"下进错面要销毁
+                AcceptAnyFace = false,
                 TargetSequence = "1",
                 TargetCount = 1,
             });
@@ -126,6 +128,39 @@ namespace ShiftGo.BitFlow.Tests
 
             Assert.AreEqual(1, destroyed.Count);
             Assert.AreEqual(DestroyReason.ReceiverWrongFace, destroyed[0].Reason);
+        }
+
+        /// <summary>
+        /// 默认四面可收：位从"非进料面"撞进来也必须被收下。这是为了"墙围一圈只留一个口"
+        /// 这类布局能用 —— 作者不必再为每面单独摆朝向。
+        /// </summary>
+        [Test]
+        public void Receiver_AcceptsFromAnyFaceByDefault()
+        {
+            LevelDefinition level = CreateEmptyLevel(3, 3);
+            ReceiverDefinition receiver = new ReceiverDefinition
+            {
+                Id = 1,
+                Coord = new GridPoint(2, 0),
+                FeedFace = Dir.Left,   // 位实际从下方撞进来，和进料面无关
+                TargetSequence = "1",
+                TargetCount = 1,
+            };
+            level.Elements.Add(receiver);
+            AddEmitter(level, 2, 2, 2, Dir.Down, "1");
+
+            BitFlowSimulation simulation = new BitFlowSimulation(level);
+            List<BitDestroyed> destroyed = new List<BitDestroyed>();
+
+            for (int i = 0; i < 50 && !simulation.IsFinished; i++)
+            {
+                destroyed.AddRange(simulation.Step().Destroyed);
+            }
+
+            Assert.AreEqual(0, destroyed.Count, "四面可收时不该有任何位被销毁");
+            Assert.IsTrue(receiver.AcceptAnyFace, "默认必须是四面可收");
+            Assert.IsTrue(receiver.AcceptsEntry(Dir.Down), "从下方进来也该收");
+            Assert.IsTrue(receiver.AcceptsEntry(Dir.Up), "任意面都该收");
         }
 
         [Test]

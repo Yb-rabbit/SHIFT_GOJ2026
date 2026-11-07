@@ -280,9 +280,9 @@ namespace ShiftGo.BitFlow.Core
                     DestroyBit(bit, DestroyReason.EmitterBody, report);
                     continue;
                 }
-                if (element is ReceiverDefinition receiverDef && bit.Facing.Opposite() != receiverDef.FeedFace)
+                if (element is ReceiverDefinition receiverDef && !receiverDef.AcceptsEntry(bit.Facing.Opposite()))
                 {
-                    // 接收器只有进料面能进，其余面撞上即销毁
+                    // 严格模式的接收器只有进料面能进，其余面撞上即销毁（默认四面都可收）
                     DestroyBit(bit, DestroyReason.ReceiverWrongFace, report);
                     continue;
                 }

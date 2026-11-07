@@ -55,51 +55,89 @@ namespace ShiftGo.BitFlow.Core
     }
 
     /// <summary>
-    /// 发射器：朝 Facing 方向吐位。位序列按"从字符串末字符往前"弹栈，并重复 RepeatCount 轮。
-    /// 例：Sequence="1001"、RepeatCount=2 → 弹出顺序 1,0,0,1,1,0,0,1。
+    /// 发射器：朝 Facing 方向吐位。Sequence 按"从字符串末字符往前"弹栈组成循环单元，
+    /// 再循环填充到 <see cref="EmitCount"/> 位。
+    /// 例：Sequence="1001" 的循环单元是 1,0,0,1；EmitCount=6 → 实发 1,0,0,1,1,0。
     /// 若正前方被占用则本 tick 顺延（不丢失）。
     /// </summary>
     public sealed class EmitterDefinition : ElementDefinition
     {
         public Dir Facing = Dir.Right;
         public string Sequence = "1";
-        public int RepeatCount = 1;
+
+        /// <summary>
+        /// 发射总位数（把 Sequence 的循环单元循环填充到这个长度）。0 = 不工作。
+        /// 这是「填入发射数」真正生效的字段：想要 6 位就填 6，不必被序列长度整除。
+        /// 旧语义是"重复轮数"，长度只能是序列长度的整数倍，做不出 6 位这种关卡。
+        /// </summary>
+        public int EmitCount = 1;
 
         public override CellKind Kind => CellKind.Emitter;
 
         public override IReadOnlyList<Dir> ExitDirs => new[] { Facing };
 
-        /// <summary>展开后的实际发射顺序。</summary>
+        /// <summary>
+        /// 序列的循环单元（末字符先弹）。只收 0 与 1，其他字符忽略；空序列返回空表。
+        /// 编辑器靠它显示"这个序列几位一循环、里面几个 1"。
+        /// </summary>
+        public List<byte> BuildCycle()
+        {
+            List<byte> cycle = new List<byte>();
+            if (string.IsNullOrEmpty(Sequence)) return cycle;
+
+            for (int i = Sequence.Length - 1; i >= 0; i--)
+            {
+                char c = Sequence[i];
+                if (c == '1') cycle.Add(1);
+                else if (c == '0') cycle.Add(0);
+            }
+            return cycle;
+        }
+
+        /// <summary>循环单元长度（= 序列里有效 0/1 的个数）。</summary>
+        public int CycleLength => BuildCycle().Count;
+
+        /// <summary>展开后的实际发射顺序，长度恒等于 <see cref="EmitCount"/>。</summary>
         public List<byte> BuildEmitOrder()
         {
             List<byte> order = new List<byte>();
-            if (string.IsNullOrEmpty(Sequence) || RepeatCount <= 0) return order;
+            if (EmitCount <= 0) return order;
 
-            for (int repeat = 0; repeat < RepeatCount; repeat++)
-            {
-                for (int i = Sequence.Length - 1; i >= 0; i--)
-                {
-                    char c = Sequence[i];
-                    if (c == '1') order.Add(1);
-                    else if (c == '0') order.Add(0);
-                }
-            }
+            List<byte> cycle = BuildCycle();
+            if (cycle.Count == 0) return order;
+
+            for (int i = 0; i < EmitCount; i++) order.Add(cycle[i % cycle.Count]);
             return order;
         }
     }
 
     /// <summary>
-    /// 接收器：位只能从进料面朝入。FeedFace 表示进料口"朝向哪一面"，
-    /// 也就是位必须以 FeedFace 的反方向进入（FeedFace=Down 时位要朝上走进去）。
+    /// 接收器：默认**四面都能收**（位从任何方向撞进来都算数），这样"墙围一圈只留一个口"
+    /// 这类布局不用再为每一面单独调朝向。要严格限制只从一面进，把 <see cref="AcceptAnyFace"/>
+    /// 关掉即可，此时只认 <see cref="FeedFace"/> 那一面，其余面撞上销毁。
     /// TargetSequence 按循环比对，TargetCount 是期望收到的总个数。
     /// </summary>
     public sealed class ReceiverDefinition : ElementDefinition
     {
+        /// <summary>进料面：位必须以这个面的反方向进入（FeedFace=Down 时位要朝上走进去）。</summary>
         public Dir FeedFace = Dir.Down;
+
+        /// <summary>
+        /// true（默认）= 四面都能收，<see cref="FeedFace"/> 只作为显示/建议朝向；
+        /// false = 严格模式，只有 <see cref="FeedFace"/> 这一面能进，其余面撞上即销毁。
+        /// </summary>
+        public bool AcceptAnyFace = true;
+
         public string TargetSequence = "1";
         public int TargetCount = 1;
 
         public override CellKind Kind => CellKind.Receiver;
+
+        /// <summary>
+        /// <paramref name="entryFace"/> 是位撞上的那一面（= 位前进方向的反面）。
+        /// 四面可收时恒为 true；严格模式下只有正好撞在进料面上才收。
+        /// </summary>
+        public bool AcceptsEntry(Dir entryFace) => AcceptAnyFace || entryFace == FeedFace;
 
         /// <summary>第 index 个位（从 0 起）期望的取值。</summary>
         public byte ExpectedValueAt(int index)
