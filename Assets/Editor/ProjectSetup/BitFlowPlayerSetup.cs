@@ -457,9 +457,19 @@ namespace ShiftGo.EditorTools
             GameObject root = new GameObject("BitFlowPlayer");
             root.AddComponent<LevelBuilder>();
             BitFlowRunner runner = root.AddComponent<BitFlowRunner>();
+
+            // 开场演出：读数据之后按 网格 → 墙 → 收发器 → 其他元件 一段段把画面建出来。
+            // 没有它也能玩（BitFlowRunner 会在同一帧全建），但开场会掉那一下帧。
+            root.AddComponent<LevelReveal>();
+
             root.AddComponent<BitFlowHud>();
             root.AddComponent<BitFlowCardTray>();
             LevelFlow flow = root.AddComponent<LevelFlow>();
+
+            // 换关黑幕 + 选关面板：两个都靠 [DefaultExecutionOrder] 抢在 LevelFlow(-10) 之前
+            // Awake，所以就算这里是最后加的，第一帧也不会露出空网格。
+            root.AddComponent<IntroCurtain>();
+            root.AddComponent<LevelSelectPanel>();
 
             SerializedObject runnerSerialized = new SerializedObject(runner);
             SetObjectReference(runnerSerialized, "levelAsset", firstLevel);

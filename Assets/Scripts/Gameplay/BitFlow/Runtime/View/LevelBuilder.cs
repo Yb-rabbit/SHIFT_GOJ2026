@@ -27,33 +27,87 @@ namespace ShiftGo.BitFlow.View
         /// <summary>舞台下的直接子物体数量；Clear 之后应为 0（测试用）。</summary>
         public int StageChildCount => stageRoot != null ? stageRoot.childCount : 0;
 
-        /// <summary>搭场景。levelAsset 可以为空（此时用逻辑定义里的 Hint）。</summary>
+        /// <summary>搭场景（一次全建）。levelAsset 可以为空（此时用逻辑定义里的 Hint）。</summary>
         public void Build(LevelSO levelAsset, LevelDefinition definition)
+        {
+            Prepare(definition);
+            BuildTerrain();
+            BuildAllElements();
+        }
+
+        /// <summary>
+        /// 只登记关卡数据、清场、把舞台 / Bits 容器备好，<b>一个视觉物都不建</b>。
+        ///
+        /// 为什么要拆：开场要「关卡数据先就位、画面再一层层长出来」（格子 → 墙 → 收发器 → 其他），
+        /// 一次全建会在读取那一帧堆出几十个 GameObject + 材质查询，那正是开场卡顿的来源之一。
+        /// <see cref="Build"/> 仍然是这三个动作的组合，所以老调用方和 EditMode 测试一行都不用改。
+        /// </summary>
+        public void Prepare(LevelDefinition definition)
         {
             Clear();
             Definition = definition;
 
             Transform stage = EnsureStageRoot();
-
-            BuildFloor(stage, definition);
-            BuildGridLines(stage, definition);
+            if (definition == null) return;
 
             GameObject bitsRoot = new GameObject("Bits");
             bitsRoot.transform.SetParent(stage, false);
             BitsRoot = bitsRoot.transform;
+        }
 
-            foreach (ElementDefinition element in definition.Elements)
+        /// <summary>铺地板 + 画网格线 —— 开场演出的第 1 阶段（「网格」）。</summary>
+        public void BuildTerrain()
+        {
+            if (Definition == null) return;
+
+            Transform stage = EnsureStageRoot();
+            BuildFloor(stage, Definition);
+            BuildGridLines(stage, Definition);
+        }
+
+        /// <summary>
+        /// 建一个元件的视图并登记索引，返回它的视图（重复调用同一个元件会直接返回已有视图）。
+        /// 元件数量少的时候一帧建几个最稳，所以这个入口是 public 的。
+        /// </summary>
+        public ElementView BuildElement(ElementDefinition element)
+        {
+            if (element == null || Definition == null) return null;
+
+            if (elements.TryGetValue(element.Id, out ElementView existing) && existing != null) return existing;
+
+            Transform stage = EnsureStageRoot();
+
+            GameObject go = new GameObject("Elem_" + element.Id);
+            go.transform.SetParent(stage, false);
+
+            ElementView view = go.AddComponent<ElementView>();
+            view.Build(element, BuildDescription(element), MaterialFactory.Emissive(
+                KindColor(element.Kind), KindEmission(element.Kind)));
+
+            elements[element.Id] = view;
+            elementsByCoord[element.Coord] = view;
+            return view;
+        }
+
+        /// <summary>按类型批量建（开场演出的阶段 2/3/4 用），返回这一批实际建出来的数量。</summary>
+        public int BuildElementsOfKind(CellKind kind)
+        {
+            if (Definition == null) return 0;
+
+            int built = 0;
+            foreach (ElementDefinition element in Definition.ElementsOfKind(kind))
             {
-                GameObject go = new GameObject("Elem_" + element.Id);
-                go.transform.SetParent(stage, false);
-
-                ElementView view = go.AddComponent<ElementView>();
-                view.Build(element, BuildDescription(element), MaterialFactory.Emissive(
-                    KindColor(element.Kind), KindEmission(element.Kind)));
-
-                elements[element.Id] = view;
-                elementsByCoord[element.Coord] = view;
+                if (BuildElement(element) != null) built++;
             }
+            return built;
+        }
+
+        /// <summary>建全部元件（<see cref="Build"/> 的最后一步）。</summary>
+        public void BuildAllElements()
+        {
+            if (Definition == null) return;
+
+            foreach (ElementDefinition element in Definition.Elements) BuildElement(element);
         }
 
         /// <summary>
@@ -77,6 +131,9 @@ namespace ShiftGo.BitFlow.View
             Definition = null;
             BitsRoot = null;
         }
+
+        /// <summary>舞台根节点（演出用的临时装饰物挂它下面，换关时跟着 Clear 一起清掉）。</summary>
+        public Transform StageRoot => EnsureStageRoot();
 
         Transform EnsureStageRoot()
         {
@@ -103,25 +160,28 @@ namespace ShiftGo.BitFlow.View
         {
             if (!string.IsNullOrEmpty(element.Hint)) return element.Hint;
 
+            // 说明里不再写 #Id：编号对玩家没有意义（同一类型的几件长得一模一样，
+            // 玩家也无从对照），而且以前 HUD / 结算 / 提示三处各自算编号，
+            // 一换关就对不上。现在三处都不出现编号。
             switch (element)
             {
                 case EmitterDefinition emitter:
-                    return $"发射器 #{emitter.Id}\n序列 “{emitter.Sequence}” 共 {emitter.EmitCount} 位，朝 {emitter.Facing}\n点阵（左→右＝发射顺序）：青=1 橙=0，发出的会变暗";
+                    return $"发射器\n序列 “{emitter.Sequence}” 共 {emitter.EmitCount} 位，朝 {emitter.Facing}\n点阵（左→右＝发射顺序）：青=1 橙=0，发出的会变暗";
                 case ReceiverDefinition receiver:
                     string mouth = receiver.AcceptAnyFace
                         ? "四面都能进"
                         : "只从 " + receiver.FeedFace + " 面进";
-                    return $"接收器 #{receiver.Id}\n需要 “{receiver.TargetSequence}” ×{receiver.TargetCount}，{mouth}\n点阵＝目标序列：青=1 橙=0";
+                    return $"接收器\n需要 “{receiver.TargetSequence}” ×{receiver.TargetCount}，{mouth}\n点阵＝目标序列：青=1 橙=0";
                 case SplitterDefinition splitter:
-                    return "分流器 #" + splitter.Id + "\n青色臂（收 1）→ " + splitter.OneArm + "，橙色臂（收 0）→ " + splitter.ZeroArm;
+                    return "分流器\n青色臂（收 1）→ " + splitter.OneArm + "，橙色臂（收 0）→ " + splitter.ZeroArm;
                 case NotGateDefinition notGate:
-                    return "非门 #" + notGate.Id + "\n三面都能进（有矮栏的那三面），取反后向 " + notGate.OutputDir
+                    return "非门\n三面都能进（有矮栏的那三面），取反后向 " + notGate.OutputDir
                         + " 输出（开口那一面）\n斜杠标记＝取反";
                 case FilterDefinition filter:
-                    return "过滤器 #" + filter.Id + "\n三面都能进，只放行 " + filter.PassValue
+                    return "过滤器\n三面都能进，只放行 " + filter.PassValue
                         + "（闸门颜色就是放行值：" + (filter.PassValue == 0 ? "橙" : "青") + "）";
                 default:
-                    return "墙 #" + element.Id;
+                    return "墙";
             }
         }
 

@@ -35,6 +35,7 @@ namespace ShiftGo.BitFlow.View
         readonly Dictionary<int, ReceiverDefinition> receiverById = new Dictionary<int, ReceiverDefinition>();
 
         LevelBuilder builder;
+        LevelReveal reveal;
         LevelDefinition definition;
         BitFlowSimulation simulation;
 
@@ -65,16 +66,17 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         public LevelDefinition RuntimeOverride { get; private set; }
 
-        /// <summary>倍速：0.25 ~ 3，tick 时长 = baseTickInterval / speed。</summary>
+        /// <summary>倍速：0.25 ~ 4（底部控制条的倍速按钮在 1×/2×/3×/4× 之间循环）。</summary>
         public float Speed
         {
             get => speed;
-            set => speed = Mathf.Clamp(value, 0.25f, 3f);
+            set => speed = Mathf.Clamp(value, 0.25f, 4f);
         }
 
         void Awake()
         {
             builder = GetComponent<LevelBuilder>();
+            reveal = GetComponent<LevelReveal>();
 
             // 作者场景直接 Play 就能进编辑模式；正式关卡由 LevelFlow 调 DisableBuildMode 关掉。
             if (allowBuildMode) EnableBuildMode();
@@ -108,7 +110,12 @@ namespace ShiftGo.BitFlow.View
             paused = !autoStart;
         }
 
-        void BuildLevel()
+        /// <summary>
+        /// 读关卡数据、重建模拟器。<paramref name="staged"/> = true 时视觉交给开场演出
+        /// （<see cref="LevelReveal"/>）一层层长出来；false 时立刻全建（游戏内编辑器每改一格都会走这条，
+        /// 每次保存都演一遍会烦死人）。
+        /// </summary>
+        void BuildLevel(bool staged = true)
         {
             definition = RuntimeOverride != null
                 ? RuntimeOverride
@@ -123,7 +130,23 @@ namespace ShiftGo.BitFlow.View
 
             bitViews.Clear();
             simulation = new BitFlowSimulation(definition);
-            builder.Build(levelAsset, definition);
+
+            // 先只登记数据 + 备好容器（模拟器不依赖任何视图，TICK 00 的逻辑状态此刻就已经就位），
+            // 画面交给演出：否则整关会在这一帧里堆出几十个 GameObject，那一下就是开场卡顿。
+            builder.Prepare(definition);
+
+            // 演出接管时画面由它一段段长出来；否则立刻补全，任何路径都不会停在空场上。
+            bool stagedStarted = reveal != null && staged && reveal.BeginReveal(definition);
+            if (!stagedStarted)
+            {
+                if (reveal != null) reveal.Immediate();
+                else
+                {
+                    builder.BuildTerrain();
+                    builder.BuildAllElements();
+                }
+            }
+
             timer = 0f;
         }
 
@@ -140,7 +163,7 @@ namespace ShiftGo.BitFlow.View
             }
         }
 
-        float CurrentInterval => Mathf.Max(0.05f, baseTickInterval / Mathf.Clamp(speed, 0.25f, 3f));
+        float CurrentInterval => Mathf.Max(0.05f, baseTickInterval / Mathf.Clamp(speed, 0.25f, 4f));
 
         /// <summary>播放 / 暂停切换。</summary>
         public void TogglePause()
@@ -188,7 +211,7 @@ namespace ShiftGo.BitFlow.View
             RuntimeOverride = next;
             StopAllCoroutines();
             DestroyBitViews();
-            BuildLevel();
+            BuildLevel(false);
 
             paused = true;
             ResetPerformed?.Invoke();

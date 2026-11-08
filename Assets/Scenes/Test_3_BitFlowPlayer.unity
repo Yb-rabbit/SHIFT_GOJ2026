@@ -136,6 +136,9 @@ GameObject:
   - component: {fileID: 128935208}
   - component: {fileID: 128935207}
   - component: {fileID: 128935206}
+  - component: {fileID: 128935213}
+  - component: {fileID: 128935212}
+  - component: {fileID: 128935214}
   m_Layer: 0
   m_Name: BitFlowPlayer
   m_TagString: Untagged
@@ -224,6 +227,55 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &128935212
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 128935205}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 433b64c675b1b9a43ae8ad2e03fb51b4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &128935213
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 128935205}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1bc771d0f01a78e4aa0ec9271566f0f3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  fadeInDuration: 0.9
+  holdDuration: 1.2
+  fadeOutDuration: 1.3
+  holdAlpha: 0.72
+  playOnStart: 1
+--- !u!114 &128935214
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 128935205}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5677cd999c41d0945bd02639bd82faa7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  leadIn: 0.3
+  gridStage: 1
+  wallStage: 0.3
+  ioStage: 0.3
+  logicStage: 0.3
+  replaySpeedUp: 2.5
+  showBeacon: 1
+  beaconHeight: 0.9
 --- !u!1 &668227345
 GameObject:
   m_ObjectHideFlags: 0
@@ -257,7 +309,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   introDuration: 2
-  finalOffset: {x: 0, y: 7.6, z: -12}
+  autoPlay: 0
+  finalOffset: {x: 0, y: 8.3, z: -12}
   overviewOffset: {x: 0, y: 14.4, z: -17.6}
   lookHeight: 1.2
 --- !u!81 &668227347

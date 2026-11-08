@@ -4,6 +4,7 @@ using UnityEngine.Events;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using ShiftGo.BitFlow.Core;
+using ShiftGo.BitFlow.Data;
 
 namespace ShiftGo.BitFlow.View
 {
@@ -37,12 +38,13 @@ namespace ShiftGo.BitFlow.View
 
         /// <summary>
         /// 控制条尺寸跟着滑杆走：有滑杆时是「上排按钮 + 下排滑杆」的两行条（600×112）；
-        /// 关掉后只剩一排按钮，条自动收成 480×64，右下角不会拖着一块空的深色底板。
+        /// 关掉后只剩一排按钮，宽度按四个按钮（PAUSE / STEP / REPLAY / 倍速）实算：
+        /// 120+100+120+100 宽 + 3 个 20 的缝 + 两侧 20 边距 = 540。
         /// 待排区是在运行期读 <see cref="BottomBarScreenRect"/> 来避让的，收到哪它就跟到哪，
         /// 不需要改 BitFlowCardTray 一个字节。
         /// </summary>
         internal static readonly float BottomBandHeight = ShowSpeedControl ? 112f : 64f;
-        internal static readonly float BottomBarWidth = ShowSpeedControl ? 600f : 480f;
+        internal static readonly float BottomBarWidth = ShowSpeedControl ? 600f : 540f;
 
         /// <summary>
         /// 按钮行的纵向位置（相对条中心）：两行条里贴在上一行（26），
@@ -59,6 +61,7 @@ namespace ShiftGo.BitFlow.View
         Text tickText;
         Text speedText;
         Text pauseButtonLabel;
+        Text speedButtonLabel;
 
         RectTransform receiverPanel;
         readonly List<Text> receiverLabels = new List<Text>();
@@ -78,6 +81,7 @@ namespace ShiftGo.BitFlow.View
         Text resultDetail;
         GameObject nextLevelButton;
         LevelFlow flow;
+        LevelSelectPanel levelSelect;
 
         GameObject tooltipPanel;
         Text tooltipText;
@@ -91,6 +95,7 @@ namespace ShiftGo.BitFlow.View
             mainCamera = Camera.main;
             font = LoadFont();
             flow = FindObjectOfType<LevelFlow>();
+            levelSelect = FindObjectOfType<LevelSelectPanel>();
 
             EnsureEventSystem();
             BuildUi();
@@ -219,13 +224,20 @@ namespace ShiftGo.BitFlow.View
                 new Vector2(-BottomMargin, BottomBandBottom));
             bottomBarRect = bar;
 
-            // 排布：三个按钮一行。y 走 ButtonRowY —— 有滑杆时贴上一行（26），
+            // 排布：四个按钮一行。y 走 ButtonRowY —— 有滑杆时贴上一行（26），
             // 滑杆关掉后整行垂直居中（0），否则 64 高的条里按钮会顶出上边缘。
-            Button pauseButton = CreateButton("Pause", bar, "PAUSE", new Vector2(150f, 44f), new Vector2(-160f, ButtonRowY), OnPauseClicked);
+            // x 是实算的（条宽 540 = 四个按钮 120+100+120+100 + 三个 20 的缝 + 两侧 20 边距）：
+            //   PAUSE -250..-130 / STEP -110..-10 / REPLAY 10..130 / SPEED 150..250
+            Button pauseButton = CreateButton("Pause", bar, "PAUSE", new Vector2(120f, 44f), new Vector2(-190f, ButtonRowY), OnPauseClicked);
             pauseButtonLabel = pauseButton.GetComponentInChildren<Text>();
 
-            CreateButton("Step", bar, "STEP", new Vector2(130f, 44f), new Vector2(-10f, ButtonRowY), OnStepClicked);
-            CreateButton("Reset", bar, "REPLAY", new Vector2(150f, 44f), new Vector2(145f, ButtonRowY), OnResetClicked);
+            CreateButton("Step", bar, "STEP", new Vector2(100f, 44f), new Vector2(-60f, ButtonRowY), OnStepClicked);
+            CreateButton("Reset", bar, "REPLAY", new Vector2(120f, 44f), new Vector2(70f, ButtonRowY), OnResetClicked);
+
+            // 倍速：一个小按钮循环 1× → 2× → 3× → 4× → 1×。
+            // 比滑杆省一块地方（不用两行条），也不会出现"拖到 1.37 倍"这种没人用得上的档位。
+            Button speedButton = CreateButton("Speed", bar, "1×", new Vector2(100f, 44f), new Vector2(200f, ButtonRowY), OnSpeedClicked);
+            speedButtonLabel = speedButton.GetComponentInChildren<Text>();
 
             // 倍速滑杆：暂时关闭（见 ShowSpeedControl），标签和滑杆一起挂在这个开关下。
             // OnSpeedChanged / CreateSlider 保留未删，重新打开时不需要再补任何东西。
@@ -235,7 +247,7 @@ namespace ShiftGo.BitFlow.View
                 SetRect(speedText.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 0.5f),
                     new Vector2(160f, 22f), new Vector2(-240f, -28f));
 
-                CreateSlider(bar, new Vector2(260f, 24f), new Vector2(-70f, -28f), 0.25f, 3f, 1f, OnSpeedChanged);
+                CreateSlider(bar, new Vector2(260f, 24f), new Vector2(-70f, -28f), 0.25f, 4f, 1f, OnSpeedChanged);
             }
         }
 
@@ -275,11 +287,13 @@ namespace ShiftGo.BitFlow.View
             SetRect(resultDetail.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
                 new Vector2(-64f, 150f), new Vector2(0f, -96f));
 
-            CreateButton("ResultReplay", panel, "REPLAY", new Vector2(200f, 56f), new Vector2(-115f, -228f), OnResetClicked);
+            // 三个按钮并排：REPLAY（重开本关）/ LEVELS（选关）/ NEXT LEVEL（有下一关才出现）
+            CreateButton("ResultReplay", panel, "REPLAY", new Vector2(150f, 56f), new Vector2(-190f, -228f), OnResetClicked);
+            CreateButton("ResultLevels", panel, "LEVELS", new Vector2(150f, 56f), new Vector2(-30f, -228f), OnLevelsClicked);
 
             // 有下一关时才出现：单关演示场景里 LevelFlow 是空的，这个按钮就一直藏着
-            GameObject next = CreateButton("ResultNext", panel, "NEXT LEVEL", new Vector2(220f, 56f),
-                new Vector2(125f, -228f), OnNextClicked).gameObject;
+            GameObject next = CreateButton("ResultNext", panel, "NEXT LEVEL", new Vector2(170f, 56f),
+                new Vector2(145f, -228f), OnNextClicked).gameObject;
             nextLevelButton = next;
             nextLevelButton.SetActive(false);
 
@@ -437,6 +451,8 @@ namespace ShiftGo.BitFlow.View
                 string label = runner.IsFinished ? "DONE" : (runner.IsPaused ? "PLAY" : "PAUSE");
                 if (pauseButtonLabel.text != label) pauseButtonLabel.text = label;
             }
+
+            RefreshSpeedLabel();
         }
 
         void OnPauseClicked()
@@ -476,10 +492,42 @@ namespace ShiftGo.BitFlow.View
             flow.Next();
         }
 
+        /// <summary>
+        /// 打开选关面板。结算面板留在原地不动 —— 选关面板是更上层的 Canvas，
+        /// 玩家从选关里退回来还能接着看结算、点 NEXT。
+        /// </summary>
+        void OnLevelsClicked()
+        {
+            if (levelSelect == null) levelSelect = FindObjectOfType<LevelSelectPanel>();
+            if (levelSelect != null) levelSelect.Open();
+        }
+
         void OnSpeedChanged(float value)
         {
             if (runner != null) runner.Speed = value;
             if (speedText != null) speedText.text = "SPEED  x" + value.ToString("0.00");
+            RefreshSpeedLabel();
+        }
+
+        /// <summary>倍速按钮：1× → 2× → 3× → 4× → 1×。换关时 <see cref="BitFlowRunner.LoadLevel"/> 会把速度归 1，标签跟着走。</summary>
+        void OnSpeedClicked()
+        {
+            if (runner == null) return;
+
+            int next = Mathf.RoundToInt(runner.Speed) + 1;
+            if (next > 4) next = 1;
+
+            runner.Speed = next;
+            RefreshSpeedLabel();
+        }
+
+        /// <summary>标签每帧跟 runner 的真实速度对齐，而不是自己维护一份计数 —— 换关、重播都不会读错。</summary>
+        void RefreshSpeedLabel()
+        {
+            if (speedButtonLabel == null || runner == null) return;
+
+            string label = Mathf.RoundToInt(runner.Speed) + "×";
+            if (speedButtonLabel.text != label) speedButtonLabel.text = label;
         }
 
         void UpdateTooltip()
@@ -557,23 +605,52 @@ namespace ShiftGo.BitFlow.View
             resultTitle.text = result.IsSuccess ? "PASS" : "FAIL";
             resultTitle.color = result.IsSuccess ? GoodColor : BadColor;
 
-            System.Text.StringBuilder builder = new System.Text.StringBuilder();
-            builder.Append(result.IsSuccess ? "All receivers locked" : "Payload mismatch");
-            builder.Append("   -   ").Append(result.TickCount).Append(" ticks\n\n");
+            // 通关就落盘：选关面板靠这份存档打勾。失败什么都不写，
+            // 所以"重试一次就成功"和"一次成功"在存档里长得一样。
+            if (result.IsSuccess)
+            {
+                SaveStore.MarkCleared(runner != null ? runner.LevelTitle : result.DisplayName);
+                if (levelSelect != null) levelSelect.Refresh();
+            }
 
+            System.Text.StringBuilder builder = new System.Text.StringBuilder();
+            if (result.IsSuccess)
+            {
+                builder.Append("ALL RECEIVERS LOCKED");
+            }
+            else
+            {
+                builder.Append(CountPassed(result)).Append(" / ").Append(result.Receivers.Count).Append(" RECEIVERS OK");
+            }
+
+            builder.Append("   -   ").Append(result.TickCount).Append(" TICKS\n\n");
+
+            // 明细按 receiver 列表顺序列，但不写编号（理由同 HUD 右上角）：
+            // 玩家能对照的只有"收到几个 / 该收几个"，以及场上那台正在红闪的接收器。
             foreach (ReceiverResult receiver in result.Receivers)
             {
-                builder.Append("RECEIVER R").Append(receiver.ReceiverId).Append("     ")
+                builder.Append("RECEIVER     ")
                     .Append(receiver.ReceivedCount).Append(" / ").Append(receiver.TargetCount);
 
-                if (receiver.IsSuccess) builder.Append("    OK");
-                else if (receiver.ReceivedCount > receiver.TargetCount) builder.Append("    OVERFLOW");
-                else builder.Append("    BAD PAYLOAD");
+                if (receiver.IsSuccess) builder.Append("    ✓ OK");
+                else if (receiver.ReceivedCount > receiver.TargetCount) builder.Append("    ✗ OVERFLOW");
+                else builder.Append("    ✗ MISMATCH");
 
                 builder.Append('\n');
             }
 
             resultDetail.text = builder.ToString();
+        }
+
+        /// <summary>结算里"几台接收器达标"的分子。判定规则和 <see cref="ReceiverResult.IsSuccess"/> 完全一致。</summary>
+        static int CountPassed(LevelResult result)
+        {
+            int passed = 0;
+            foreach (ReceiverResult receiver in result.Receivers)
+            {
+                if (receiver.IsSuccess) passed++;
+            }
+            return passed;
         }
 
         void OnResetPerformed()
@@ -638,12 +715,11 @@ namespace ShiftGo.BitFlow.View
                 Text row = receiverLabels[i];
                 if (row == null) continue;
 
-                ReceiverDefinition definition = runner != null ? runner.GetReceiverDefinition(entry.ReceiverId) : null;
-                string name = definition != null && !string.IsNullOrEmpty(definition.Label)
-                    ? definition.Label
-                    : "R" + entry.ReceiverId;
-
-                row.text = name + "    " + entry.ReceivedCount + " / " + entry.TargetCount;
+                // 这里不写编号：编号只是运行时 Id，同一类型的接收器长得一模一样，
+                // 写出来玩家也对不上号（以前 HUD 写类型标签、结算写全局 Id、提示写 #Id，三处还各不相同）。
+                // 状态靠颜色 + 行尾的对勾/叉表达，哪台接收器不匹配由场上那台红闪来说明。
+                string state = entry.IsOverflow || !entry.IsStillValid ? "   ✗" : (entry.IsComplete ? "   ✓" : string.Empty);
+                row.text = entry.ReceivedCount + " / " + entry.TargetCount + state;
 
                 if (entry.IsOverflow || !entry.IsStillValid) row.color = BadColor;
                 else if (entry.IsComplete) row.color = GoodColor;

@@ -33,6 +33,9 @@ namespace ShiftGo.BitFlow.View
         public LevelSO Current => catalog != null ? catalog.Get(index) : null;
         public bool HasNext => catalog != null && index + 1 < catalog.Count;
 
+        /// <summary>关卡表本体（选关面板要按它列全部关卡）。可能为 null：单关演示场景没挂表。</summary>
+        public LevelCatalogSO Catalog => catalog;
+
         void Awake()
         {
             runner = FindObjectOfType<BitFlowRunner>();

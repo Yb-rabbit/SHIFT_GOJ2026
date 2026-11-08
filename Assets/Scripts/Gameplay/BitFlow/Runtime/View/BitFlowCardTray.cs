@@ -225,6 +225,9 @@ namespace ShiftGo.BitFlow.View
         LevelSO level;
         LevelDraft draft;
 
+        /// <summary>本关手牌总数（<see cref="LevelSO.supplies"/> 里所有张数之和，含已经放下的）。状态行显示 "手牌 2/3" 用。</summary>
+        int handTotal;
+
         ElementTypeSO armedType;
         int armedRotation;
         string statusMessage = string.Empty;
@@ -334,6 +337,7 @@ namespace ShiftGo.BitFlow.View
             if (ghost != null) ghost.Clear();
 
             draft = level != null ? level.CreatePlayerDraft() : null;
+            handTotal = CountSupply(level);
 
             if (cardRoot != null) cardRoot.SetActive(draft != null && level.HasSupplies);
             if (draft != null) RebuildCards();
@@ -345,6 +349,16 @@ namespace ShiftGo.BitFlow.View
         void Update()
         {
             if (draft == null) return;
+
+            // 黑幕演出 / 选关面板 / 换关的瞬间把输入挡掉。
+            // 这里只返回而不 enabled = false：Start 里订阅了 LevelFlow.LevelLoaded，
+            // 关掉组件会把"换关之后重建卡排"一起停掉（换一次关手牌就再也不刷新了）。
+            if (InputGate.Locked)
+            {
+                if (ghost != null) ghost.Hide();
+                return;
+            }
+
             if (runner == null || runner.IsBuildModeEnabled)
             {
                 // 作者模式接管输入时不抢事件，也别留下一个过期的格子预览
@@ -1230,10 +1244,35 @@ namespace ShiftGo.BitFlow.View
             }
             else
             {
-                // 只留"已放几件" + 最后一条反馈；手里拿着哪张由卡片的强调条表达，不再写一行文字
-                string summary = "已放 " + draft.Count + " 件";
+                // 只留"手牌用了几张 / 一共几张" + 最后一条反馈；
+                // 手里拿着哪张由卡片的强调条表达，不再写一行文字
+                string summary = "手牌 " + HandUsed() + "/" + handTotal;
                 statusText.text = string.IsNullOrEmpty(statusMessage) ? summary : summary + " ｜ " + statusMessage;
             }
+        }
+
+        /// <summary>手牌已经用出去几张 = 总数 - 各摞剩余之和（预设件不算，它们不是玩家放的）。</summary>
+        int HandUsed()
+        {
+            if (draft == null || !draft.StockEnabled) return 0;
+
+            int left = 0;
+            foreach (KeyValuePair<string, int> pair in draft.Stock) left += Mathf.Max(0, pair.Value);
+            return Mathf.Max(0, handTotal - left);
+        }
+
+        /// <summary>本关手牌总数：按 supplies 逐条累加（同一类型写两条就是"再多给几张"，和草稿记账规则一致）。</summary>
+        static int CountSupply(LevelSO source)
+        {
+            if (source == null || source.supplies == null) return 0;
+
+            int total = 0;
+            foreach (ElementSupply supply in source.supplies)
+            {
+                if (supply == null || supply.type == null) continue;
+                total += Mathf.Max(0, supply.count);
+            }
+            return total;
         }
 
         /// <summary>
