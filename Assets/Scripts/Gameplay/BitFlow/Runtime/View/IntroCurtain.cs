@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -63,11 +64,45 @@ namespace ShiftGo.BitFlow.View
         Coroutine routine;
         bool holdsGate;
 
+        /// <summary>
+        /// 由外部演出（开场终端 <see cref="IntroTerminal"/>）驱动：先别盖幕、先别开演，
+        /// 等它 <see cref="Cue"/> 一下再走正常时间轴。
+        ///
+        /// 由 IntroTerminal 在自己的 Awake 里置 true —— 它执行顺序 -30，比这里的 -20 早，
+        /// 所以这里 Awake 读到的一定是已经设好的值。
+        /// </summary>
+        public bool WaitForCue { get; set; }
+
+        /// <summary>
+        /// 是不是还占着画面（等 cue / 正在演 / 还捏着输入锁）。HUD 靠它决定四角要不要亮着：
+        /// 演出期间屏幕角落挂着 TICK 00 和 RECEIVERS 会毁掉那块黑场。
+        /// </summary>
+        public bool IsBusy => WaitForCue || holdsGate || routine != null;
+
+        /// <summary>
+        /// 整段黑幕演完、输入已经放开。<b>每关都会触发一次</b> ——
+        /// HUD 用它把四角错峰飞回来，不需要自己去猜演出什么时候结束。
+        /// </summary>
+        public event Action Finished;
+
+        /// <summary>WaitForCue 期间攒下的关卡，Cue 的时候再演。</summary>
+        LevelSO pendingLevel;
+
         void Awake()
         {
             // Awake 里就盖住：LevelFlow.Start（执行顺序 -10）会在第一帧把关卡建出来，
             // 黑幕必须比它更早出现在屏幕上，否则玩家会看到一闪而过的空网格。
             BuildUi();
+
+            // 前面有人在演（开场终端）：这时候不能盖幕 —— 黑幕 sortingOrder 30 比终端 25 高，
+            // 一盖上去终端就演在后面了。
+            if (WaitForCue)
+            {
+                SetDim(0f);
+                SetContent(0f);
+                return;
+            }
+
             SetDim(1f);
             SetContent(0f);
         }
@@ -78,6 +113,11 @@ namespace ShiftGo.BitFlow.View
             runner = FindObjectOfType<BitFlowRunner>();
             cameraRig = FindObjectOfType<CameraRig>();
 
+            // 有外部演出（开场终端）盖在前面时，先把镜头摆到开场远景：
+            // 终端是半透明的，背景里的机器和网格必须已经是"开场机位"，
+            // 否则玩家会先看到一个编辑器视角，再在退场时被拽一次。
+            if (WaitForCue && cameraRig != null) cameraRig.Prepare();
+
             if (flow != null)
             {
                 flow.LevelLoaded += OnLevelLoaded;
@@ -85,15 +125,22 @@ namespace ShiftGo.BitFlow.View
                 // LevelFlow 的 Start 比这里早，第一次 LevelLoaded 已经错过了 —— 这里补一次
                 if (flow.Current != null)
                 {
-                    Begin(flow.Current);
+                    RequestPlay(flow.Current);
                     return;
                 }
+
+                // 开场演出还没演完（关卡被它按住了，所以 Current 还是空的）：
+                // 这里什么都不做，等它演完调 Cue()
+                if (WaitForCue) return;
             }
             else if (runner != null && runner.LevelAsset != null)
             {
-                Begin(runner.LevelAsset);
+                RequestPlay(runner.LevelAsset);
                 return;
             }
+
+            // 前面还有一段演出（开场终端）在等：这会儿撤幕就等于把画面提前交给玩家了
+            if (WaitForCue) return;
 
             // 场景里没有可演的关卡（单关演示场景正在跑作者模式之类）：直接把幕撤掉
             Finish();
@@ -109,6 +156,35 @@ namespace ShiftGo.BitFlow.View
 
         void OnLevelLoaded(LevelSO level)
         {
+            RequestPlay(level);
+        }
+
+        /// <summary>
+        /// 外部演出演完了，由 <see cref="IntroTerminal"/> 调一下：现在才轮到开场黑幕。
+        /// 没攒下关卡就直接撤幕 —— 宁可少演一段，也不能让玩家对着黑屏干等。
+        /// </summary>
+        public void Cue()
+        {
+            WaitForCue = false;
+
+            if (pendingLevel != null)
+            {
+                Begin(pendingLevel);
+                return;
+            }
+
+            Finish();
+        }
+
+        /// <summary>该演一关了。WaitForCue 期间只记不演，等 <see cref="Cue"/>。</summary>
+        void RequestPlay(LevelSO level)
+        {
+            if (WaitForCue)
+            {
+                pendingLevel = level;
+                return;
+            }
+
             Begin(level);
         }
 
@@ -168,6 +244,8 @@ namespace ShiftGo.BitFlow.View
 
             routine = null;
             DropGate();
+
+            Finished?.Invoke();
         }
 
         /// <summary>
@@ -210,6 +288,8 @@ namespace ShiftGo.BitFlow.View
             SetDim(0f);
             SetContent(0f);
             DropGate();
+
+            Finished?.Invoke();
         }
 
         void HoldGate()
@@ -246,7 +326,7 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         static string DescribeHand(LevelSO level)
         {
-            if (level == null || level.supplies == null || level.supplies.Count == 0) return "HAND   (NONE)";
+            if (level == null || level.supplies == null || level.supplies.Count == 0) return "HAND  -";
 
             List<string> order = new List<string>();
             Dictionary<string, int> counts = new Dictionary<string, int>();
@@ -267,11 +347,12 @@ namespace ShiftGo.BitFlow.View
                 counts[key] += Mathf.Max(0, supply.count);
             }
 
-            System.Text.StringBuilder builder = new System.Text.StringBuilder("HAND   ");
+            // 乘号写 x 不写 ×：像素字体里没有 U+00D7（打包后会变方块）。
+            System.Text.StringBuilder builder = new System.Text.StringBuilder("HAND  ");
             for (int i = 0; i < order.Count; i++)
             {
-                if (i > 0) builder.Append("    ");
-                builder.Append(names[order[i]]).Append(" ×").Append(counts[order[i]]);
+                if (i > 0) builder.Append("   ");
+                builder.Append(names[order[i]]).Append(" x").Append(counts[order[i]]);
             }
             return builder.ToString();
         }
@@ -314,8 +395,9 @@ namespace ShiftGo.BitFlow.View
 
         void CreateChip(ElementTypeSO type, int index, int count)
         {
-            // 一行最多三张：以行为中心左右撑开
-            float x = (index - (count - 1) * 0.5f) * 340f;
+            // 一行最多三张：以行为中心左右撑开。356 是实算的 ——
+            // 320 的 chip 之间要留 36 的空，三张总共 1052，正好塞进 1100 宽的内容区。
+            float x = (index - (count - 1) * 0.5f) * 356f;
 
             GameObject chip = new GameObject("Chip", typeof(RectTransform));
             chip.transform.SetParent(chipRow, false);
@@ -324,24 +406,26 @@ namespace ShiftGo.BitFlow.View
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = new Vector2(320f, 96f);
+            rect.sizeDelta = new Vector2(340f, 92f);
             rect.anchoredPosition = new Vector2(x, 0f);
 
             // 色块贴着 chip 左边放：CreateImage 默认是按中心锚点摆的，
             // 这里必须再用 PlaceLeft 掰到左侧，否则会和右边的文字叠在一起
-            Image swatch = CreateImage("Swatch", rect, KindColorOf(type), new Vector2(64f, 64f), Vector2.zero);
-            PlaceLeft(swatch.rectTransform, 14f, 0f, 64f, 64f);
+            Image swatch = CreateImage("Swatch", rect, KindColorOf(type), new Vector2(56f, 56f), Vector2.zero);
+            PlaceLeft(swatch.rectTransform, 12f, 0f, 56f, 56f);
 
             string description = type.Describe();
             string[] lines = description.Split('\n');
             string head = lines.Length > 0 ? lines[0] : description;
             string detail = lines.Length > 1 ? lines[1] : string.Empty;
 
-            Text headText = CreateText("Head", rect, head, 22, TextAnchor.MiddleLeft, TitleColor);
-            PlaceLeft(headText.rectTransform, 92f, 22f, 214f, 26f);
+            // head 用正文档、detail 用小字档，两档都是像素字体的整数倍字号（不会糊）。
+            // detail 宽 248 是按最长的一条算的：「NEED 101101 x1  ANY FACE」23 字符 × 10px = 230。
+            Text headText = CreateText("Head", rect, head, PixelFont.Body, TextAnchor.MiddleLeft, TitleColor);
+            PlaceLeft(headText.rectTransform, 84f, 20f, 248f, 26f);
 
-            Text detailText = CreateText("Detail", rect, detail, 15, TextAnchor.MiddleLeft, MutedColor);
-            PlaceLeft(detailText.rectTransform, 92f, -11f, 214f, 22f);
+            Text detailText = CreateText("Detail", rect, detail, PixelFont.Small, TextAnchor.MiddleLeft, MutedColor);
+            PlaceLeft(detailText.rectTransform, 84f, -12f, 248f, 22f);
 
             swatch.raycastTarget = false;
         }
@@ -369,7 +453,7 @@ namespace ShiftGo.BitFlow.View
 
         void BuildUi()
         {
-            font = LoadFont();
+            font = PixelFont.Get();
 
             GameObject canvasObject = new GameObject("IntroCurtainCanvas", typeof(RectTransform), typeof(Canvas),
                 typeof(CanvasScaler), typeof(GraphicRaycaster));
@@ -403,7 +487,7 @@ namespace ShiftGo.BitFlow.View
             content.blocksRaycasts = false;
             content.interactable = false;
 
-            titleText = CreateText("Title", contentRect, "BIT FLOW", 56, TextAnchor.MiddleCenter, TitleColor);
+            titleText = CreateText("Title", contentRect, "BIT FLOW", 48, TextAnchor.MiddleCenter, TitleColor);
             SetRect(titleText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
                 new Vector2(1100f, 74f), new Vector2(0f, -34f));
 
@@ -417,16 +501,9 @@ namespace ShiftGo.BitFlow.View
             SetRect(chipRow, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
                 new Vector2(1060f, 100f), new Vector2(0f, -196f));
 
-            handText = CreateText("Hand", contentRect, string.Empty, 22, TextAnchor.MiddleCenter, HandColor);
+            handText = CreateText("Hand", contentRect, string.Empty, PixelFont.Body, TextAnchor.MiddleCenter, HandColor);
             SetRect(handText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
                 new Vector2(1060f, 30f), new Vector2(0f, 40f));
-        }
-
-        static Font LoadFont()
-        {
-            Font loaded = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            if (loaded == null) loaded = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            return loaded;
         }
 
         Text CreateText(string name, Transform parent, string text, int fontSize, TextAnchor anchor, Color color)

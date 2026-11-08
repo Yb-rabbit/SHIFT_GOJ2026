@@ -23,6 +23,8 @@ namespace ShiftGo.BitFlow.View
 
         BitFlowRunner runner;
         int index = -1;
+        bool autoStartHeld;
+        bool pendingAutoStart;
 
         /// <summary>换关后触发（参数是新的 LevelSO），HUD / 手牌盘靠它刷新。</summary>
         public event Action<LevelSO> LevelLoaded;
@@ -51,7 +53,43 @@ namespace ShiftGo.BitFlow.View
 
         void Start()
         {
-            if (LevelCount > 0) Load(0);
+            if (LevelCount == 0) return;
+
+            // 开场演出还没演完：这会儿读关卡、建网格都是在给演出当背景噪音，
+            // 而且黑幕退场时网格已经长完了、"从无到有"那一层就白演了。
+            // 记下"欠了一次加载"，等演出的调度者调 ReleaseAutoStart 再补。
+            if (autoStartHeld)
+            {
+                pendingAutoStart = true;
+                return;
+            }
+
+            Load(0);
+        }
+
+        /// <summary>
+        /// 压住「进来就自动加载第一关」。开场演出（<see cref="IntroTerminal"/>）要先在
+        /// <b>空场</b>上播，所以必须在自己的 Awake 里、本组件的 Start 之前调用。
+        /// 没有关卡表的场景调它也无害。
+        /// </summary>
+        public void HoldAutoStart()
+        {
+            autoStartHeld = true;
+        }
+
+        /// <summary>
+        /// 放开被压住的首次加载，并立刻补做。返回是否真的加载了 ——
+        /// 调用方（开场演出的调度者）据此判断接着该不该继续 cue 黑幕。
+        /// 没被压住时调用等于空操作，不会重复加载。
+        /// </summary>
+        public bool ReleaseAutoStart()
+        {
+            autoStartHeld = false;
+
+            if (!pendingAutoStart) return false;
+
+            pendingAutoStart = false;
+            return Load(0);
         }
 
         /// <summary>加载关卡表里的第 index 关；越界或空项返回 false。</summary>

@@ -48,8 +48,9 @@ namespace ShiftGo.BitFlow.Data
 
         public override string Describe()
         {
-            return "发射器 " + label + "\n朝 " + DirName(facing) + "，序列 \"" + sequence + "\" ×" + repeatCount
-                + "（共 " + repeatCount * CountBits(sequence) + " 位）";
+            // 两行：第一行是名字（黑幕上的色块标题 / 悬停提示的标题），
+            // 第二行是「一眼要能用上」的参数。总位数这类可以自己数的信息不再写。
+            return "EMITTER " + label + "\n" + sequence + " x" + repeatCount + "  FACE " + DirArrow(facing);
         }
     }
 }

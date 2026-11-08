@@ -27,7 +27,7 @@ namespace ShiftGo.BitFlow.Data
 
         public override string Describe()
         {
-            return "过滤器 " + label + "\n只放行 " + (passValue == 0 ? 0 : 1) + "，向 " + DirName(outputDir) + " 输出";
+            return "FILTER " + label + "\nPASS " + (passValue == 0 ? 0 : 1) + "  OUT " + DirArrow(outputDir);
         }
     }
 }

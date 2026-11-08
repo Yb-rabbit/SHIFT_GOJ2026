@@ -13,7 +13,8 @@ namespace ShiftGo.BitFlow.Data
     public sealed class LevelSO : ScriptableObject
     {
         [Header("关卡信息")]
-        public string displayName = "LEVEL 01 - BIT FLOW";
+        [Tooltip("关卡名。会显示在黑幕标题、HUD 左上角和选关面板里，也是通关记录的 key（改名 = 旧记录失效）")]
+        public string displayName = "NEW LEVEL";
 
         [Tooltip("网格列数（x 方向）")]
         [Min(1)] public int width = 9;

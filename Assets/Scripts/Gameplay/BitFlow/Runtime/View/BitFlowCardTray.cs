@@ -269,7 +269,7 @@ namespace ShiftGo.BitFlow.View
             runner = FindObjectOfType<BitFlowRunner>();
             flow = FindObjectOfType<LevelFlow>();
             mainCamera = Camera.main;
-            font = LoadFont();
+            font = PixelFont.Get();
 
             if (runner == null)
             {
@@ -307,13 +307,6 @@ namespace ShiftGo.BitFlow.View
         {
             if (flow != null) flow.LevelLoaded -= OnLevelLoaded;
             if (cursorMaterial != null) Destroy(cursorMaterial);
-        }
-
-        static Font LoadFont()
-        {
-            Font loaded = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            if (loaded == null) loaded = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            return loaded;
         }
 
         static void EnsureEventSystem()
@@ -380,7 +373,7 @@ namespace ShiftGo.BitFlow.View
             if (Input.GetKeyDown(KeyCode.Escape) && armedType != null)
             {
                 armedType = null;
-                statusMessage = "已放下手里的卡";
+                statusMessage = "CARD RELEASED";
                 RefreshAll();
                 return;
             }
@@ -389,10 +382,10 @@ namespace ShiftGo.BitFlow.View
                 (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) ||
                  Input.GetKey(KeyCode.LeftCommand) || Input.GetKey(KeyCode.RightCommand)))
             {
-                if (draft.Undo()) Apply("已撤销一步");
+                if (draft.Undo()) Apply("UNDO");
                 else
                 {
-                    statusMessage = "没有可撤销的操作了";
+                    statusMessage = "NOTHING TO UNDO";
                     RefreshAll();
                 }
                 return;
@@ -404,7 +397,7 @@ namespace ShiftGo.BitFlow.View
             if (armedType != null)
             {
                 armedRotation = (armedRotation + 1) % 4;
-                statusMessage = "待放朝向：" + RotationName(armedRotation);
+                statusMessage = "AIM " + RotationName(armedRotation);
                 RefreshAll();
                 return;
             }
@@ -413,12 +406,12 @@ namespace ShiftGo.BitFlow.View
             {
                 if (draft.IsLocked(cell))
                 {
-                    statusMessage = "这是关卡给定的元件，不能旋转";
+                    statusMessage = "FIXED - NO ROTATE";
                     RefreshAll();
                 }
                 else if (draft.Rotate(cell))
                 {
-                    Apply("已旋转 " + cell);
+                    Apply("ROTATED");
                     // 和放置一样，动画要挂在 Apply 新建出来的那个视图上
                     PlayRotateAt(cell, true);
                 }
@@ -452,10 +445,10 @@ namespace ShiftGo.BitFlow.View
         {
             switch (((steps % 4) + 4) % 4)
             {
-                case 1: return "顺时针 90°";
-                case 2: return "180°";
-                case 3: return "顺时针 270°";
-                default: return "原始朝向";
+                case 1: return "R90";
+                case 2: return "R180";
+                case 3: return "R270";
+                default: return "R0";
             }
         }
 
@@ -1028,7 +1021,7 @@ namespace ShiftGo.BitFlow.View
                 else if (Input.GetMouseButtonDown(1) && armedType != null)
                 {
                     armedType = null;
-                    statusMessage = "已放下手里的卡";
+                    statusMessage = "CARD RELEASED";
                     RefreshAll();
                 }
                 return;
@@ -1074,7 +1067,7 @@ namespace ShiftGo.BitFlow.View
             EditableElement element = armedType.CreateEditable(cell, armedRotation);
             if (element == null)
             {
-                Fail(LabelOf(armedType) + " 没有可用的配置，放不下去");
+                Fail(LabelOf(armedType) + " CANNOT PLACE");
                 return;
             }
 
@@ -1083,27 +1076,26 @@ namespace ShiftGo.BitFlow.View
             switch (result)
             {
                 case PlaceResult.Ok:
-                    string placed = LabelOf(armedType) + " " + cell;
                     if (draft.Remaining(armedType.Key) <= 0) armedType = null; // 这摞用完了
-                    Apply("已放下 " + placed);
+                    Apply("PLACED");
                     // 必须排在 Apply 之后：Apply 会重建整个舞台，旧的 ElementView 已经没了
                     PlayDropInAt(cell);
                     break;
 
                 case PlaceResult.Locked:
-                    Fail("这格是关卡给定的元件，不能覆盖");
+                    Fail("FIXED CELL");
                     break;
 
                 case PlaceResult.Occupied:
-                    Fail("这格已经有元件了（先左键点它拾回）");
+                    Fail("OCCUPIED");
                     break;
 
                 case PlaceResult.OutOfStock:
-                    Fail(LabelOf(armedType) + " 已经用完了");
+                    Fail(LabelOf(armedType) + " LEFT");
                     break;
 
                 default:
-                    Fail("点到网格外面了");
+                    Fail("OUTSIDE GRID");
                     break;
             }
         }
@@ -1112,13 +1104,13 @@ namespace ShiftGo.BitFlow.View
         {
             if (draft.IsLocked(cell))
             {
-                Fail("这是关卡给定的元件，不能拾回");
+                Fail("FIXED - NO PICKUP");
                 return;
             }
 
             if (!draft.TryPick(cell, out EditableElement picked))
             {
-                Fail("这格是空的");
+                Fail("EMPTY CELL");
                 return;
             }
 
@@ -1127,8 +1119,8 @@ namespace ShiftGo.BitFlow.View
             armedRotation = 0;
 
             Apply(armedType != null
-                ? "已拾回 " + LabelOf(armedType)
-                : "已移除 " + picked.Kind + "（它不属于任何一排牌）");
+                ? "PICKED UP " + LabelOf(armedType)
+                : "REMOVED " + picked.Kind);
         }
 
         ElementTypeSO FindSupplyType(string typeKey)
@@ -1145,7 +1137,7 @@ namespace ShiftGo.BitFlow.View
 
         static string LabelOf(ElementTypeSO type)
         {
-            if (type == null) return "元件";
+            if (type == null) return "ELEMENT";
             return string.IsNullOrEmpty(type.label) ? type.Key : type.label;
         }
 
@@ -1165,7 +1157,7 @@ namespace ShiftGo.BitFlow.View
 
             if (draft.Remaining(type.Key) <= 0)
             {
-                Fail(LabelOf(type) + " 已经用完了");
+                Fail(LabelOf(type) + " LEFT");
                 return;
             }
 
@@ -1173,11 +1165,11 @@ namespace ShiftGo.BitFlow.View
             armedRotation = 0;
             if (armedType != null)
             {
-                statusMessage = "已选中 " + LabelOf(armedType) + "：移动鼠标挑格子，点一下放下";
+                statusMessage = "AIM " + LabelOf(armedType) + " - CLICK A CELL";
             }
             else
             {
-                statusMessage = "已放下手里的卡";
+                statusMessage = "CARD RELEASED";
             }
 
             RefreshAll();
@@ -1224,7 +1216,7 @@ namespace ShiftGo.BitFlow.View
 
                 if (entry.Count != null)
                 {
-                    entry.Count.text = "×" + Mathf.Max(0, left);
+                    entry.Count.text = "x" + Mathf.Max(0, left);
                     entry.Count.color = empty ? CountTextEmptyColor : (entry.HasArt ? CountTextColor : TextColor);
                 }
             }
@@ -1236,18 +1228,18 @@ namespace ShiftGo.BitFlow.View
 
             if (draft == null)
             {
-                statusText.text = "本关没有给玩家手牌";
+                statusText.text = "NO HAND THIS LEVEL";
             }
             else if (!draft.StockEnabled)
             {
-                statusText.text = "演示关：没有手牌";
+                statusText.text = "DEMO - NO HAND";
             }
             else
             {
                 // 只留"手牌用了几张 / 一共几张" + 最后一条反馈；
                 // 手里拿着哪张由卡片的强调条表达，不再写一行文字
-                string summary = "手牌 " + HandUsed() + "/" + handTotal;
-                statusText.text = string.IsNullOrEmpty(statusMessage) ? summary : summary + " ｜ " + statusMessage;
+                string summary = "HAND " + HandUsed() + "/" + handTotal;
+                statusText.text = string.IsNullOrEmpty(statusMessage) ? summary : summary + "  /  " + statusMessage;
             }
         }
 

@@ -73,7 +73,11 @@ namespace ShiftGo.BitFlow.View
         {
             runner = FindObjectOfType<BitFlowRunner>();
             mainCamera = Camera.main;
-            font = LoadFont();
+            // 作者模式<b>故意</b>不换像素字体：这里的文案是中文（调色板、状态行、快捷键说明），
+            // 而像素字体没有中文字形，打包后会变成方块。它是开发工具、不面向玩家，
+            // 所以保留系统字体 —— 玩家侧的 HUD / 黑幕 / 手牌盘 / 选关面板才走 PixelFont。
+            font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            if (font == null) font = Resources.GetBuiltinResource<Font>("Arial.ttf");
 
             if (runner == null)
             {
@@ -92,13 +96,6 @@ namespace ShiftGo.BitFlow.View
         {
             ClearHighlight();
             if (cursorMaterial != null) Destroy(cursorMaterial);
-        }
-
-        static Font LoadFont()
-        {
-            Font loaded = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            if (loaded == null) loaded = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            return loaded;
         }
 
         static void EnsureEventSystem()

@@ -45,6 +45,25 @@ namespace ShiftGo.BitFlow.Core
             }
         }
 
+        /// <summary>
+        /// 朝向的箭头写法（↑ → ↓ ←），给玩家可见的提示用。
+        ///
+        /// 为什么不复用 <see cref="ToChineseName"/>：玩家侧的 UI 字体换成了像素字体
+        /// （<c>View.PixelFont</c>），没有中文字形，打包后中文会变成方块。
+        /// 箭头还顺带省地方 —— 一行参数里要塞两个方向，中文字宽是箭头的两倍。
+        /// 作者模式（游戏内编辑器）仍然用中文名，那里是开发工具，不走像素字体。
+        /// </summary>
+        public static string ToMark(this Dir dir)
+        {
+            switch (dir)
+            {
+                case Dir.Up: return "↑";
+                case Dir.Right: return "→";
+                case Dir.Down: return "↓";
+                default: return "←";
+            }
+        }
+
         public static bool Contains(this IEnumerable<Dir> dirs, Dir dir)
         {
             foreach (Dir candidate in dirs)

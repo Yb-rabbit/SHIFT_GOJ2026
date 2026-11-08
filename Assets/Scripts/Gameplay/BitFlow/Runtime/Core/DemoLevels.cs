@@ -23,7 +23,7 @@ namespace ShiftGo.BitFlow.Core
         {
             LevelDefinition level = new LevelDefinition
             {
-                DisplayName = "LEVEL 01 - BIT FLOW",
+                DisplayName = "00  BIT FLOW",
                 Width = 9,
                 Height = 8,
                 TickInterval = 0.5f,

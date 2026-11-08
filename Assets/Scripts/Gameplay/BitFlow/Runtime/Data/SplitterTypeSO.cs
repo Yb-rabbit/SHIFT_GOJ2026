@@ -27,7 +27,7 @@ namespace ShiftGo.BitFlow.Data
 
         public override string Describe()
         {
-            return "分流器 " + label + "\n1 → " + DirName(oneArm) + "，0 → " + DirName(zeroArm);
+            return "SPLITTER " + label + "\n1 " + DirArrow(oneArm) + "   0 " + DirArrow(zeroArm);
         }
     }
 }

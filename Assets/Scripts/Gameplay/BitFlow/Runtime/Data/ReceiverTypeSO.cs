@@ -37,8 +37,8 @@ namespace ShiftGo.BitFlow.Data
 
         public override string Describe()
         {
-            string face = acceptAnyFace ? "四面都能进" : "只从" + DirName(feedFace) + "面进";
-            return "接收器 " + label + "\n" + face + "，需要 \"" + targetSequence + "\" ×" + targetCount;
+            string face = acceptAnyFace ? "ANY FACE" : "IN " + DirArrow(feedFace);
+            return "RECEIVER " + label + "\nNEED " + targetSequence + " x" + targetCount + "  " + face;
         }
     }
 }

@@ -245,7 +245,7 @@ namespace ShiftGo.EditorTools
                 return;
             }
 
-            level.displayName = "LEVEL 01 - BIT FLOW";
+            level.displayName = "00  BIT FLOW";
             level.width = 9;
             level.height = 8;
             level.tickInterval = 0.35f;

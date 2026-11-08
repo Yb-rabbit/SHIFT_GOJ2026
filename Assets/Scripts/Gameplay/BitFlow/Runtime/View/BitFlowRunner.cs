@@ -106,6 +106,39 @@ namespace ShiftGo.BitFlow.View
 
         void Start()
         {
+            // 开场演出要空场：这会儿建关卡，网格就会在终端背后一层层长出来。
+            // 由演出的调度者（IntroTerminal）Awake 里按下，演完调 ReleaseStart 补建。
+            if (startHeld) return;
+
+            BuildLevel();
+            paused = !autoStart;
+        }
+
+        bool startHeld;
+
+        /// <summary>
+        /// 按住 Start 里的「进来就建关」。调用时机必须在<b>所有 Awake 之后、Start 之前</b>
+        /// —— 由 <see cref="IntroTerminal"/> 在自己的 Awake 里调。Unity 保证一帧内
+        /// 所有 Awake 都跑完才开始跑 Start（与执行顺序无关），所以这里一定来得及。幂等。
+        /// </summary>
+        public void HoldStart()
+        {
+            startHeld = true;
+        }
+
+        /// <summary>
+        /// 放开 Start 的建关，并在没人替它建过时补建一次。
+        /// 有人建过（<see cref="LevelFlow.LoadLevel"/> 已经走完）就什么都不做 ——
+        /// 否则会把刚加载好的关卡再重建一遍。
+        /// </summary>
+        public void ReleaseStart()
+        {
+            if (!startHeld) return;
+
+            startHeld = false;
+
+            if (definition != null) return;
+
             BuildLevel();
             paused = !autoStart;
         }

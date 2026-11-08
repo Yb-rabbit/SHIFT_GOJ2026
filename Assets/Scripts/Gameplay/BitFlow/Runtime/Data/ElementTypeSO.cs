@@ -48,16 +48,16 @@ namespace ShiftGo.BitFlow.Data
             return result;
         }
 
-        /// <summary>朝向的中文描述，给提示框用。</summary>
-        protected static string DirName(Dir dir)
+        /// <summary>
+        /// 朝向的箭头写法，给提示框和开场黑幕的元件说明用。
+        ///
+        /// 以前这里返回「上 / 右 / 下 / 左」—— 但 UI 字体换成了像素字体（<see cref="View.PixelFont"/>），
+        /// <b>没有中文字形</b>，中文在编辑器里靠系统字体 fallback 还能看，打包后全是方块。
+        /// 具体实现放在 <see cref="Core.DirUtil.ToMark"/>，场景里那套兜底说明也用同一份。
+        /// </summary>
+        protected static string DirArrow(Dir dir)
         {
-            switch (dir)
-            {
-                case Dir.Up: return "上";
-                case Dir.Right: return "右";
-                case Dir.Down: return "下";
-                default: return "左";
-            }
+            return dir.ToMark();
         }
     }
 }

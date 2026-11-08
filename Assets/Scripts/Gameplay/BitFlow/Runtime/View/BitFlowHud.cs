@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
@@ -89,11 +90,46 @@ namespace ShiftGo.BitFlow.View
 
         bool uiPrimed;
 
+        // ---------------------------------------------------------------- 四角进出场
+
+        /// <summary>一个角的收起/归位状态。收起时朝自己那个角退出去，而不是原地淡成透明。</summary>
+        sealed class Chrome
+        {
+            public RectTransform rect;
+            public CanvasGroup group;
+            public Vector2 home;
+            public Vector2 slide;
+            public float delay;
+            public bool overshoot;
+        }
+
+        const float ChromeFadeDuration = 0.30f;
+        const float ChromeSlideDistance = 44f;
+
+        static readonly Color ButtonColor = new Color(0.12f, 0.20f, 0.28f, 0.95f);
+        static readonly Color ButtonPulseColor = new Color(0.22f, 0.50f, 0.64f, 0.98f);
+
+        readonly List<Chrome> chromes = new List<Chrome>();
+
+        IntroCurtain curtain;
+        Coroutine chromeRoutine;
+        bool chromeHidden;
+
+        Text playHintText;
+        Vector2 playHintHome;
+        Image pauseButtonImage;
+
+        /// <summary>提示的显隐进度（0~1），由 <see cref="UpdatePlayHint"/> 每帧推进。</summary>
+        float playHintShown;
+
+        /// <summary>玩家按过一次 PLAY 就锁住，之后换关不再叫号。</summary>
+        bool playHintSeen;
+
         void Start()
         {
             runner = FindObjectOfType<BitFlowRunner>();
             mainCamera = Camera.main;
-            font = LoadFont();
+            font = PixelFont.Get();
             flow = FindObjectOfType<LevelFlow>();
             levelSelect = FindObjectOfType<LevelSelectPanel>();
 
@@ -108,6 +144,22 @@ namespace ShiftGo.BitFlow.View
             }
 
             TryPrimeUi();
+
+            // 演出期间四角必须收起来（终端和黑幕都是半透明的，角落挂着读数会毁掉黑场）。
+            // 这个判断放在 Start 而不是 Awake：BuildUi 刚建完，离第一帧还有整段 Start 阶段，
+            // 在这里收起来玩家一帧都看不到它。
+            curtain = FindObjectOfType<IntroCurtain>();
+            if (curtain != null)
+            {
+                curtain.Finished += OnCurtainFinished;
+
+                if (curtain.IsBusy) HideChromeNow();
+            }
+            else if (InputGate.Locked)
+            {
+                // 没有黑幕但有别的东西挡着（选关面板直接开着进关之类）
+                HideChromeNow();
+            }
         }
 
         /// <summary>
@@ -128,18 +180,12 @@ namespace ShiftGo.BitFlow.View
 
         void OnDestroy()
         {
+            if (curtain != null) curtain.Finished -= OnCurtainFinished;
+
             if (runner == null) return;
             runner.TickCompleted -= OnTickCompleted;
             runner.Finished -= OnFinished;
             runner.ResetPerformed -= OnResetPerformed;
-        }
-
-        static Font LoadFont()
-        {
-            // Unity 2022 起内置字体是 LegacyRuntime.ttf（旧版是 Arial.ttf），两个都试一下
-            Font loaded = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            if (loaded == null) loaded = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            return loaded;
         }
 
         static void EnsureEventSystem()
@@ -183,21 +229,29 @@ namespace ShiftGo.BitFlow.View
 
         void BuildTopLeft(Transform root)
         {
+            // 430×76：标题一行 + 「TICK 00 ... ROUTING」一行。
+            // 原来这三行是 96 高，但 tick 和状态都属于「扫一眼」的信息，
+            // 并排比上下叠省一半高度 —— 这面板正好压在网格远角上，越矮越好。
             RectTransform panel = CreatePanel("TopLeft", root,
                 new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
-                new Vector2(430f, 96f), new Vector2(28f, -28f));
+                new Vector2(430f, 76f), new Vector2(28f, -28f));
 
-            titleText = CreateText("Title", panel, "SHIFT GO", 28, TextAnchor.UpperLeft, AccentColor);
+            titleText = CreateText("Title", panel, "SHIFT GO", PixelFont.Large, TextAnchor.UpperLeft, AccentColor);
             SetRect(titleText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f),
-                new Vector2(-32f, 34f), new Vector2(16f, -10f));
+                new Vector2(-32f, 36f), new Vector2(16f, -8f));
 
-            statusText = CreateText("Status", panel, "ROUTING", 18, TextAnchor.UpperLeft, TextColor);
-            SetRect(statusText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f),
-                new Vector2(-32f, 26f), new Vector2(16f, -48f));
-
-            tickText = CreateText("Tick", panel, "TICK 00", 18, TextAnchor.UpperLeft, TextColor);
+            tickText = CreateText("Tick", panel, "TICK 00", PixelFont.Small, TextAnchor.UpperLeft, TextColor);
             SetRect(tickText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f),
-                new Vector2(-32f, 26f), new Vector2(16f, -72f));
+                new Vector2(-32f, 24f), new Vector2(16f, -46f));
+
+            // 状态靠右：READY / ROUTING / PAUSED / DONE，都只有一个词
+            //（以前是 "READY  -  PRESS PLAY"，可下面那颗按钮就写着 PLAY，等于说了两遍）
+            statusText = CreateText("Status", panel, "ROUTING", PixelFont.Small, TextAnchor.UpperRight, TextColor);
+            SetRect(statusText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f),
+                new Vector2(-32f, 24f), new Vector2(-16f, -46f));
+
+            // 往左上角退：方向就是它自己所在的那个角，收起来时像被屏幕边缘吸走
+            RegisterChrome(panel, new Vector2(-ChromeSlideDistance, ChromeSlideDistance), 0f, false);
         }
 
         // ---------------------------------------------------------------- 右上角接收器进度
@@ -208,9 +262,12 @@ namespace ShiftGo.BitFlow.View
                 new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f),
                 new Vector2(280f, 150f), new Vector2(-28f, -28f));
 
-            Text header = CreateText("Header", receiverPanel, "RECEIVERS", 18, TextAnchor.UpperLeft, AccentColor);
+            Text header = CreateText("Header", receiverPanel, "RECEIVERS", PixelFont.Small, TextAnchor.UpperLeft, AccentColor);
             SetRect(header.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f),
                 new Vector2(-32f, 26f), new Vector2(16f, -10f));
+
+            // 比左上角晚 0.10s：三个角一起飞会像整块 UI 一起弹出来，错峰才有"逐个就位"的秩序感
+            RegisterChrome(receiverPanel, new Vector2(ChromeSlideDistance, ChromeSlideDistance), 0.10f, false);
         }
 
         // ---------------------------------------------------------------- 底部控制条
@@ -230,13 +287,14 @@ namespace ShiftGo.BitFlow.View
             //   PAUSE -250..-130 / STEP -110..-10 / REPLAY 10..130 / SPEED 150..250
             Button pauseButton = CreateButton("Pause", bar, "PAUSE", new Vector2(120f, 44f), new Vector2(-190f, ButtonRowY), OnPauseClicked);
             pauseButtonLabel = pauseButton.GetComponentInChildren<Text>();
+            pauseButtonImage = pauseButton.GetComponent<Image>();
 
             CreateButton("Step", bar, "STEP", new Vector2(100f, 44f), new Vector2(-60f, ButtonRowY), OnStepClicked);
             CreateButton("Reset", bar, "REPLAY", new Vector2(120f, 44f), new Vector2(70f, ButtonRowY), OnResetClicked);
 
             // 倍速：一个小按钮循环 1× → 2× → 3× → 4× → 1×。
             // 比滑杆省一块地方（不用两行条），也不会出现"拖到 1.37 倍"这种没人用得上的档位。
-            Button speedButton = CreateButton("Speed", bar, "1×", new Vector2(100f, 44f), new Vector2(200f, ButtonRowY), OnSpeedClicked);
+            Button speedButton = CreateButton("Speed", bar, "1x", new Vector2(100f, 44f), new Vector2(200f, ButtonRowY), OnSpeedClicked);
             speedButtonLabel = speedButton.GetComponentInChildren<Text>();
 
             // 倍速滑杆：暂时关闭（见 ShowSpeedControl），标签和滑杆一起挂在这个开关下。
@@ -249,12 +307,34 @@ namespace ShiftGo.BitFlow.View
 
                 CreateSlider(bar, new Vector2(260f, 24f), new Vector2(-70f, -28f), 0.25f, 4f, 1f, OnSpeedChanged);
             }
+
+            // 「从哪开始」的叫号：挂在控制条正上方，箭头朝下指着 PLAY。
+            // 压在条里会挤掉按钮，飘在条外又会和网格打架，贴着上沿 +8 是唯一不挡东西的位置。
+            playHintText = CreateText("PlayHint", bar, "PRESS PLAY :)", PixelFont.Small, TextAnchor.LowerRight, GoodColor);
+            SetRect(playHintText.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 0f),
+                new Vector2(420f, 26f), new Vector2(0f, 8f));
+            playHintHome = playHintText.rectTransform.anchoredPosition;
+            playHintText.enabled = false;
+
+            // 最后一个就位，并且带过冲：全场只有这一块要玩家动手，收尾得比上面两个角重一点
+            RegisterChrome(bar, new Vector2(ChromeSlideDistance, -ChromeSlideDistance), 0.20f, true);
         }
 
         void LateUpdate()
         {
             // ScreenSpaceOverlay 的 Canvas 下，GetWorldCorners() 给的就是屏幕像素（左下为原点），
             // 正是待排区需要的坐标系 —— 所以这里不用去猜 CanvasScaler 把 600 缩放成了多少。
+            //
+            // 但飞行途中不许发布：这条矩形是待排区的"能铺多宽"边界，
+            // 跟着 ±44px 的滑入和 5% 的弹动一起动，卡排就会每 0.25s 抖一下。
+            // 演出中被遮挡时它也不需要更新 —— 那段时间手牌盘本来就不排版。
+            if (bottomBarRect == null || chromeHidden || chromeRoutine != null) return;
+
+            PublishBottomBarRect();
+        }
+
+        void PublishBottomBarRect()
+        {
             if (bottomBarRect == null) return;
 
             bottomBarRect.GetWorldCorners(cornerBuffer);
@@ -263,6 +343,183 @@ namespace ShiftGo.BitFlow.View
                 cornerBuffer[0].y,
                 cornerBuffer[2].x - cornerBuffer[0].x,
                 cornerBuffer[2].y - cornerBuffer[0].y);
+        }
+
+        // ---------------------------------------------------------------- 四角进出场
+        //
+        // 演出（开场终端 / 换关黑幕）期间四角必须收起来：这两层都是半透明的，
+        // 角落挂着 "TICK 00"、"RECEIVERS" 和四个按钮，观众会以为游戏已经开始了。
+        // 收的时候朝各自的角退出去（不是原地淡掉）——"被屏幕边缘吸走"读起来是演出开始，
+        // 原地淡掉读起来只是 UI 消失。
+        //
+        // 归位错峰 0 / 0.10 / 0.20s，右下角控制条压轴且带过冲：
+        // 三个角同时飞回来像整块 UI 弹了一下，错峰才有"逐个就位"的秩序感。
+
+        void RegisterChrome(RectTransform rect, Vector2 slide, float delay, bool overshoot)
+        {
+            if (rect == null) return;
+
+            CanvasGroup group = rect.GetComponent<CanvasGroup>();
+            if (group == null) group = rect.gameObject.AddComponent<CanvasGroup>();
+
+            chromes.Add(new Chrome
+            {
+                rect = rect,
+                group = group,
+                home = rect.anchoredPosition,
+                slide = slide,
+                delay = delay,
+                overshoot = overshoot
+            });
+        }
+
+        /// <summary>把某个角摆到进度 <paramref name="t"/>：0 = 收在角落外，1 = 原位。</summary>
+        static void PlaceChrome(Chrome chrome, float t)
+        {
+            t = Mathf.Clamp01(t);
+
+            // 位置可以过冲，透明度不行：alpha 过冲会被 Clamp01 吃掉，看起来就是"卡在 1 不动"
+            float eased = chrome.overshoot ? EaseOutBack(t) : EaseOutCubic(t);
+
+            chrome.group.alpha = t;
+            chrome.group.interactable = t > 0.6f;
+            chrome.group.blocksRaycasts = t > 0.6f;
+            chrome.rect.anchoredPosition = chrome.home + chrome.slide * (1f - eased);
+        }
+
+        /// <summary>立刻收起（不演动画）。只在开场那一帧用 —— 那一帧还没画出来，演也没人看得见。</summary>
+        void HideChromeNow()
+        {
+            if (chromeRoutine != null)
+            {
+                StopCoroutine(chromeRoutine);
+                chromeRoutine = null;
+            }
+
+            chromeHidden = true;
+            playHintShown = 0f;
+
+            // 先把"归位状态"的矩形交出去（此刻控制条还在原位），再把它滑走。
+            // 待排区整场演出都读这条，收起来之后 LateUpdate 就不再发布了。
+            PublishBottomBarRect();
+
+            foreach (Chrome chrome in chromes) PlaceChrome(chrome, 0f);
+
+            if (playHintText != null) playHintText.enabled = false;
+            if (pauseButtonImage != null) pauseButtonImage.color = ButtonColor;
+
+            // 控制条可能正被 PlayStartNudge 缩放，收起来时抹平，别让它带着残值起飞
+            if (bottomBarRect != null) bottomBarRect.localScale = Vector3.one;
+        }
+
+        IEnumerator RevealChromeRoutine()
+        {
+            chromeHidden = false;
+
+            foreach (Chrome chrome in chromes) PlaceChrome(chrome, 0f);
+
+            float end = 0f;
+            foreach (Chrome chrome in chromes) end = Mathf.Max(end, chrome.delay + ChromeFadeDuration);
+
+            // unscaled：暂停 / 改 timeScale 都不该把 UI 卡在半路上
+            float elapsed = 0f;
+            while (elapsed < end)
+            {
+                elapsed += Time.unscaledDeltaTime;
+
+                foreach (Chrome chrome in chromes) PlaceChrome(chrome, (elapsed - chrome.delay) / ChromeFadeDuration);
+
+                yield return null;
+            }
+
+            foreach (Chrome chrome in chromes) PlaceChrome(chrome, 1f);
+
+            // 压轴：右下角控制条单独再弹一下。只在还没开始玩的时候演
+            if (!playHintSeen) yield return PlayStartNudge();
+
+            chromeRoutine = null;
+        }
+
+        /// <summary>控制条归位之后再弹一次（1 → 1.05 → 1，一次衰减正弦），把眼睛拽到 PLAY 上。</summary>
+        IEnumerator PlayStartNudge()
+        {
+            if (bottomBarRect == null) yield break;
+
+            float duration = 0.32f;
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float k = Mathf.Clamp01(elapsed / duration);
+                float scale = 1f + 0.05f * Mathf.Sin(k * Mathf.PI * 2f) * (1f - k);
+
+                bottomBarRect.localScale = new Vector3(scale, scale, 1f);
+                yield return null;
+            }
+
+            bottomBarRect.localScale = Vector3.one;
+        }
+
+        void OnCurtainFinished()
+        {
+            if (!chromeHidden || chromeRoutine != null) return;
+
+            chromeRoutine = StartCoroutine(RevealChromeRoutine());
+        }
+
+        /// <summary>
+        /// 右下角那颗 PLAY 的专属提示：文字淡入淡出 + 箭头上下浮 + 按钮呼吸。
+        /// 条件盯着 runner 而不是自己记状态 —— 一旦真的跑起来（TickIndex &gt; 0）就自动收，
+        /// 玩家用键盘/重播/任何别的方式起步都不会漏掉这一步。
+        /// </summary>
+        void UpdatePlayHint()
+        {
+            if (runner != null && runner.TickIndex > 0) playHintSeen = true;
+
+            bool want = !chromeHidden
+                        && !playHintSeen
+                        && runner != null
+                        && !runner.IsFinished
+                        && runner.TickIndex == 0
+                        && runner.IsPaused;
+
+            playHintShown = Mathf.MoveTowards(playHintShown, want ? 1f : 0f, Time.unscaledDeltaTime / 0.25f);
+
+            if (playHintText != null)
+            {
+                bool visible = playHintShown > 0.001f;
+                if (playHintText.enabled != visible) playHintText.enabled = visible;
+
+                if (visible)
+                {
+                    // 只浮文字，不动控制条：按钮跟着抖会读成"UI 坏了"
+                    playHintText.rectTransform.anchoredPosition = playHintHome
+                        + new Vector2(0f, Mathf.Sin(Time.unscaledTime * 4.2f) * 3f * playHintShown);
+
+                    Color color = GoodColor;
+                    color.a = playHintShown * (0.78f + 0.22f * Mathf.Sin(Time.unscaledTime * 4.2f));
+                    playHintText.color = color;
+                }
+            }
+
+            if (pauseButtonImage != null)
+            {
+                float pulse = playHintShown * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 4.2f));
+                pauseButtonImage.color = Color.Lerp(ButtonColor, ButtonPulseColor, pulse * 0.85f);
+            }
+        }
+
+        static float EaseOutCubic(float t)
+        {
+            float u = 1f - t;
+            return 1f - u * u * u;
+        }
+
+        /// <summary>冲过头再回落：多冲约 8%，够看出"弹"，又不会撞到屏幕边缘。</summary>
+        static float EaseOutBack(float t)
+        {
+            float u = t - 1f;
+            return 1f + 2.7f * u * u * u + 1.7f * u * u;
         }
 
         // ---------------------------------------------------------------- 结算面板
@@ -279,11 +536,11 @@ namespace ShiftGo.BitFlow.View
             // 否则结算摆在那儿，还能点到后面的手牌/场地，点一下又触发一次结算。
             panel.GetComponent<Image>().raycastTarget = true;
 
-            resultTitle = CreateText("ResultTitle", panel, "PASS", 44, TextAnchor.UpperCenter, GoodColor);
+            resultTitle = CreateText("ResultTitle", panel, "PASS", 40, TextAnchor.UpperCenter, GoodColor);
             SetRect(resultTitle.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
                 new Vector2(-64f, 60f), new Vector2(0f, -24f));
 
-            resultDetail = CreateText("ResultDetail", panel, string.Empty, 20, TextAnchor.UpperCenter, TextColor);
+            resultDetail = CreateText("ResultDetail", panel, string.Empty, PixelFont.Body, TextAnchor.UpperCenter, TextColor);
             SetRect(resultDetail.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
                 new Vector2(-64f, 150f), new Vector2(0f, -96f));
 
@@ -304,11 +561,13 @@ namespace ShiftGo.BitFlow.View
 
         void BuildTooltip(Transform root)
         {
+            // 380 宽是按最长的一条元件说明算的：「NEED 101101 x1  ANY FACE」26 字符，
+            // 20 号像素字体每字符 12.5px → 325px，留 28px 内边距正好装下。
             RectTransform panel = CreatePanel("Tooltip", root,
                 new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f),
-                new Vector2(300f, 110f), Vector2.zero);
+                new Vector2(380f, 104f), Vector2.zero);
 
-            tooltipText = CreateText("TooltipText", panel, string.Empty, 18, TextAnchor.UpperLeft, TextColor);
+            tooltipText = CreateText("TooltipText", panel, string.Empty, PixelFont.Body, TextAnchor.UpperLeft, TextColor);
             SetRect(tooltipText.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0.5f, 0.5f),
                 new Vector2(-28f, -24f), Vector2.zero);
 
@@ -370,13 +629,13 @@ namespace ShiftGo.BitFlow.View
             SetRect(rect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), size, position);
 
             Image image = go.GetComponent<Image>();
-            image.color = new Color(0.12f, 0.20f, 0.28f, 0.95f);
+            image.color = ButtonColor;
 
             Button button = go.GetComponent<Button>();
             button.targetGraphic = image;
             button.onClick.AddListener(onClick);
 
-            Text text = CreateText("Label", rect, label, 20, TextAnchor.MiddleCenter, TextColor);
+            Text text = CreateText("Label", rect, label, PixelFont.Body, TextAnchor.MiddleCenter, TextColor);
             SetRect(text.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
             return button;
         }
@@ -446,6 +705,19 @@ namespace ShiftGo.BitFlow.View
 
             UpdateTooltip();
 
+            // 黑幕一盖上就把四角收走：开场终端和换关都走这条。
+            // （Curtain 开演的第一件事就是 SetDim(1f) 把屏幕刷黑，所以这里"瞬间收"看不见。）
+            if (curtain != null && curtain.IsBusy && !chromeHidden) HideChromeNow();
+
+            // 兜底：黑幕被外部掐掉（关组件 / 切场景 / 演到一半 Destroy）时，
+            // 不能把四角永远锁在隐藏状态 —— 那就成了"开场之后没有 HUD"。
+            if (chromeHidden && chromeRoutine == null && !InputGate.Locked && (curtain == null || !curtain.IsBusy))
+            {
+                chromeRoutine = StartCoroutine(RevealChromeRoutine());
+            }
+
+            UpdatePlayHint();
+
             if (pauseButtonLabel != null && runner != null)
             {
                 string label = runner.IsFinished ? "DONE" : (runner.IsPaused ? "PLAY" : "PAUSE");
@@ -457,6 +729,9 @@ namespace ShiftGo.BitFlow.View
 
         void OnPauseClicked()
         {
+            // 玩家已经找到这颗按钮了，招呼可以收了（换关也不再叫号）
+            playHintSeen = true;
+
             if (runner != null) runner.TogglePause();
             RefreshStatus();
         }
@@ -526,7 +801,7 @@ namespace ShiftGo.BitFlow.View
         {
             if (speedButtonLabel == null || runner == null) return;
 
-            string label = Mathf.RoundToInt(runner.Speed) + "×";
+            string label = Mathf.RoundToInt(runner.Speed) + "x";
             if (speedButtonLabel.text != label) speedButtonLabel.text = label;
         }
 
@@ -613,28 +888,30 @@ namespace ShiftGo.BitFlow.View
                 if (levelSelect != null) levelSelect.Refresh();
             }
 
+            // 只留两行有用信息：结论 + 用了几个 tick，下面是每台接收器的读数。
+            // 以前的 "ALL RECEIVERS LOCKED   -   12 TICKS" 只是把 PASS 又用长句说了一遍。
             System.Text.StringBuilder builder = new System.Text.StringBuilder();
             if (result.IsSuccess)
             {
-                builder.Append("ALL RECEIVERS LOCKED");
+                builder.Append("CLEARED");
             }
             else
             {
-                builder.Append(CountPassed(result)).Append(" / ").Append(result.Receivers.Count).Append(" RECEIVERS OK");
+                builder.Append(CountPassed(result)).Append("/").Append(result.Receivers.Count).Append(" OK");
             }
 
-            builder.Append("   -   ").Append(result.TickCount).Append(" TICKS\n\n");
+            builder.Append("\n").Append(result.TickCount).Append(" TICKS\n\n");
 
             // 明细按 receiver 列表顺序列，但不写编号（理由同 HUD 右上角）：
             // 玩家能对照的只有"收到几个 / 该收几个"，以及场上那台正在红闪的接收器。
             foreach (ReceiverResult receiver in result.Receivers)
             {
-                builder.Append("RECEIVER     ")
-                    .Append(receiver.ReceivedCount).Append(" / ").Append(receiver.TargetCount);
+                builder.Append(receiver.ReceivedCount).Append("/").Append(receiver.TargetCount);
 
-                if (receiver.IsSuccess) builder.Append("    ✓ OK");
-                else if (receiver.ReceivedCount > receiver.TargetCount) builder.Append("    ✗ OVERFLOW");
-                else builder.Append("    ✗ MISMATCH");
+                // 状态用 OK / OVER / MISS 三个短词：像素字体里没有 ✓ ✗ 这两个字形
+                if (receiver.IsSuccess) builder.Append("   OK");
+                else if (receiver.ReceivedCount > receiver.TargetCount) builder.Append("   OVER");
+                else builder.Append("   MISS");
 
                 builder.Append('\n');
             }
@@ -686,9 +963,11 @@ namespace ShiftGo.BitFlow.View
         {
             if (runner == null || statusText == null) return;
 
-            if (runner.IsFinished) statusText.text = "SETTLED";
+            // 一个词说完。以前的 "READY  -  PRESS PLAY" 是把操作提示写进了状态行，
+            // 而底部那颗按钮上就写着 PLAY —— 同一句话说两遍，还占掉一行宽度。
+            if (runner.IsFinished) statusText.text = "DONE";
             else if (!runner.IsPaused) statusText.text = "ROUTING";
-            else if (runner.TickIndex == 0) statusText.text = "READY  -  PRESS PLAY";
+            else if (runner.TickIndex == 0) statusText.text = "READY";
             else statusText.text = "PAUSED";
         }
 
@@ -701,7 +980,7 @@ namespace ShiftGo.BitFlow.View
             while (receiverLabels.Count < progress.Count)
             {
                 int index = receiverLabels.Count;
-                Text row = CreateText("R" + index, receiverPanel, string.Empty, 18, TextAnchor.UpperLeft, TextColor);
+                Text row = CreateText("R" + index, receiverPanel, string.Empty, PixelFont.Body, TextAnchor.UpperLeft, TextColor);
                 SetRect(row.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f),
                     new Vector2(-32f, 28f), new Vector2(16f, -44f - 30f * index));
                 receiverLabels.Add(row);
@@ -717,9 +996,11 @@ namespace ShiftGo.BitFlow.View
 
                 // 这里不写编号：编号只是运行时 Id，同一类型的接收器长得一模一样，
                 // 写出来玩家也对不上号（以前 HUD 写类型标签、结算写全局 Id、提示写 #Id，三处还各不相同）。
-                // 状态靠颜色 + 行尾的对勾/叉表达，哪台接收器不匹配由场上那台红闪来说明。
-                string state = entry.IsOverflow || !entry.IsStillValid ? "   ✗" : (entry.IsComplete ? "   ✓" : string.Empty);
-                row.text = entry.ReceivedCount + " / " + entry.TargetCount + state;
+                // 哪台接收器不匹配，由场上那台红闪来说明就够了。
+                // 对勾/叉号不用 ✓ ✗：像素字体里没有这两个字形（打包后会变方块），
+                // 用 OK / X 两个字母代替，颜色仍然承担主要区分（绿=达标，红=出错）。
+                string state = entry.IsOverflow || !entry.IsStillValid ? "  X" : (entry.IsComplete ? "  OK" : string.Empty);
+                row.text = entry.ReceivedCount + "/" + entry.TargetCount + state;
 
                 if (entry.IsOverflow || !entry.IsStillValid) row.color = BadColor;
                 else if (entry.IsComplete) row.color = GoodColor;

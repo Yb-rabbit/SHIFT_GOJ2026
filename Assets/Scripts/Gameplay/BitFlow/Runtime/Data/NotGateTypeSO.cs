@@ -23,7 +23,7 @@ namespace ShiftGo.BitFlow.Data
 
         public override string Describe()
         {
-            return "非门 " + label + "\n取反后向 " + DirName(outputDir) + " 输出";
+            return "NOT " + label + "\nINVERT  OUT " + DirArrow(outputDir);
         }
     }
 }

@@ -163,25 +163,25 @@ namespace ShiftGo.BitFlow.View
             // 说明里不再写 #Id：编号对玩家没有意义（同一类型的几件长得一模一样，
             // 玩家也无从对照），而且以前 HUD / 结算 / 提示三处各自算编号，
             // 一换关就对不上。现在三处都不出现编号。
+            //
+            // 全英文 + 箭头：UI 字体是像素字体（View.PixelFont），没有中文字形。
+            // 这里只是「类型资产没填 Hint」时的兜底（程序化关卡），文案要和
+            // ElementTypeSO.Describe() 同一套写法，否则同一个元件在两种来源下长得不一样。
             switch (element)
             {
                 case EmitterDefinition emitter:
-                    return $"发射器\n序列 “{emitter.Sequence}” 共 {emitter.EmitCount} 位，朝 {emitter.Facing}\n点阵（左→右＝发射顺序）：青=1 橙=0，发出的会变暗";
+                    return "EMITTER\n" + emitter.Sequence + " x" + emitter.EmitCount + "  FACE " + emitter.Facing.ToMark();
                 case ReceiverDefinition receiver:
-                    string mouth = receiver.AcceptAnyFace
-                        ? "四面都能进"
-                        : "只从 " + receiver.FeedFace + " 面进";
-                    return $"接收器\n需要 “{receiver.TargetSequence}” ×{receiver.TargetCount}，{mouth}\n点阵＝目标序列：青=1 橙=0";
+                    string mouth = receiver.AcceptAnyFace ? "ANY FACE" : "IN " + receiver.FeedFace.ToMark();
+                    return "RECEIVER\nNEED " + receiver.TargetSequence + " x" + receiver.TargetCount + "  " + mouth;
                 case SplitterDefinition splitter:
-                    return "分流器\n青色臂（收 1）→ " + splitter.OneArm + "，橙色臂（收 0）→ " + splitter.ZeroArm;
+                    return "SPLITTER\n1 " + splitter.OneArm.ToMark() + "   0 " + splitter.ZeroArm.ToMark();
                 case NotGateDefinition notGate:
-                    return "非门\n三面都能进（有矮栏的那三面），取反后向 " + notGate.OutputDir
-                        + " 输出（开口那一面）\n斜杠标记＝取反";
+                    return "NOT\nINVERT  OUT " + notGate.OutputDir.ToMark();
                 case FilterDefinition filter:
-                    return "过滤器\n三面都能进，只放行 " + filter.PassValue
-                        + "（闸门颜色就是放行值：" + (filter.PassValue == 0 ? "橙" : "青") + "）";
+                    return "FILTER\nPASS " + filter.PassValue + "  OUT " + filter.OutputDir.ToMark();
                 default:
-                    return "墙";
+                    return "WALL";
             }
         }
 

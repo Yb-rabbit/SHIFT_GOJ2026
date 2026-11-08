@@ -149,22 +149,23 @@ namespace ShiftGo.BitFlow.View
                 ? "LEVEL " + (index + 1).ToString("00")
                 : level.displayName;
 
-            Text title = CreateText("Title", rowRect, label, 22,
+            Text title = CreateText("Title", rowRect, label, PixelFont.Body,
                 TextAnchor.MiddleLeft, isCurrent ? TitleColor : MutedColor);
             SetRect(title.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
                 new Vector2(430f, RowHeight - 8f), new Vector2(22f, 0f));
 
-            string mark = SaveStore.IsCleared(level.displayName) ? "✓" : string.Empty;
+            // 打勾用 OK 两个字母：像素字体没有 ✓ 字形（打包后会变方块）
+            string mark = SaveStore.IsCleared(level.displayName) ? "OK" : string.Empty;
             if (mark.Length > 0)
             {
-                Text cleared = CreateText("Cleared", rowRect, mark, 24, TextAnchor.MiddleCenter, ClearedColor);
+                Text cleared = CreateText("Cleared", rowRect, mark, PixelFont.Small, TextAnchor.MiddleCenter, ClearedColor);
                 SetRect(cleared.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
                     new Vector2(40f, RowHeight - 8f), new Vector2(-22f, 0f));
             }
 
             if (isCurrent)
             {
-                Text now = CreateText("Now", rowRect, "NOW  ", 16, TextAnchor.MiddleRight, MutedColor);
+                Text now = CreateText("Now", rowRect, "NOW  ", PixelFont.Small, TextAnchor.MiddleRight, MutedColor);
                 SetRect(now.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
                     new Vector2(80f, RowHeight - 8f), new Vector2(-60f, 0f));
             }
@@ -192,7 +193,7 @@ namespace ShiftGo.BitFlow.View
 
         void BuildUi()
         {
-            font = LoadFont();
+            font = PixelFont.Get();
 
             canvasObject = new GameObject("LevelSelectCanvas", typeof(RectTransform), typeof(Canvas),
                 typeof(CanvasScaler), typeof(GraphicRaycaster));
@@ -235,7 +236,7 @@ namespace ShiftGo.BitFlow.View
             Image panelImage = panelObject.GetComponent<Image>();
             panelImage.color = PanelColor;
 
-            Text title = CreateText("Title", panelRect, "SELECT LEVEL", 34, TextAnchor.MiddleCenter, TitleColor);
+            Text title = CreateText("Title", panelRect, "SELECT LEVEL", 32, TextAnchor.MiddleCenter, TitleColor);
             SetRect(title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
                 new Vector2(600f, 44f), new Vector2(0f, -46f));
 
@@ -245,7 +246,7 @@ namespace ShiftGo.BitFlow.View
             SetRect(listRoot, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
                 new Vector2(600f, 0f), new Vector2(0f, -96f));
 
-            emptyText = CreateText("Empty", panelRect, "NO LEVEL CATALOG IN THIS SCENE", 22,
+            emptyText = CreateText("Empty", panelRect, "NO LEVELS", PixelFont.Body,
                 TextAnchor.MiddleCenter, MutedColor);
             SetRect(emptyText.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
                 new Vector2(600f, 40f), Vector2.zero);
@@ -288,7 +289,7 @@ namespace ShiftGo.BitFlow.View
             button.targetGraphic = image;
             button.onClick.AddListener(onClick);
 
-            Text text = CreateText("Label", go.transform, label, 20, TextAnchor.MiddleCenter, TitleColor);
+            Text text = CreateText("Label", go.transform, label, PixelFont.Body, TextAnchor.MiddleCenter, TitleColor);
             SetRect(text.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
             return button;
         }
@@ -301,13 +302,6 @@ namespace ShiftGo.BitFlow.View
             rect.pivot = pivot;
             rect.sizeDelta = size;
             rect.anchoredPosition = position;
-        }
-
-        static Font LoadFont()
-        {
-            Font loaded = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            if (loaded == null) loaded = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            return loaded;
         }
     }
 }

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 70be23a18564f99488f2111e20592de1, type: 3}
   m_Name: Level_01
   m_EditorClassIdentifier: 
-  displayName: LEVEL 00 - BIT FLOW
+  displayName: 00  BIT FLOW
   width: 9
   height: 8
   tickInterval: 0.35
