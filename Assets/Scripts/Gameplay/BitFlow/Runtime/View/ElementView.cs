@@ -11,9 +11,12 @@ namespace ShiftGo.BitFlow.View
     /// </summary>
     public sealed class ElementView : MonoBehaviour
     {
-        /// <summary>位值配色与 BitActorView 完全一致：青=1、橙=0。分流器臂、序列点阵、过滤器出口都复用它。</summary>
+        /// <summary>位值配色与 BitActorView 完全一致：青=1、橙=0。分流器臂、序列点阵、过滤器闸门都复用它。</summary>
         static readonly Color ColorOne = BitActorView.ColorOne;
         static readonly Color ColorZero = BitActorView.ColorZero;
+
+        /// <summary>非门「翻转」标记的颜色。粉只出现在非门上，是它专有的信号色。</summary>
+        static readonly Color InvertColor = new Color(1f, 0.45f, 0.75f);
 
         public int ElementId { get; private set; }
         public ElementDefinition Definition { get; private set; }
@@ -36,6 +39,20 @@ namespace ShiftGo.BitFlow.View
         Color flashColor = Color.red;
         bool locked;
         bool highlighted;
+
+        // ---- 摆放动效（纯表现）----
+        /// <summary>落地时长。0.26s 是"看得见但不用等"的折中：再长会挡住下一步操作。</summary>
+        const float DropDuration = 0.26f;
+        /// <summary>起始悬空高度。太高像从天上掉，太低看不出是"放下去的"。</summary>
+        const float DropHeight = 0.42f;
+        /// <summary>下坠占总时长的比例，剩下的时间留给落地挤压回弹。</summary>
+        const float DropLandAt = 0.72f;
+        const float DropSquash = 0.88f;
+        const float RotateDuration = 0.16f;
+
+        float dropTimer = -1f;
+        float rotateTimer = -1f;
+        float rotateFromAngle;
 
         public void Build(ElementDefinition definition, string description, Material bodySharedMaterial)
         {
@@ -64,9 +81,14 @@ namespace ShiftGo.BitFlow.View
         }
 
         /// <summary>
-        /// 形状语言（不看文字也能分辨元件，箭头一律带箭头头，方向不会看反）：
-        /// 墙=高立方、发射器=矮宽实心块+朝外箭头、接收器=四角柱围出的托盘（全向时四个口全开，
-        /// 严格模式堵掉三个口只留进料面）、分流器=小块+两条臂、非门=菱形、过滤器=薄板且出口箭头颜色=它放行的值。
+        /// 形状语言（不看文字也能分辨元件，凡是带方向的地方都配箭头头，方向不会看反）：
+        /// - 墙=高立方；分流器=小块+两条臂。
+        /// - 发射器=矮宽实心块+朝外箭头。
+        /// - 接收器=四角柱围出的托盘，既没有箭头也没有缺口（终点只收不吐）；全向时四个口全开，严格模式堵掉三个口只留进料面。
+        /// - 非门 / 过滤器=三面矮栏+一面开口，开口就是输出方向。它们刻意不出箭头：缺口已经把方向说完了，
+        ///   再从缺口插一根杆出去，在 3/4 视角下只是一根浮在矮栏上方的把手，重复且挡视线。
+        ///   这是它们和接收器（四向对称的角柱）最省事的区分方式。
+        /// 一句话读法：**实心本体+朝外箭头＝单面进单面吐；矮栏三缺一＝多面进、缺口吐；四角柱＝只收不吐。**
         /// </summary>
         void BuildShape(ElementDefinition definition)
         {
@@ -99,14 +121,26 @@ namespace ShiftGo.BitFlow.View
                     break;
 
                 case NotGateDefinition notGate:
-                    AddBlock(new Vector3(0.54f, 0.34f, 0.54f), 0.17f, 45f);
-                    AddArrow(notGate.OutputDir, 0.30f, new Color(1f, 0.45f, 0.75f), 2.2f, 0.30f);
+                    // 非门是「三面进、一面出」的处理器：逻辑上除出口面之外的三个面都能进（逆行才销毁）。
+                    // 所以本体不能是过去那个 45° 菱形方块 —— 菱形只说明"我和别人不一样"，
+                    // 完全没交代"从哪都能进来"，还容易看成分流器的小块。
+                    // 现在用和接收器同一套语言：矮栏围出缺口＝多个面能进，缺口开在输出方向。
+                    //
+                    // 这里刻意不再画出口箭头：缺口本身就是出口，再插一根从缺口伸出去的杆，
+                    // 在 3/4 视角下就是一根浮在矮栏上方的"把手"，既重复又挡视线（箭头 y=0.30，
+                    // 矮栏顶 y=0.22，正好错开一点、看起来像悬空的零件）。方向交给缺口。
+                    AddBlock(new Vector3(0.56f, 0.10f, 0.56f), 0.05f); // 底盘：保证元件落地有存在感
+                    AddRails(notGate.OutputDir);
+                    AddInvertMark();
                     break;
 
                 case FilterDefinition filter:
-                    AddBlock(new Vector3(0.84f, 0.16f, 0.84f), 0.08f);
-                    // 出口箭头颜色 = 它放行的值（青=只放 1、橙=只放 0）
-                    AddArrow(filter.OutputDir, 0.34f, filter.PassValue == 0 ? ColorZero : ColorOne, 2.2f, 0.24f);
+                    // 过滤器和非门一样是三面进：它的个性在"只放行某个值"，
+                    // 所以开口处立一道闸门，闸门的颜色就是它放行的值 —— 整格只有这一样东西带颜色，读起来最直接。
+                    // 同样不画出口箭头：闸门已经站在开口上，它就是"这里出去"的告示牌。
+                    AddBlock(new Vector3(0.56f, 0.10f, 0.56f), 0.05f);
+                    AddRails(filter.OutputDir);
+                    AddGateBarrier(filter.OutputDir, filter.PassValue);
                     break;
             }
         }
@@ -116,10 +150,15 @@ namespace ShiftGo.BitFlow.View
             AddBlockAt(size, new Vector3(0f, y, 0f), yRotation);
         }
 
-        void AddBlockAt(Vector3 size, Vector3 localPosition, float yRotation = 0f)
+        /// <param name="blockName">
+        /// 子物体名。本体块一律叫 "block"（老测试靠这个名字找本体），
+        /// 只有「同属本体但不是那块主方块」的零件（矮栏、栅栏）才另起名字，
+        /// 否则测试和调试时数不清一格里到底谁是谁。
+        /// </param>
+        void AddBlockAt(Vector3 size, Vector3 localPosition, float yRotation = 0f, string blockName = "block")
         {
             GameObject block = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            block.name = "block";
+            block.name = blockName;
             DestroyImmediateSafe(block.GetComponent<Collider>());
             block.transform.SetParent(transform, false);
             block.transform.localPosition = localPosition;
@@ -170,6 +209,94 @@ namespace ShiftGo.BitFlow.View
                 AddBlockAt(
                     new Vector3(nx, capHeight, nz),
                     new Vector3(side.x * ringOffset, capHeight * 0.5f, side.z * ringOffset));
+            }
+        }
+
+        /// <summary>
+        /// 三面矮栏：留出 <paramref name="openDir"/> 那一面不封，其余三面各立一道矮栏。
+        ///
+        /// 这是「我从多个面收」的统一符号 —— 接收器的四角柱是它的四向版本。
+        /// 之所以用连续矮栏而不是角柱，是为了和接收器区分开：角柱＝四面对称的终点，
+        /// 矮栏＋一面开口＝三面收、一面吐的处理器（非门 / 过滤器）。
+        /// 零件名用 "rail" 而不是 "block"：本体块只能有一块，不然测试数不清谁是谁。
+        /// </summary>
+        void AddRails(Dir openDir)
+        {
+            const float offset = 0.32f;
+            const float thickness = 0.10f;
+            const float length = 0.62f;
+            const float height = 0.22f;
+
+            Vector3 open = GridMetrics.DirToWorld(openDir);
+            Vector3[] sides = { Vector3.right, Vector3.left, Vector3.forward, Vector3.back };
+
+            foreach (Vector3 side in sides)
+            {
+                if (side == open) continue;
+
+                // 立在左右两面时栏沿 z 铺开，立在前后面时沿 x 铺开
+                bool alongZ = Mathf.Abs(side.x) > 0.5f;
+                Vector3 size = alongZ
+                    ? new Vector3(thickness, height, length)
+                    : new Vector3(length, height, thickness);
+
+                AddBlockAt(size, new Vector3(side.x * offset, height * 0.5f, side.z * offset), 0f, "rail");
+            }
+        }
+
+        /// <summary>
+        /// 非门的「翻转」标记：底盘上一根 45° 斜条。
+        /// 斜杠在书写里就是「划掉 / 否定」，比画一个感叹号省几何，
+        /// 也不会和序列点阵、进度条这些横平竖直的零件撞脸。
+        /// </summary>
+        void AddInvertMark()
+        {
+            GameObject mark = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            mark.name = "invert_mark";
+            DestroyImmediateSafe(mark.GetComponent<Collider>());
+            mark.transform.SetParent(transform, false);
+            mark.transform.localPosition = new Vector3(0f, 0.10f, 0f);
+            mark.transform.localRotation = Quaternion.Euler(0f, 45f, 0f);
+            mark.transform.localScale = new Vector3(0.46f, 0.07f, 0.11f);
+
+            ApplyRenderer(mark, MaterialFactory.Emissive(InvertColor, 2.2f));
+        }
+
+        /// <summary>
+        /// 过滤器的闸门：开口处并排三根细条、中间留缝 —— 「筛子」的图形语言。
+        /// 整道闸门用放行值的颜色（青=只放 1、橙=只放 0）。
+        /// 它是这个元件唯一带颜色的东西，所以闸门本身就是"只放这一种"的告示牌。
+        /// </summary>
+        void AddGateBarrier(Dir dir, byte passValue)
+        {
+            Material material = MaterialFactory.Emissive(passValue == 0 ? ColorZero : ColorOne, 2.2f);
+
+            Vector3 outDir = GridMetrics.DirToWorld(dir);
+            // 比矮栏（0.32）稍稍退进格内，闸门就立在缺口里侧 —— 看起来是"卡在门口的一道栅栏"，
+            // 而不是贴在格子边缘。两者差 0.10，斜视角下能看出前后关系。
+            const float distance = 0.22f;
+            bool alongZ = Mathf.Abs(outDir.x) > 0.5f;
+
+            const int bars = 3;
+            const float spacing = 0.18f;
+            const float start = -(bars - 1) * spacing * 0.5f;
+
+            for (int i = 0; i < bars; i++)
+            {
+                float shift = start + i * spacing;
+
+                GameObject bar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                bar.name = "gate_" + i;
+                DestroyImmediateSafe(bar.GetComponent<Collider>());
+                bar.transform.SetParent(transform, false);
+                bar.transform.localPosition = new Vector3(
+                    outDir.x * distance + (alongZ ? 0f : shift),
+                    0.13f,
+                    outDir.z * distance + (alongZ ? shift : 0f));
+                bar.transform.localScale = alongZ
+                    ? new Vector3(0.07f, 0.26f, 0.11f)
+                    : new Vector3(0.11f, 0.26f, 0.07f);
+                ApplyRenderer(bar, material);
             }
         }
 
@@ -347,6 +474,107 @@ namespace ShiftGo.BitFlow.View
             flashColor = new Color(0.25f, 1f, 0.5f);
         }
 
+        /// <summary>
+        /// 落地动效：从上方 <see cref="DropHeight"/> 处掉下来，落地瞬间纵向压扁再弹回，同时闪一下白。
+        ///
+        /// 为什么值得做：卡牌一消失、网格里凭空多一个元件，玩家会怀疑"我到底点中了没有"。
+        /// 有了这 0.26 秒，操作和结果之间才有因果感。全程只改 transform 和自发光，
+        /// 模拟状态里一个字节都不动 —— 想关掉随时可以不管它。
+        /// </summary>
+        public void PlayDropIn()
+        {
+            dropTimer = 0f;
+            ApplyDropPose(0f);
+
+            // 白色脉冲而不是绿色：绿色是"这个接收器成了"，别把两件事混成同一个信号
+            flashTimer = 0.26f;
+            flashColor = Color.white;
+        }
+
+        /// <summary>
+        /// 旋转动效：绕 Y 轴转 90° 到新朝向。
+        /// R 键如果只是"啪"一下换个形状，玩家会以为是自己看错了；
+        /// 160ms 的转动能让视线跟得上，也顺带说明"转的是这个元件，不是旁边那个"。
+        /// </summary>
+        /// <param name="clockwise">往哪边转。调用方按"离新朝向最近的方向"给，别绕远路。</param>
+        public void PlayRotateIn(bool clockwise)
+        {
+            rotateTimer = 0f;
+            rotateFromAngle = clockwise ? -90f : 90f;
+            transform.localRotation = Quaternion.Euler(0f, rotateFromAngle, 0f);
+        }
+
+        /// <summary>
+        /// 下坠曲线：返回"还剩多少离地高度"，1=刚松手，0=已经踩实。
+        /// 用 t² 而不是线性 —— 线性看着像电梯，加速下坠才像物体在重力下掉。
+        /// 落地点之后的 28% 时间归压扁回弹用，所以这里直接返回 0。
+        /// </summary>
+        public static float DropOffset01(float t)
+        {
+            t = Mathf.Clamp01(t);
+            if (t >= DropLandAt) return 0f;
+
+            float fall = t / DropLandAt;
+            return 1f - fall * fall;
+        }
+
+        /// <summary>
+        /// 落地挤压：落地瞬间 y 压到 0.88 再弹回 1（x/z 不动）。
+        /// 一点形变就能让人读出"这东西有重量"；完全没有形变会像穿模落进去。
+        /// </summary>
+        public static float DropScaleY(float t)
+        {
+            t = Mathf.Clamp01(t);
+            if (t <= DropLandAt) return 1f;
+
+            float back = (t - DropLandAt) / (1f - DropLandAt);
+            return Mathf.Lerp(DropSquash, 1f, Mathf.SmoothStep(0f, 1f, back));
+        }
+
+        /// <summary>把下坠进度写成 transform（位置抬高 + 纵向压扁）。抽出单独一份，测试也好直接调。</summary>
+        void ApplyDropPose(float t)
+        {
+            Vector3 basePosition = GridMetrics.CellToWorld(Definition.Coord);
+            transform.position = basePosition + Vector3.up * (DropHeight * DropOffset01(t));
+            transform.localScale = new Vector3(1f, DropScaleY(t), 1f);
+        }
+
+        /// <summary>
+        /// 推进落地 / 旋转这两段纯表现动画，结束后把 transform 复位成标准姿态。
+        /// 复位是必须的：动画中途被打断（换关、重放、元件被删）时，
+        /// 元件不能停在半空或者歪着 —— 那会被当成关卡bug。
+        /// </summary>
+        void TickPlacementMotion()
+        {
+            if (dropTimer >= 0f)
+            {
+                dropTimer += Time.deltaTime;
+                float t = dropTimer / DropDuration;
+                ApplyDropPose(t);
+
+                if (t >= 1f)
+                {
+                    dropTimer = -1f;
+                    transform.localScale = Vector3.one;
+                }
+            }
+
+            if (rotateTimer >= 0f)
+            {
+                rotateTimer += Time.deltaTime;
+                float t = Mathf.Clamp01(rotateTimer / RotateDuration);
+                // EaseOutCubic：起手快、收手稳，到位那一下才不显得拖
+                float eased = 1f - Mathf.Pow(1f - t, 3f);
+                transform.localRotation = Quaternion.Euler(0f, Mathf.Lerp(rotateFromAngle, 0f, eased), 0f);
+
+                if (t >= 1f)
+                {
+                    rotateTimer = -1f;
+                    transform.localRotation = Quaternion.identity;
+                }
+            }
+        }
+
         /// <summary>游戏内编辑器的悬停/选中高亮（只抬自发光，不改数据）。</summary>
         public void SetHighlighted(bool value)
         {
@@ -366,6 +594,8 @@ namespace ShiftGo.BitFlow.View
         void Update()
         {
             if (bodyMaterial == null) return;
+
+            TickPlacementMotion();
 
             if (flashTimer > 0f)
             {

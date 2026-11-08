@@ -402,8 +402,36 @@ namespace ShiftGo.BitFlow.View
                     statusMessage = "这是关卡给定的元件，不能旋转";
                     RefreshAll();
                 }
-                else if (draft.Rotate(cell)) Apply("已旋转 " + cell);
+                else if (draft.Rotate(cell))
+                {
+                    Apply("已旋转 " + cell);
+                    // 和放置一样，动画要挂在 Apply 新建出来的那个视图上
+                    PlayRotateAt(cell, true);
+                }
             }
+        }
+
+        /// <summary>
+        /// 给刚放下的元件补一段落地动画。
+        /// 找不到视图就静默跳过 —— 动画是纯表现，绝不该因为它影响"操作是否成功"。
+        /// </summary>
+        void PlayDropInAt(GridPoint cell)
+        {
+            ElementView view = FindViewAt(cell);
+            if (view != null) view.PlayDropIn();
+        }
+
+        /// <summary>给刚旋转的元件补一段转身动画，让玩家看清"转的是这一个"。</summary>
+        void PlayRotateAt(GridPoint cell, bool clockwise)
+        {
+            ElementView view = FindViewAt(cell);
+            if (view != null) view.PlayRotateIn(clockwise);
+        }
+
+        ElementView FindViewAt(GridPoint cell)
+        {
+            if (runner == null || runner.Builder == null) return null;
+            return runner.Builder.GetElementAt(cell);
         }
 
         static string RotationName(int steps)
@@ -1044,6 +1072,8 @@ namespace ShiftGo.BitFlow.View
                     string placed = LabelOf(armedType) + " " + cell;
                     if (draft.Remaining(armedType.Key) <= 0) armedType = null; // 这摞用完了
                     Apply("已放下 " + placed);
+                    // 必须排在 Apply 之后：Apply 会重建整个舞台，旧的 ElementView 已经没了
+                    PlayDropInAt(cell);
                     break;
 
                 case PlaceResult.Locked:

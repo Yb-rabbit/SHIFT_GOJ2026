@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using ShiftGo.BitFlow.Core;
@@ -26,6 +27,18 @@ namespace ShiftGo.BitFlow.Data
 
         [Header("元件摆放")]
         public List<ElementPlacement> placements = new List<ElementPlacement>();
+
+        [Header("墙层")]
+        [Tooltip("画墙用的类型资产。留空 = wallMap 不生效（老关卡一个字节都不变）")]
+        public WallTypeSO wallType;
+
+        [Tooltip("用 # 画墙、. 或空格留空。每行对应一个 y（从下往上，第一行是 y=0），行内第一个字符是 x=0。\n" +
+                 "例：\n" +
+                 "#.......#\n" +
+                 ".........\n" +
+                 "....###..")]
+        [TextArea(4, 12)]
+        public string wallMap = string.Empty;
 
         [Header("玩家手牌")]
         [Tooltip("留空 = 不限量（作者拿来摆草图的演示关）。填了才是有限元件的解谜关：" +
@@ -73,7 +86,147 @@ namespace ShiftGo.BitFlow.Data
                 nextId++;
             }
 
+            // 墙层追加在 placements 之后。这个顺序是刻意的：
+            // 把墙从 placements 迁进 wallMap 之后，Elements 的数量和「元件在前、墙在后」
+            // 的格局都不变，Id 不会整体错位，视图映射和进度条也就不受影响。
+            AppendWalls((coord, id) =>
+            {
+                ElementDefinition wall = wallType.CreateDefinition(new GridPoint(coord.x, coord.y), 0, id);
+                if (wall == null) return false;
+
+                wall.Label = wallType.label;
+                wall.Hint = wallType.Describe();
+                wall.TypeKey = wallType.Key;
+                definition.Elements.Add(wall);
+                return true;
+            }, nextId);
+
             return definition;
+        }
+
+        /// <summary>
+        /// 把 <see cref="wallMap"/> 展开成坐标。规则（都写在 Tooltip 里，这里重复一遍免得改代码时忘了）：
+        /// - 一行 = 一个 y，从下往上数，第一行是 y=0；行内第 i 个字符是 x=i；
+        /// - '#' 是墙，其余字符（'.'、空格、Tab）都是空；
+        /// - 短行等于右侧留空，超出 width/height 的字符直接忽略（作者改网格尺寸时不用同步改图）；
+        /// - 同一格只算一次。
+        ///
+        /// 之所以用字符网格而不是数组字段：手写关卡时一眼就能看出形状，
+        /// 比 18 条每条 8 个字段的 placement 好维护得多。
+        /// </summary>
+        public IEnumerable<Vector2Int> ParseWalls()
+        {
+            if (string.IsNullOrEmpty(wallMap) || wallType == null) yield break;
+
+            int maxX = Mathf.Max(1, width);
+            int maxY = Mathf.Max(1, height);
+
+            string[] lines = SplitWallLines();
+
+            HashSet<Vector2Int> seen = new HashSet<Vector2Int>();
+
+            for (int y = 0; y < lines.Length && y < maxY; y++)
+            {
+                string line = lines[y];
+                int limit = Mathf.Min(line.Length, maxX);
+
+                for (int x = 0; x < limit; x++)
+                {
+                    if (line[x] != '#') continue;
+
+                    Vector2Int coord = new Vector2Int(x, y);
+                    if (seen.Add(coord)) yield return coord;
+                }
+            }
+        }
+
+        /// <summary>这一格在墙层里吗。只看 wallMap，不看 placements。</summary>
+        public bool IsWallInMap(Vector2Int coord)
+        {
+            if (coord.x < 0 || coord.y < 0 || string.IsNullOrEmpty(wallMap)) return false;
+
+            string[] lines = SplitWallLines();
+            if (coord.y >= lines.Length) return false;
+
+            string line = lines[coord.y];
+            return coord.x < line.Length && line[coord.x] == '#';
+        }
+
+        /// <summary>
+        /// 在墙层里画 / 擦一格，返回"文本是否真的变了"（调用方据此决定要不要记 Undo）。
+        ///
+        /// 会自动把缺的行 / 短的行补齐到 width（用 '.' 补，肉眼能数清列），
+        /// 所以作者手写的图不必每行都对齐 —— 少打几个点不会让后面的墙整体错位。
+        /// </summary>
+        public bool SetWall(Vector2Int coord, bool isWall)
+        {
+            int maxX = Mathf.Max(1, width);
+            int maxY = Mathf.Max(1, height);
+
+            if (coord.x < 0 || coord.y < 0 || coord.x >= maxX || coord.y >= maxY) return false;
+
+            List<string> lines = new List<string>(SplitWallLines());
+
+            while (lines.Count <= coord.y) lines.Add(string.Empty);
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (lines[i].Length < maxX) lines[i] = lines[i].PadRight(maxX, '.');
+            }
+
+            char[] chars = lines[coord.y].ToCharArray();
+            char target = isWall ? '#' : '.';
+            if (chars[coord.x] == target) return false;
+
+            chars[coord.x] = target;
+            lines[coord.y] = new string(chars);
+
+            // 尾部整行都没墙的地位于网格之外，留着只会让文本越改越长
+            while (lines.Count > 0 && IsBlankWallLine(lines[lines.Count - 1])) lines.RemoveAt(lines.Count - 1);
+
+            wallMap = string.Join("\n", lines);
+            return true;
+        }
+
+        string[] SplitWallLines()
+        {
+            return (wallMap ?? string.Empty)
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n')
+                .Split('\n');
+        }
+
+        static bool IsBlankWallLine(string line)
+        {
+            foreach (char c in line)
+            {
+                if (c != '.' && c != ' ' && c != '\t') return false;
+            }
+            return true;
+        }
+
+        /// <summary>这一格是不是已经被 placements 占了。占了的格 wallMap 要跳过：placements 优先。</summary>
+        public bool HasPlacementAt(Vector2Int coord)
+        {
+            return FindPlacement(coord) != null;
+        }
+
+        /// <summary>
+        /// 遍历 wallMap 里还空着的墙格，交给 <paramref name="add"/> 自己决定怎么落地
+        /// （ToDefinition 用逻辑定义、CreatePlayerDraft 用可编辑草稿）。
+        /// </summary>
+        void AppendWalls(Func<Vector2Int, int, bool> add, int firstId)
+        {
+            if (wallType == null) return;
+
+            int id = firstId;
+            foreach (Vector2Int coord in ParseWalls())
+            {
+                // placements 优先：作者在网格里手滑画到元件身上时，结果应该是"这格已有东西"，
+                // 而不是凭空多出一面墙把元件盖掉
+                if (HasPlacementAt(coord)) continue;
+
+                if (add(coord, id)) id++;
+            }
         }
 
         /// <summary>
@@ -101,6 +254,16 @@ namespace ShiftGo.BitFlow.Data
 
                 draft.Place(element, !placement.playerEditable);
             }
+
+            // 墙层的墙在玩家局里永远是「关卡预设件」：搬不动、拾不回，和以前写在 placements 里一样
+            AppendWalls((coord, _) =>
+            {
+                EditableElement wall = wallType.CreateEditable(new GridPoint(coord.x, coord.y));
+                if (wall == null) return false;
+
+                draft.Place(wall, true);
+                return true;
+            }, 0);
 
             foreach (ElementSupply supply in supplies)
             {

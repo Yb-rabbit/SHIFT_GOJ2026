@@ -33,6 +33,10 @@ namespace ShiftGo.EditorTools
         static readonly Color CellEmpty = new Color(0.23f, 0.24f, 0.28f);
         static readonly Color ConflictColor = new Color(0.85f, 0.28f, 0.28f);
         static readonly Color MissingColor = new Color(0.55f, 0.55f, 0.20f);
+
+        /// <summary>墙层格子：比空格亮、比任何元件暗，和检视器里那张网格保持同一套颜色。</summary>
+        static readonly Color WallCellColor = new Color(0.42f, 0.44f, 0.50f);
+
         static readonly Color HoverOverlay = new Color(1f, 1f, 1f, 0.20f);
         static readonly Color SelectedTint = new Color(0.24f, 0.48f, 0.72f);
         static readonly Color IdleTint = new Color(0.21f, 0.21f, 0.22f);
@@ -322,8 +326,10 @@ namespace ShiftGo.EditorTools
                 ClearPlacements();
 
             GUILayout.FlexibleSpace();
-            EditorGUILayout.LabelField(
-                level.placements.Count + " 个摆放", EditorStyles.miniLabel, GUILayout.Width(72f));
+            int wallCount = WallCountInMap();
+            string countText = level.placements.Count + " 个摆放";
+            if (wallCount > 0) countText += " + " + wallCount + " 面墙";
+            EditorGUILayout.LabelField(countText, EditorStyles.miniLabel, GUILayout.Width(120f));
             EditorGUILayout.EndHorizontal();
 
             canvasScroll = EditorGUILayout.BeginScrollView(canvasScroll, GUILayout.ExpandHeight(true));
@@ -387,11 +393,13 @@ namespace ShiftGo.EditorTools
 
             ElementPlacement placement = FindPlacement(coord);
             int stacked = CountAt(coord);
+            bool wallInMap = level.IsWallInMap(coord);
 
             if (Event.current.type == EventType.Repaint)
             {
                 Color background = CellEmpty;
-                if (stacked > 1) background = ConflictColor;
+                if (stacked > 1 || (wallInMap && stacked > 0)) background = ConflictColor;
+                else if (wallInMap) background = WallCellColor;
                 else if (placement != null)
                 {
                     background = placement.type != null
@@ -401,7 +409,11 @@ namespace ShiftGo.EditorTools
 
                 EditorGUI.DrawRect(cell, background);
 
-                if (placement != null)
+                if (wallInMap && stacked == 0)
+                {
+                    GUI.Label(cell, "#", CellStyle());
+                }
+                else if (placement != null)
                 {
                     GUI.Label(cell, LabelFor(placement.type), CellStyle());
 
@@ -479,9 +491,22 @@ namespace ShiftGo.EditorTools
             }
 
             ElementPlacement existing = FindPlacement(coord);
+
+            // 墙笔刷走墙层（wallMap），不进 placements：
+            // 一面墙只需要"在哪一格"这一条信息，没必要占一条 8 字段的摆放项
+            if (brush is WallTypeSO)
+            {
+                PaintWallAt(coord);
+                return;
+            }
+
             if (existing != null && existing.type == brush && CountAt(coord) == 1) return; // 重复点同一格不留噪声 undo
 
             Undo.RecordObject(level, "Place Element");
+
+            // 这格原来是墙层的墙：换成元件时顺手擦掉。
+            // 不擦的话墙会被 placements 静默压过去，作者会以为"墙还在，只是没显示"
+            bool erasedWall = level.SetWall(coord, false);
 
             if (existing != null)
             {
@@ -501,12 +526,28 @@ namespace ShiftGo.EditorTools
             }
 
             EditorUtility.SetDirty(level);
-            status = "已放置 " + LabelFor(brush) + " @ (" + coord.x + ", " + coord.y + ")";
+            status = "已放置 " + LabelFor(brush) + " @ (" + coord.x + ", " + coord.y + ")"
+                     + (erasedWall ? "（顺手擦掉了这一格的墙）" : string.Empty);
+        }
+
+        /// <summary>墙笔刷：直接写墙层。这一格已经有墙就什么都不做（连点不会堆一堆 undo）。</summary>
+        void PaintWallAt(Vector2Int coord)
+        {
+            Undo.RecordObject(level, "Draw Wall");
+
+            // 用墙笔刷画第一面墙时顺手把 wallType 定下来，省得作者再去字段里找
+            if (level.wallType == null && brush is WallTypeSO brushWall) level.wallType = brushWall;
+
+            bool changed = level.SetWall(coord, true);
+            EditorUtility.SetDirty(level);
+
+            if (changed) status = "已画墙 @ (" + coord.x + ", " + coord.y + ")";
         }
 
         void RemoveAt(Vector2Int coord)
         {
-            if (CountAt(coord) == 0) return;
+            bool hadWall = level.IsWallInMap(coord);
+            if (CountAt(coord) == 0 && !hadWall) return;
 
             Undo.RecordObject(level, "Remove Placement");
             for (int i = level.placements.Count - 1; i >= 0; i--)
@@ -516,8 +557,12 @@ namespace ShiftGo.EditorTools
                 level.placements.RemoveAt(i);
             }
 
+            // 墙层里的墙也要一起擦：右键 / 橡皮在这两种表示法下的意思都是"清掉这一格"
+            level.SetWall(coord, false);
+
             EditorUtility.SetDirty(level);
-            status = "已清掉 (" + coord.x + ", " + coord.y + ") 上的元件";
+            status = "已清掉 (" + coord.x + ", " + coord.y + ") 上的"
+                     + (hadWall && CountAt(coord) == 0 ? "墙" : "元件");
         }
 
         void RotateAt(Vector2Int coord, int delta)
@@ -535,17 +580,24 @@ namespace ShiftGo.EditorTools
             status = "(" + coord.x + ", " + coord.y + ") 转到 " + (placement.rotationSteps * 90) + "°";
         }
 
-        /// <summary>把整圈边框填成墙 —— 现有关卡几乎都是这么起的底，省掉几十次点击。</summary>
+        /// <summary>
+        /// 把整圈边框画成墙 —— 现有关卡几乎都是这么起的底，省掉几十次点击。
+        /// 现在写的是墙层（wallMap）：一圈墙只占 height 行字符，而不是几十条 8 字段的摆放项。
+        /// </summary>
         void SurroundWithWall()
         {
             ElementTypeSO wall = FindWallType();
-            if (wall == null)
+
+            Undo.RecordObject(level, "Surround With Wall");
+
+            // 用这个按钮画墙时顺手把 wallType 定下来，省得作者再去字段里找一遍
+            if (level.wallType == null && wall is WallTypeSO wallType) level.wallType = wallType;
+
+            if (level.wallType == null)
             {
                 status = "调色板里没有墙类型资产（WallTypeSO），先刷新调色板或新建一个 Type_Wall";
                 return;
             }
-
-            Undo.RecordObject(level, "Surround With Wall");
 
             int added = 0;
             int width = Mathf.Max(1, level.width);
@@ -559,38 +611,66 @@ namespace ShiftGo.EditorTools
                     if (!onEdge) continue;
 
                     Vector2Int coord = new Vector2Int(x, y);
-                    if (CountAt(coord) > 0) continue; // 已有东西的格子不动，避免覆盖手工摆放
+                    if (CountAt(coord) > 0) continue; // 已有元件（或旧数据里的墙）的格子不动，避免覆盖手工摆放
 
-                    level.placements.Add(new ElementPlacement
-                    {
-                        type = wall,
-                        coord = coord,
-                        rotationSteps = 0,
-                        playerEditable = false,
-                    });
-                    added++;
+                    if (level.SetWall(coord, true)) added++;
                 }
             }
 
             EditorUtility.SetDirty(level);
-            status = added > 0 ? "围了一圈墙：新增 " + added + " 格" : "边框上已经有东西了，没有新增";
+            status = added > 0 ? "围了一圈墙：新增 " + added + " 格（写在墙层里）" : "边框上已经有东西了，没有新增";
+        }
+
+        /// <summary>墙层里现在有几面墙。</summary>
+        int WallCountInMap()
+        {
+            int count = 0;
+            int width = Mathf.Max(1, level.width);
+            int height = Mathf.Max(1, level.height);
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    if (level.IsWallInMap(new Vector2Int(x, y))) count++;
+                }
+            }
+            return count;
         }
 
         void ClearPlacements()
         {
-            if (level.placements.Count == 0) return;
+            int wallCount = WallCountInMap();
+            if (level.placements.Count == 0 && wallCount == 0) return;
 
-            bool confirmed = EditorUtility.DisplayDialog(
-                "清空摆件",
-                "把这一关的 " + level.placements.Count + " 个摆放全部删掉？\n（Ctrl+Z 可以撤回，关卡资产的其他字段不受影响）",
-                "清空",
-                "算了");
-            if (!confirmed) return;
+            int choice;
+            if (wallCount == 0)
+            {
+                // 没有墙就别硬塞三个按钮（否则会出现两个"算了"）
+                choice = EditorUtility.DisplayDialog(
+                    "清空摆件",
+                    "把这一关的 " + level.placements.Count + " 个摆放全部删掉？\n（Ctrl+Z 可以撤回，关卡资产的其他字段不受影响）",
+                    "清空", "算了") ? 0 : 1;
+            }
+            else
+            {
+                choice = EditorUtility.DisplayDialogComplex(
+                    "清空摆件",
+                    "这一关有 " + level.placements.Count + " 个摆放、" + wallCount + " 面墙。\n" +
+                    "要清掉哪些？（Ctrl+Z 可以撤回，关卡资产的其他字段不受影响）",
+                    "只清摆放", "算了", "连墙一起清");
+            }
+
+            if (choice == 1) return;
 
             Undo.RecordObject(level, "Clear Placements");
             level.placements.Clear();
+
+            // 默认（第一个按钮）保留墙：墙是关卡的骨架，多半还想留着重新摆元件
+            if (choice == 2) level.wallMap = string.Empty;
+
             EditorUtility.SetDirty(level);
-            status = "已清空，Ctrl+Z 可以撤回";
+            status = choice == 2 ? "已清空摆放和墙层，Ctrl+Z 可以撤回" : "已清空摆放（墙层保留），Ctrl+Z 可以撤回";
         }
 
         ElementPlacement FindPlacement(Vector2Int coord)

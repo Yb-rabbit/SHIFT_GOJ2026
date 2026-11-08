@@ -115,10 +115,11 @@ namespace ShiftGo.BitFlow.View
                 case SplitterDefinition splitter:
                     return "分流器 #" + splitter.Id + "\n青色臂（收 1）→ " + splitter.OneArm + "，橙色臂（收 0）→ " + splitter.ZeroArm;
                 case NotGateDefinition notGate:
-                    return "非门 #" + notGate.Id + "\n菱形本体，取反后向 " + notGate.OutputDir + " 输出";
+                    return "非门 #" + notGate.Id + "\n三面都能进（有矮栏的那三面），取反后向 " + notGate.OutputDir
+                        + " 输出（开口那一面）\n斜杠标记＝取反";
                 case FilterDefinition filter:
-                    return "过滤器 #" + filter.Id + "\n薄板本体，只放行 " + filter.PassValue
-                        + "（出口箭头为" + (filter.PassValue == 0 ? "橙" : "青") + "）";
+                    return "过滤器 #" + filter.Id + "\n三面都能进，只放行 " + filter.PassValue
+                        + "（闸门颜色就是放行值：" + (filter.PassValue == 0 ? "橙" : "青") + "）";
                 default:
                     return "墙 #" + element.Id;
             }

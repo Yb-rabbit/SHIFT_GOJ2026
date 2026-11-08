@@ -257,9 +257,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   introDuration: 2
-  finalOffset: {x: 0, y: 7.6, z: -10}
+  finalOffset: {x: 0, y: 7.6, z: -12}
   overviewOffset: {x: 0, y: 14.4, z: -17.6}
-  lookHeight: 1.1
+  lookHeight: 1.2
 --- !u!81 &668227347
 AudioListener:
   m_ObjectHideFlags: 0

@@ -20,6 +20,16 @@ namespace ShiftGo.BitFlow.View
         /// <summary>半透明度。太淡看不清形状，太实会让人分不清"这是预览还是已经放下了"。</summary>
         const float Alpha = 0.48f;
 
+        /// <summary>悬空高度：预览浮在地面之上，和已经落地的真件拉开层次，一眼分得清"还没放下"。</summary>
+        const float HoverLift = 0.14f;
+
+        /// <summary>呼吸幅度 / 周期：2 秒一个来回，幅度只有 0.03 —— 能感觉到"活的"，但不晃眼。</summary>
+        const float BreathAmplitude = 0.03f;
+        const float BreathPeriod = 2f;
+
+        /// <summary>从地面弹升到悬空高度的时长。太快像瞬移，太慢会让人觉得操作有延迟。</summary>
+        const float RiseDuration = 0.18f;
+
         /// <summary>不能放时的颜色（红）：和可行时的类型色形成明确对比，不用额外文字提示。</summary>
         static readonly Color InvalidColor = new Color(1f, 0.30f, 0.32f);
 
@@ -37,6 +47,12 @@ namespace ShiftGo.BitFlow.View
 
         Variant current;
         bool currentValid = true;
+
+        /// <summary>幽灵底部所在的格心（不含悬空高度）。Update 每帧在这个点上叠悬空 + 呼吸。</summary>
+        Vector3 hoverBase;
+        /// <summary>当前这格是从什么时候开始显示的：弹升和呼吸都以此为零点，换格等于重新开始。</summary>
+        float shownAt;
+        bool visible;
 
         /// <summary>
         /// 在 <paramref name="element"/> 自己的坐标上显示幽灵（坐标系和真正放下时同一套），
@@ -64,19 +80,52 @@ namespace ShiftGo.BitFlow.View
             // 只在"换了形状"或"能放/不能放变了"的时候才重设材质，避免每帧刷一遍 Renderer
             bool needsTint = current != variant || currentValid != valid || !variant.Root.activeSelf;
 
+            // 换形状（或从隐藏变成显示）才重置动画时钟：
+            // 鼠标在同一形状的不同格子间扫过时刻意不重置，否则会每格弹一次，像打嗝
+            if (!visible || current != variant) shownAt = Time.time;
+
             current = variant;
             currentValid = valid;
+            visible = true;
+            hoverBase = GridMetrics.CellToWorld(element.Coord);
 
             variant.Root.SetActive(true);
-            variant.Root.transform.position = GridMetrics.CellToWorld(element.Coord);
+            ApplyHoverPose();
             if (needsTint) ApplyTint(variant, valid);
         }
 
         /// <summary>收起预览（鼠标离开网格、放下牌、或者选了别的卡时）。不销毁，下次还要用。</summary>
         public void Hide()
         {
+            visible = false;
             if (current != null && current.Root != null) current.Root.SetActive(false);
             current = null;
+        }
+
+        /// <summary>
+        /// 悬空 + 呼吸。Show 和 Update 都调它：
+        /// Show 负责"换了格之后立刻落到正确高度"（否则会有一帧停在上一个格子的位置），
+        /// Update 负责"鼠标停住不动时它还在轻轻浮动" —— 只放在 Show 里的话，预览会僵成一尊雕像。
+        /// </summary>
+        void ApplyHoverPose()
+        {
+            if (current == null || current.Root == null) return;
+
+            float age = Time.time - shownAt;
+
+            // 弹升用 EaseOutCubic：起手快到几乎立刻离地，收尾稳住，不显得拖
+            float rise = Mathf.Clamp01(age / RiseDuration);
+            float lift = HoverLift * (1f - Mathf.Pow(1f - rise, 3f));
+
+            float breath = BreathAmplitude * Mathf.Sin(age * (2f * Mathf.PI / BreathPeriod));
+
+            current.Root.transform.position = hoverBase + Vector3.up * (lift + breath);
+        }
+
+        void Update()
+        {
+            if (!visible) return;
+            ApplyHoverPose();
         }
 
         /// <summary>换关 / 手牌变了：连缓存一起扔掉，下次按新元件重建。</summary>

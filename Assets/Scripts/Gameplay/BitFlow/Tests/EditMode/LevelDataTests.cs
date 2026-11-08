@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEditor;
+using UnityEngine;
 using ShiftGo.BitFlow.Core;
 using ShiftGo.BitFlow.Data;
 
@@ -45,6 +47,87 @@ namespace ShiftGo.BitFlow.Tests
                 Assert.IsNotNull(placement, "摆放表里不应有空项");
                 Assert.IsNotNull(placement.type, "摆放项必须引用元件类型资产");
                 Assert.IsFalse(string.IsNullOrEmpty(placement.type.Describe()), "类型资产应能给出提示文本");
+            }
+        }
+
+        [Test]
+        public void Level01Asset_WallsLiveInWallMapNotPlacements()
+        {
+            LevelSO levelAsset = AssetDatabase.LoadAssetAtPath<LevelSO>(LevelAssetPath);
+            Assert.IsNotNull(levelAsset);
+
+            Assert.IsNotNull(levelAsset.wallType,
+                "迁移后关卡必须指定墙类型资产，否则 wallMap 里的 # 会被静默忽略");
+            Assert.IsFalse(string.IsNullOrEmpty(levelAsset.wallMap), "Level_01 的墙应该写在墙层里");
+
+            // placements 里不该再留墙：这正是这次改造的目的（18 条摆放 → 8 条 + 8 行字符图）
+            foreach (ElementPlacement placement in levelAsset.placements)
+            {
+                Assert.IsNotNull(placement);
+                Assert.IsFalse(placement.type is WallTypeSO,
+                    "墙应该写在 wallMap 里，不该再占一条 placements（坐标 " + placement.coord + "）");
+            }
+
+            int wallCount = 0;
+            foreach (Vector2Int coord in levelAsset.ParseWalls()) wallCount++;
+
+            Assert.AreEqual(10, wallCount, "迁移前后墙的数量必须一致（Level_01 是 10 面）");
+        }
+
+        [Test]
+        public void WallMap_ToleratesShortLinesAndOutOfBounds()
+        {
+            // 手写的字符图难免少打几个点、或者网格改小了却没改图。
+            // 规则是"短行=右侧留空、超出的字符忽略"，绝不能因此错位或抛异常。
+            LevelSO scratch = ScriptableObject.CreateInstance<LevelSO>();
+            WallTypeSO wallType = ScriptableObject.CreateInstance<WallTypeSO>();
+
+            try
+            {
+                scratch.width = 4;
+                scratch.height = 3;
+                scratch.wallType = wallType;
+                scratch.wallMap = "#\n..#\n####\n####\n####"; // 第 2 行只有 1 个字符；后两行超出 height
+
+                List<Vector2Int> walls = new List<Vector2Int>(scratch.ParseWalls());
+
+                CollectionAssert.Contains(walls, new Vector2Int(0, 0));
+                CollectionAssert.Contains(walls, new Vector2Int(2, 1));
+                CollectionAssert.Contains(walls, new Vector2Int(3, 1));
+
+                Assert.AreEqual(1 + 2 + 4, walls.Count, "超出 height 的行必须被忽略，短行的缺失部分按空处理");
+            }
+            finally
+            {
+                Object.DestroyImmediate(scratch);
+                Object.DestroyImmediate(wallType);
+            }
+        }
+
+        [Test]
+        public void WallMap_SetWallRoundTrips()
+        {
+            // SetWall 是网格点击的唯一入口，写错一格就会让整行错位
+            LevelSO scratch = ScriptableObject.CreateInstance<LevelSO>();
+
+            try
+            {
+                scratch.width = 4;
+                scratch.height = 3;
+
+                Assert.IsTrue(scratch.SetWall(new Vector2Int(1, 2), true), "第一次画墙应该算作修改");
+                Assert.IsTrue(scratch.IsWallInMap(new Vector2Int(1, 2)), "刚画的格必须能读回来");
+                Assert.IsFalse(scratch.IsWallInMap(new Vector2Int(1, 1)), "别的行不该被一起画上");
+                Assert.IsFalse(scratch.SetWall(new Vector2Int(1, 2), true), "重复画同一格不算修改，避免堆一堆 undo");
+
+                Assert.IsTrue(scratch.SetWall(new Vector2Int(1, 2), false), "擦墙应该算作修改");
+                Assert.IsFalse(scratch.IsWallInMap(new Vector2Int(1, 2)));
+
+                Assert.IsFalse(scratch.SetWall(new Vector2Int(9, 9), true), "越界的格必须被拒绝");
+            }
+            finally
+            {
+                Object.DestroyImmediate(scratch);
             }
         }
 

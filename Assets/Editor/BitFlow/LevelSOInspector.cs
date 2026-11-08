@@ -27,9 +27,15 @@ namespace ShiftGo.EditorTools
         static readonly Color ConflictColor = new Color(0.85f, 0.28f, 0.28f);
         static readonly Color MissingColor = new Color(0.55f, 0.55f, 0.20f);
 
+        /// <summary>墙比空格亮一点但明显暗于任何元件：一眼能分出"这是障碍，不是可玩元件"。</summary>
+        static readonly Color WallColor = new Color(0.42f, 0.44f, 0.50f);
+
         /// <summary>坐标 → 该格上的所有摆放项（同格叠加要能看见，所以不覆盖只追加）。</summary>
         readonly Dictionary<Vector2Int, List<ElementPlacement>> byCoord =
             new Dictionary<Vector2Int, List<ElementPlacement>>();
+
+        /// <summary>坐标 → 墙层（wallMap）里有没有墙。墙不是 placement，所以单独记一份。</summary>
+        readonly HashSet<Vector2Int> wallCells = new HashSet<Vector2Int>();
 
         GUIStyle cellStyle;
         Vector2Int hoverCell;
@@ -53,17 +59,32 @@ namespace ShiftGo.EditorTools
         void RebuildLookup(LevelSO level)
         {
             byCoord.Clear();
-            if (level.placements == null) return;
-
-            foreach (ElementPlacement placement in level.placements)
+            if (level.placements != null)
             {
-                if (placement == null) continue;
-                if (!byCoord.TryGetValue(placement.coord, out List<ElementPlacement> list))
+                foreach (ElementPlacement placement in level.placements)
                 {
-                    list = new List<ElementPlacement>();
-                    byCoord[placement.coord] = list;
+                    if (placement == null) continue;
+                    if (!byCoord.TryGetValue(placement.coord, out List<ElementPlacement> list))
+                    {
+                        list = new List<ElementPlacement>();
+                        byCoord[placement.coord] = list;
+                    }
+                    list.Add(placement);
                 }
-                list.Add(placement);
+            }
+
+            // 墙层按整张网格扫（width×height 就那么点大），不走 ParseWalls：
+            // ParseWalls 需要 wallType 才生效，而网格该显示的墙不该依赖类型资产有没有填
+            wallCells.Clear();
+            int width = Mathf.Max(1, level.width);
+            int height = Mathf.Max(1, level.height);
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    Vector2Int coord = new Vector2Int(x, y);
+                    if (level.IsWallInMap(coord)) wallCells.Add(coord);
+                }
             }
         }
 
@@ -71,19 +92,47 @@ namespace ShiftGo.EditorTools
         {
             int placementCount = level.placements != null ? level.placements.Count : 0;
             int supplyCount = level.supplies != null ? level.supplies.Count : 0;
+            int legacyWallCount = CountLegacyWalls(level);
 
             EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
             EditorGUILayout.LabelField(
                 level.width + " × " + level.height + " 网格",
                 EditorStyles.boldLabel, GUILayout.Width(90f));
-            EditorGUILayout.LabelField(
-                placementCount + " 个摆放 / " + supplyCount + " 张手牌",
-                EditorStyles.miniLabel);
+
+            // 老关卡的墙还躺在 placements 里，所以从摆放数里扣掉，别让人以为有 18 个元件
+            string summary = (placementCount - legacyWallCount) + " 个摆放";
+            if (wallCells.Count > 0) summary += " + " + wallCells.Count + " 面墙";
+            summary += " / " + supplyCount + " 张手牌";
+
+            EditorGUILayout.LabelField(summary, EditorStyles.miniLabel);
 
             if (supplyCount == 0)
             {
                 EditorGUILayout.LabelField("（无手牌 = 演示关）", EditorStyles.miniLabel, GUILayout.Width(120f));
             }
+            EditorGUILayout.EndHorizontal();
+
+            if (legacyWallCount > 0) DrawMigrateButton(legacyWallCount);
+        }
+
+        /// <summary>
+        /// 墙还写在 placements 里的旧关卡，给一个一键搬家按钮。
+        /// 迁移只会「换表示法」：墙本来就排在元件之后，所以 Elements 的数量和顺序都不变。
+        /// </summary>
+        void DrawMigrateButton(int legacyWallCount)
+        {
+            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+
+            EditorGUILayout.LabelField(
+                "还有 " + legacyWallCount + " 面墙写在 placements 里（每条 8 个字段）。\n" +
+                "收进墙层之后，在网格上点空格就能画墙、点墙就能擦墙。",
+                EditorStyles.miniLabel);
+
+            if (GUILayout.Button("收进墙层", GUILayout.Width(72f), GUILayout.Height(30f)))
+            {
+                MigrateLegacyWalls((LevelSO)target);
+            }
+
             EditorGUILayout.EndHorizontal();
         }
 
@@ -134,29 +183,37 @@ namespace ShiftGo.EditorTools
                 GUI.Label(label, x.ToString(), EditorStyles.centeredGreyMiniLabel);
             }
 
+            string action = "点空格 = 画墙／点墙 = 擦墙；点元件 = 旋转 +90°（Shift = -90°）";
             string hint = hasHover
-                ? "光标：(" + hoverCell.x + ", " + hoverCell.y + ")　点击有元件的格子 = 旋转 +90°，Shift+点击 = -90°"
-                : "点击有元件的格子 = 旋转 +90°，Shift+点击 = -90°";
+                ? "光标：(" + hoverCell.x + ", " + hoverCell.y + ")　" + action
+                : action;
             EditorGUILayout.LabelField(hint, EditorStyles.miniLabel);
         }
 
         void DrawCell(LevelSO level, Rect cell, int x, int y)
         {
-            byCoord.TryGetValue(new Vector2Int(x, y), out List<ElementPlacement> list);
+            Vector2Int coord = new Vector2Int(x, y);
+            byCoord.TryGetValue(coord, out List<ElementPlacement> list);
 
             bool occupied = list != null && list.Count > 0;
             bool conflict = list != null && list.Count > 1;
             bool missingType = occupied && list[0].type == null;
 
+            // 墙有两个来源：新的 wallMap、以及还躺在 placements 里的旧数据
+            bool wallInMap = wallCells.Contains(coord);
+            bool legacyWall = occupied && AllWalls(list);
+            bool isWall = wallInMap || legacyWall;
+
             Color back = CellEmpty;
             if (missingType) back = MissingColor;
             else if (conflict) back = ConflictColor;
+            else if (isWall) back = WallColor;
             else if (occupied) back = ColorOf(list[0].type);
 
             bool isHover = cell.Contains(Event.current.mousePosition);
             if (isHover)
             {
-                hoverCell = new Vector2Int(x, y);
+                hoverCell = coord;
                 hasHover = true;
                 back = Color.Lerp(back, Color.white, 0.25f);
             }
@@ -165,26 +222,58 @@ namespace ShiftGo.EditorTools
             {
                 EditorGUI.DrawRect(cell, back);
 
-                if (occupied)
+                if (wallInMap && !occupied)
                 {
-                    string text = conflict
-                        ? list.Count + "×"
-                        : ((string.IsNullOrEmpty(list[0].type.label) ? "?" : list[0].type.label)
-                           + (list[0].rotationSteps == 0 ? string.Empty : "r" + list[0].rotationSteps));
+                    GUI.Label(cell, "#", CellLabelStyle());
+                }
+                else if (occupied)
+                {
+                    string text;
+                    if (missingType) text = "?";
+                    else if (conflict) text = list.Count + "×";
+                    else text = LabelOf(list[0]);
 
                     GUI.Label(cell, text, CellLabelStyle());
                 }
             }
 
-            // 点击 = 旋转（Editor 里唯一会改数据的操作，已挂 Undo）
-            if (Event.current.type == EventType.MouseDown
-                && Event.current.button == 0
-                && cell.Contains(Event.current.mousePosition)
-                && occupied)
+            if (Event.current.type != EventType.MouseDown || Event.current.button != 0) return;
+            if (!cell.Contains(Event.current.mousePosition)) return;
+
+            // 点墙 = 擦掉（不管它是墙层画的还是 placements 里的旧墙）
+            if (isWall)
             {
-                RotatePlacement(level, list[0], Event.current.shift ? -1 : 1);
+                EraseWallAt(level, coord, list);
                 Event.current.Use();
+                return;
             }
+
+            // 点空格 = 画墙。这是本次改造新增的写操作，和"旋转"一样挂了 Undo
+            if (!occupied)
+            {
+                DrawWallAt(level, coord);
+                Event.current.Use();
+                return;
+            }
+
+            // 点元件 = 沿用老行为：旋转 +90°（Shift = -90°）
+            RotatePlacement(level, list[0], Event.current.shift ? -1 : 1);
+            Event.current.Use();
+        }
+
+        static string LabelOf(ElementPlacement placement)
+        {
+            string label = string.IsNullOrEmpty(placement.type.label) ? "?" : placement.type.label;
+            return placement.rotationSteps == 0 ? label : label + "r" + placement.rotationSteps;
+        }
+
+        static bool AllWalls(List<ElementPlacement> list)
+        {
+            foreach (ElementPlacement placement in list)
+            {
+                if (placement == null || !(placement.type is WallTypeSO)) return false;
+            }
+            return true;
         }
 
         GUIStyle CellLabelStyle()
@@ -210,6 +299,105 @@ namespace ShiftGo.EditorTools
 
             // 立刻落盘：不然改完直接关 Unity，旋转就丢了
             AssetDatabase.SaveAssetIfDirty(level);
+        }
+
+        // ------------------------------------------------------------------ 墙层的写操作
+        //
+        // 网格点击是这个检视器仅有的两类写操作（旋转 / 画擦墙），全部走 Undo + 立刻落盘。
+        // 墙层只是「文本表示法」的替换：写的是 wallMap 字符串，不是新资产、也不改序列化结构。
+
+        static void DrawWallAt(LevelSO level, Vector2Int coord)
+        {
+            if (level.wallType == null)
+            {
+                EditorUtility.DisplayDialog(
+                    "还没指定墙类型",
+                    "请先在字段区的「墙层 / 墙类型资产」里选一个 WallTypeSO，再在网格上画墙。\n" +
+                    "（项目里现成的是 Assets/Data/Elements/Wall/Type_Wall.asset）",
+                    "好");
+                return;
+            }
+
+            Undo.RecordObject(level, "Draw Wall");
+            if (!level.SetWall(coord, true)) return;
+
+            EditorUtility.SetDirty(level);
+            AssetDatabase.SaveAssetIfDirty(level);
+        }
+
+        static void EraseWallAt(LevelSO level, Vector2Int coord, List<ElementPlacement> list)
+        {
+            Undo.RecordObject(level, "Erase Wall");
+
+            bool changed = false;
+
+            // 旧数据：墙在 placements 里，得真正删掉那一条
+            if (list != null)
+            {
+                for (int i = list.Count - 1; i >= 0; i--)
+                {
+                    if (list[i] == null || !(list[i].type is WallTypeSO)) continue;
+                    level.placements.Remove(list[i]);
+                    changed = true;
+                }
+            }
+
+            if (level.SetWall(coord, false)) changed = true;
+            if (!changed) return;
+
+            EditorUtility.SetDirty(level);
+            AssetDatabase.SaveAssetIfDirty(level);
+        }
+
+        /// <summary>placements 里有多少条是墙（旧表示法）。</summary>
+        static int CountLegacyWalls(LevelSO level)
+        {
+            if (level.placements == null) return 0;
+
+            int count = 0;
+            foreach (ElementPlacement placement in level.placements)
+            {
+                if (placement != null && placement.type is WallTypeSO) count++;
+            }
+            return count;
+        }
+
+        /// <summary>
+        /// 把 placements 里的墙转录成 wallMap 的 '#'，再从 placements 删掉。
+        /// 纯换表示法：墙本来就排在元件之后，所以 Elements 的数量与顺序都不变。
+        /// </summary>
+        static void MigrateLegacyWalls(LevelSO level)
+        {
+            if (level.wallType == null)
+            {
+                EditorUtility.DisplayDialog(
+                    "先指定墙类型",
+                    "墙层里每一格都靠「墙类型资产」生成，请先在字段区指定 wallType。",
+                    "好");
+                return;
+            }
+
+            List<Vector2Int> walls = new List<Vector2Int>();
+            if (level.placements != null)
+            {
+                foreach (ElementPlacement placement in level.placements)
+                {
+                    if (placement != null && placement.type is WallTypeSO) walls.Add(placement.coord);
+                }
+            }
+
+            if (walls.Count == 0) return;
+
+            // Undo 快照必须在任何修改之前记，否则 Ctrl+Z 恢复的是"已经删了一半"的状态
+            Undo.RecordObject(level, "Migrate Walls To Map");
+
+            level.placements.RemoveAll(placement => placement != null && placement.type is WallTypeSO);
+            foreach (Vector2Int coord in walls) level.SetWall(coord, true);
+
+            EditorUtility.SetDirty(level);
+            AssetDatabase.SaveAssetIfDirty(level);
+
+            Debug.Log("[BitFlow] 已把 " + walls.Count + " 面墙收进 " + level.name + " 的 wallMap");
         }
 
         // ------------------------------------------------------------------ 诊断
@@ -240,6 +428,16 @@ namespace ShiftGo.EditorTools
                     {
                         issues.Add("(" + coord.x + ", " + coord.y + ") 缺少类型资产");
                     }
+                }
+            }
+
+            // 同一格既有墙层又有 placement：解析时 placements 优先，这面墙会被静默忽略。
+            // 静默出错是最难查的，所以这里主动喊一声。
+            foreach (Vector2Int coord in wallCells)
+            {
+                if (byCoord.ContainsKey(coord))
+                {
+                    issues.Add("(" + coord.x + ", " + coord.y + ") 墙层和 placements 撞在同一格：placements 优先，这面墙会被忽略");
                 }
             }
 

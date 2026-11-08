@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using ShiftGo.BitFlow.Core;
@@ -6,7 +7,7 @@ using ShiftGo.BitFlow.View;
 namespace ShiftGo.BitFlow.Tests
 {
     /// <summary>
-    /// 可读性回归测试：箭头带箭头头、序列点阵、分流器臂配色、非门菱形……
+    /// 可读性回归测试：箭头带箭头头、序列点阵、分流器臂配色、非门三面矮栏、过滤器闸门配色……
     /// 这些"玩家一眼看到的东西"就是关卡可读性本身，重构 ElementView 时不能悄悄弄丢。
     /// </summary>
     public class ElementViewReadabilityTests
@@ -39,6 +40,33 @@ namespace ShiftGo.BitFlow.Tests
             Transform found = view.transform.Find(name);
             Assert.IsNotNull(found, "缺少子物体 '" + name + "'，元件：" + view.name);
             return found;
+        }
+
+        /// <summary>按名字（精确）收集直接子物体：矮栏、封口这类零件天然是多块同名的。</summary>
+        static List<Transform> Children(ElementView view, string name)
+        {
+            List<Transform> found = new List<Transform>();
+            foreach (Transform child in view.transform)
+            {
+                if (child.name == name) found.Add(child);
+            }
+            return found;
+        }
+
+        static int CountChildren(ElementView view, string name)
+        {
+            return Children(view, name).Count;
+        }
+
+        /// <summary>按前缀数零件（"gate_0/1/2" 这类带序号的零件用）。</summary>
+        static int CountChildrenStartingWith(ElementView view, string prefix)
+        {
+            int count = 0;
+            foreach (Transform child in view.transform)
+            {
+                if (child.name.StartsWith(prefix)) count++;
+            }
+            return count;
         }
 
         static Color MaterialColor(Transform transform)
@@ -148,22 +176,6 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         [Test]
-        public void FilterView_ArrowColorShowsPassValue()
-        {
-            FilterDefinition filter = new FilterDefinition
-            {
-                Id = 5,
-                Coord = new GridPoint(1, 1),
-                OutputDir = Dir.Left,
-                PassValue = 0,
-            };
-
-            ElementView view = BuildView(filter);
-
-            AssertSameColor(BitColor(0), MaterialColor(Child(view, "arrow_Left")), "只放行 0 的过滤器，出口箭头应为橙色");
-        }
-
-        [Test]
         public void ReceiverView_ShowsTargetSequenceDots()
         {
             ReceiverDefinition receiver = new ReceiverDefinition
@@ -183,8 +195,11 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         [Test]
-        public void NotGateView_BodyIsRotatedDiamond()
+        public void NotGateView_OpensOnOneSideOnly()
         {
+            // 非门在模拟里「除出口面外的三面都能进」（只有逆行才会 NotGateBackflow），
+            // 所以外观必须把这件事说出来：三道矮栏＝三个入口，剩下那一面敞开＝唯一出口。
+            // 老版本是 45° 菱形，只说明"我和别人不一样"，完全没交代能从哪进来。
             NotGateDefinition notGate = new NotGateDefinition
             {
                 Id = 7,
@@ -193,10 +208,78 @@ namespace ShiftGo.BitFlow.Tests
             };
 
             ElementView view = BuildView(notGate);
-            Transform block = Child(view, "block");
 
-            float yRotation = Mathf.Repeat(block.localEulerAngles.y, 360f);
-            Assert.AreEqual(45f, yRotation, 0.5f, "非门本体应绕 Y 轴旋转 45° 形成菱形，和非门以外的小方块区分开");
+            Assert.AreEqual(3, CountChildren(view, "rail"),
+                "非门应立三道矮栏（除出口面外都能进），并把出口那一面留空");
+            Assert.IsNotNull(view.transform.Find("invert_mark"),
+                "非门需要「翻转」标记，否则和三面开口的过滤器分不开");
+
+            // 缺口本身就是出口，不再画出口箭头：箭头 y=0.30 正好浮在矮栏顶（0.22）上方，
+            // 3/4 视角下看着像一根悬空的把手，和缺口重复表达同一件事。
+            Assert.IsNull(view.transform.Find("arrow_Right"),
+                "非门不该有出口箭头 —— 中间那道缺口已经把方向说完了");
+            Assert.AreEqual(0, CountChildrenStartingWith(view, "arrow"), "非门整格都不该出现箭头");
+
+            // 开口检查：出口朝右，所以 +x 那一面不能有矮栏挡着
+            foreach (Transform rail in Children(view, "rail"))
+            {
+                Assert.LessOrEqual(rail.localPosition.x, 0.1f,
+                    "出口朝右时右侧那一面必须敞开，矮栏不能挡在 +x 上");
+            }
+        }
+
+        [Test]
+        public void FilterView_ShowsPassValueAsGateColor()
+        {
+            // 过滤器同样是三面进：开口处立一道闸门，闸门的颜色就是它放行的值。
+            // 闸门站在开口上，所以也不画出口箭头 —— 它就立在那个缺口里，本身已是"这里出去"的告示牌。
+            foreach (byte passValue in new byte[] { 0, 1 })
+            {
+                FilterDefinition filter = new FilterDefinition
+                {
+                    Id = 5,
+                    Coord = new GridPoint(1, 1),
+                    OutputDir = Dir.Left,
+                    PassValue = passValue,
+                };
+
+                ElementView view = BuildView(filter);
+
+                Assert.AreEqual(3, CountChildren(view, "rail"), "过滤器应立三道矮栏，留出口那一面开口");
+                Assert.AreEqual(3, CountChildrenStartingWith(view, "gate"), "闸门应是三根细条（中间留缝，才像筛子而不是一堵墙）");
+                Assert.AreEqual(0, CountChildrenStartingWith(view, "arrow"),
+                    "过滤器不该有出口箭头 —— 闸门已经站在缺口上，方向不用再说第二遍");
+
+                for (int i = 0; i < 3; i++)
+                {
+                    AssertSameColor(BitColor(passValue), MaterialColor(Child(view, "gate_" + i)),
+                        "闸门颜色必须等于放行值（放行 " + passValue + "）");
+                }
+
+                Object.DestroyImmediate(root);
+                root = null;
+            }
+        }
+
+        [Test]
+        public void MultiInputViews_UseRailsOnlyForProcessors()
+        {
+            // 「多个面能进」在两个元件家族里长得不同，这是刻意的：
+            // 处理器（非门/过滤器）= 三面连续矮栏 + 一面开口 = 三面进一面出；
+            // 接收器 = 四根角柱 = 四面都进、但不吐。
+            // 两边一旦都改用同一种零件，玩家就只能靠颜色猜谁是谁了。
+            ReceiverDefinition receiver = new ReceiverDefinition
+            {
+                Id = 9,
+                Coord = new GridPoint(1, 1),
+                FeedFace = Dir.Down,
+                TargetSequence = "1",
+                TargetCount = 1,
+            };
+
+            ElementView receiverView = BuildView(receiver);
+            Assert.AreEqual(0, CountChildren(receiverView, "rail"),
+                "接收器应该用四角柱表达四面可收，不该改用处理器那套矮栏");
         }
 
         [Test]

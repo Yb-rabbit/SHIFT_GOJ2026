@@ -132,6 +132,7 @@ GameObject:
   m_Component:
   - component: {fileID: 483022082}
   - component: {fileID: 483022081}
+  - component: {fileID: 483022083}
   m_Layer: 0
   m_Name: Directional Light
   m_TagString: Untagged
@@ -216,6 +217,29 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &483022083
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 483022080}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Version: 3
+  m_UsePipelineSettings: 1
+  m_AdditionalLightsShadowResolutionTier: 2
+  m_LightLayerMask: 1
+  m_RenderingLayers: 1
+  m_CustomShadowLayers: 0
+  m_ShadowLayerMask: 1
+  m_ShadowRenderingLayers: 1
+  m_LightCookieSize: {x: 1, y: 1}
+  m_LightCookieOffset: {x: 0, y: 0}
+  m_SoftShadowQuality: 0
 --- !u!1 &1610452074
 GameObject:
   m_ObjectHideFlags: 0
@@ -298,7 +322,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   introDuration: 2
-  finalOffset: {x: 0, y: 7.6, z: -10}
+  finalOffset: {x: 0, y: 7.6, z: -12}
   overviewOffset: {x: 0, y: 14.4, z: -17.6}
   lookHeight: 1.1
 --- !u!81 &1958534976
@@ -463,6 +487,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   levelAsset: {fileID: 11400000, guid: bc51d7376ed5647488b5012e55132198, type: 2}
+  allowBuildMode: 1
   baseTickInterval: 0.35
   autoStart: 0
 --- !u!114 &2144631614
