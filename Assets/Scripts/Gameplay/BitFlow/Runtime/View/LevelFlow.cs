@@ -211,8 +211,35 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         public bool Retry()
         {
-            if (IsJsonLevel) return LoadJson(currentJsonPath);
+            if (IsJsonLevel)
+            {
+                if (!string.IsNullOrEmpty(currentJsonPath)) return LoadJson(currentJsonPath);
+
+                // 文件已经被删掉（选关面板的 X）：内存里这份还在，重放它就等于「重试」，
+                // 总比按了 REPLAY 什么都不发生要好。
+                if (currentJsonLevel == null) return false;
+
+                runner.LoadLevel(currentJsonLevel);
+                ApplyBuildMode(currentJsonLevel);
+                LevelLoaded?.Invoke(currentJsonLevel);
+                return true;
+            }
+
             return Load(index < 0 ? 0 : index);
+        }
+
+        /// <summary>
+        /// 选关面板把当前这一关的 JSON 删掉了。
+        ///
+        /// 只清「从哪个文件读来的」这一条：屏幕上这台机器还是玩家的，不该因为删了个文件就黑掉；
+        /// 之后再按 REPLAY 会退回「重放内存里这一份」（见 <see cref="Retry"/>）。
+        /// </summary>
+        public void NotifyJsonDeleted(string path)
+        {
+            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(currentJsonPath)) return;
+            if (!string.Equals(currentJsonPath, path, StringComparison.OrdinalIgnoreCase)) return;
+
+            currentJsonPath = null;
         }
 
         void ClearJsonLevel()

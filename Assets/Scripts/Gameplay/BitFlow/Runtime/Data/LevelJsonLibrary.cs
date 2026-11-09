@@ -49,12 +49,36 @@ namespace ShiftGo.BitFlow.Data
         /// <summary>关卡 JSON 目录的绝对路径（可能还不存在）。</summary>
         public static string Folder => System.IO.Path.Combine(Application.persistentDataPath, FolderName);
 
-        /// <summary>建目录（已存在就是空操作）。</summary>
+        /// <summary>
+        /// 「收件箱」目录名：玩家 / 作者把待导入的 json 丢进 <see cref="IncomingFolder"/>，
+        /// 面板上一按 <c>IMPORT · FROM INBOX</c> 就搬进正式目录。
+        ///
+        /// 为什么不直接读正式目录：正式目录里躺着的是「已经在列表里的关卡」，
+        /// 玩家往那儿丢文件再点导出的按钮，会得到一份重名副本（<c>MY_LEVEL_01_02.json</c>）。
+        /// 收件箱是单向的：进去 → 验货 → 搬到正式目录，语义不含糊。
+        /// </summary>
+        public const string IncomingFolderName = "incoming";
+
+        /// <summary>收件箱目录的绝对路径（可能还不存在）。</summary>
+        public static string IncomingFolder => System.IO.Path.Combine(Folder, IncomingFolderName);
+
+        /// <summary>建目录（已存在就是空操作）。收件箱与说明文件一起备好。</summary>
         public static void EnsureFolder()
         {
             string folder = Folder;
             if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+
+            string incoming = IncomingFolder;
+            if (!Directory.Exists(incoming)) Directory.CreateDirectory(incoming);
+
+            WriteReadmeIfMissing(folder);
         }
+
+        /// <summary>
+        /// 目录说明文件名。以 <c>README</c> 开头、不是 <c>.json</c>，所以绝不会被
+        /// <see cref="Scan"/> 当成关卡读。
+        /// </summary>
+        public const string ReadmeName = "README.txt";
 
         /// <summary>剪贴板导入落盘时的文件名前缀：<c>IMPORT_01.json</c>。</summary>
         public const string ImportPrefix = "IMPORT_";
@@ -110,6 +134,232 @@ namespace ShiftGo.BitFlow.Data
 
             error = "文件名用完了（" + prefix + "01 ~ " + prefix + MaxAutoNames + "）";
             return false;
+        }
+
+        // ------------------------------------------------------------------ 外部 JSON 导入
+
+        /// <summary>往关卡目录里放一份说明（只在缺失时写，不覆盖玩家改过的版本）。</summary>
+        static void WriteReadmeIfMissing(string folder)
+        {
+            try
+            {
+                string path = System.IO.Path.Combine(folder, ReadmeName);
+                if (File.Exists(path)) return;
+
+                File.WriteAllText(path,
+                    "SHIFT GO — 关卡 JSON 目录\r\n"
+                    + "========================================\r\n\r\n"
+                    + "这里放的就是「选关面板 → MY LEVELS」里列出来的关卡。\r\n"
+                    + "每个 .json 就是一关，文件名不重要，关卡名写在文件里的 displayName。\r\n\r\n"
+                    + "怎么加关（任选一条）：\r\n"
+                    + "  1. 游戏里：选关面板 → FILES → IMPORT · FROM FILE（挑一个 json）\r\n"
+                    + "  2. 游戏里：把 json 放进本目录下的 incoming\\ ，再点 IMPORT · FROM INBOX\r\n"
+                    + "  3. 直接复制进本目录，然后点 REFRESH（或重开面板）\r\n\r\n"
+                    + "怎么删关：选关面板 → MY LEVELS 里那一行右边的 X → 3 秒内再点一次 SURE。\r\n\r\n"
+                    + "以 _ 开头的文件（_template.json 之类）是模板/草稿，不会被当成关卡。\r\n"
+                    + "incoming\\ 里是待导入的批次，导入成功后正式目录会多一份同名副本，\r\n"
+                    + "收件箱里那份可以自己删掉。\r\n\r\n"
+                    + "路径：\r\n  " + folder + "\r\n");
+            }
+            catch (Exception exception)
+            {
+                // 写说明失败不影响读写关卡：这是纯帮助文本
+                Debug.LogWarning("[BitFlow] 写不了关卡目录说明：" + exception.Message);
+            }
+        }
+
+        /// <summary>
+        /// 程序所在目录。<c>Application.dataPath</c> 在 Player 里是 <c>&lt;exe&gt;\&lt;产品名&gt;_Data</c>、
+        /// 编辑器里是 <c>&lt;工程&gt;\Assets</c>，两者的父目录都是「玩家一眼能找到的地方」。
+        /// </summary>
+        static string ProgramFolder
+        {
+            get
+            {
+                try
+                {
+                    DirectoryInfo data = new DirectoryInfo(Application.dataPath);
+                    return data.Parent != null ? data.Parent.FullName : Application.dataPath;
+                }
+                catch (Exception)
+                {
+                    return null;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 「外部投放目录」：按优先级排列的、玩家可以自己找到并丢文件的目录。
+        ///
+        /// 第一个永远是正式目录下的 <see cref="IncomingFolder"/>（<c>SHARE FOLDER</c> 打开的就是它的上级），
+        /// 后面是**程序旁边**的 <c>LevelJson</c> / <c>LevelJson\incoming</c>：
+        /// 独立版里那是 exe 同级目录（完全不隐藏），编辑器里就是工程根目录的 <c>LevelJson\</c>
+        /// （和 <c>Tools/LevelStudio</c> 存盘、Unity 同步菜单用的是同一处）。
+        /// </summary>
+        public static List<string> DropFolders()
+        {
+            List<string> folders = new List<string> { IncomingFolder };
+
+            string program = ProgramFolder;
+            if (!string.IsNullOrEmpty(program))
+            {
+                folders.Add(System.IO.Path.Combine(program, FolderName));
+                folders.Add(System.IO.Path.Combine(program, FolderName, IncomingFolderName));
+            }
+
+            List<string> unique = new List<string>();
+            foreach (string folder in folders)
+            {
+                bool duplicate = false;
+                foreach (string existing in unique)
+                {
+                    if (string.Equals(existing, folder, StringComparison.OrdinalIgnoreCase)) duplicate = true;
+                }
+                if (!duplicate && Directory.Exists(folder)) unique.Add(folder);
+            }
+
+            return unique;
+        }
+
+        /// <summary>
+        /// 把一个外部 <c>.json</c> 导进正式关卡目录（<b>先验货、再落盘</b>）。
+        ///
+        /// 为什么复制而不移动：源文件可能在玩家的下载目录里，也可能被别的关卡引用着；
+        /// 复制是幂等的、可后悔的。字节原样搬运（不重新序列化），作者写的缩进和字段顺序都留着。
+        ///
+        /// 已在正式目录里的文件视为「已经导入过」：直接返回它的路径，不再造一份 <c>_02</c> 副本。
+        /// </summary>
+        public static bool TryImportFile(string sourcePath, out string path, out string error)
+        {
+            path = null;
+            error = null;
+
+            if (string.IsNullOrEmpty(sourcePath))
+            {
+                error = "没有文件";
+                return false;
+            }
+
+            if (!File.Exists(sourcePath))
+            {
+                error = "文件不在了：" + sourcePath;
+                return false;
+            }
+
+            string json;
+            try
+            {
+                json = File.ReadAllText(sourcePath);
+            }
+            catch (Exception exception)
+            {
+                error = "读不了文件：" + exception.Message;
+                return false;
+            }
+
+            // 读不通的东西一个字节都不落盘：否则列表里会多一关，点进去是黑的
+            if (!TryParseJson(json, out LevelSO probe, out List<string> problems))
+            {
+                error = "不是能跑的关卡：" + string.Join("；", problems);
+                return false;
+            }
+            DestroyLevel(probe);
+
+            if (IsInsideLibrary(sourcePath))
+            {
+                path = System.IO.Path.GetFullPath(sourcePath);
+                return true;
+            }
+
+            EnsureFolder();
+
+            // 目标名 = 源文件名：重复导入同一份文件就是覆盖它自己，不会在列表里长出 _02、_03
+            string destination = System.IO.Path.Combine(Folder, System.IO.Path.GetFileName(sourcePath));
+            try
+            {
+                File.WriteAllText(destination, json);
+            }
+            catch (Exception exception)
+            {
+                error = "写不进关卡目录：" + exception.Message;
+                return false;
+            }
+
+            path = destination;
+            return true;
+        }
+
+        /// <summary>
+        /// 把 <see cref="DropFolders"/> 里所有能读通的 json 导进正式目录，返回导入个数。
+        ///
+        /// 同名以「先出现的目录」为准（收件箱优先），所以同一批文件反复点这个按钮只会覆盖自己，
+        /// 不会在列表里堆出一串 <c>_02</c> / <c>_03</c>。
+        /// </summary>
+        public static int ImportFromDropFolders(out List<string> problems)
+        {
+            problems = new List<string>();
+            int imported = 0;
+
+            HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string folder in DropFolders())
+            {
+                string[] files;
+                try
+                {
+                    files = Directory.GetFiles(folder, "*.json");
+                }
+                catch (Exception exception)
+                {
+                    problems.Add(folder + "：" + exception.Message);
+                    continue;
+                }
+
+                Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+
+                foreach (string file in files)
+                {
+                    string name = System.IO.Path.GetFileName(file);
+                    if (name.StartsWith("_", StringComparison.Ordinal)) continue;          // 模板 / 草稿
+                    if (string.Equals(name, "catalog.json", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    // 已经在正式目录里的文件不算「导入」：它就是列表里那一关
+                    if (!seen.Add(name) || IsInsideLibrary(file)) continue;
+
+                    if (TryImportFile(file, out string path, out string error))
+                    {
+                        imported++;
+                        Debug.Log("[BitFlow] 已导入关卡 JSON：" + file + " → " + path);
+                    }
+                    else
+                    {
+                        problems.Add(name + "：" + error);
+                    }
+                }
+            }
+
+            return imported;
+        }
+
+        /// <summary>路径是不是就在正式关卡目录里（不含收件箱）。</summary>
+        public static bool IsInsideLibrary(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+
+            try
+            {
+                string folder = System.IO.Path.GetFullPath(Folder);
+                string full = System.IO.Path.GetFullPath(path);
+                if (!full.StartsWith(folder, StringComparison.OrdinalIgnoreCase)) return false;
+
+                // 收件箱在正式目录下面，但那不是「已经在列表里」
+                string incoming = System.IO.Path.GetFullPath(IncomingFolder);
+                return !full.StartsWith(incoming, StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         /// <summary>

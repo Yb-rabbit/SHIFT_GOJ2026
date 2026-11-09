@@ -32,6 +32,9 @@ namespace ShiftGo.BitFlow.Tests
         readonly List<LevelSO> loadedLevels = new List<LevelSO>();
         readonly List<string> writtenFiles = new List<string>();
 
+        /// <summary>写在关卡目录**之外**的临时文件（模拟「玩家从下载目录挑一个 json」）。</summary>
+        readonly List<string> externalFiles = new List<string>();
+
         [SetUp]
         public void SetUp()
         {
@@ -53,6 +56,12 @@ namespace ShiftGo.BitFlow.Tests
                 if (File.Exists(file)) File.Delete(file);
             }
             writtenFiles.Clear();
+
+            foreach (string file in externalFiles)
+            {
+                if (File.Exists(file)) File.Delete(file);
+            }
+            externalFiles.Clear();
         }
 
         // ------------------------------------------------------------------ 类型注册表
@@ -292,6 +301,92 @@ namespace ShiftGo.BitFlow.Tests
             Assert.IsTrue(mentioned, "问题清单里要点名坏文件：" + string.Join("；", problems));
         }
 
+        // ------------------------------------------------------------------ 外部 JSON 导入
+
+        [Test]
+        public void TryImportFile_CopiesExternalJsonIntoLibrary()
+        {
+            string external = WriteExternalJson("Outside.json", LevelJsonSerializer.ToJson(LoadAssetOrFail()));
+
+            Assert.IsTrue(LevelJsonLibrary.TryImportFile(external, out string imported, out string error),
+                "外部 json 应该能导进来：" + error);
+
+            Assert.IsNotNull(imported);
+            writtenFiles.Add(imported);
+
+            Assert.IsTrue(LevelJsonLibrary.IsInsideLibrary(imported),
+                "导入的落点必须在正式关卡目录里：" + imported);
+            Assert.AreEqual(Path.GetFileName(external), Path.GetFileName(imported),
+                "导入保留原文件名（玩家改回来的文件能对上号）");
+            Assert.AreEqual(File.ReadAllText(external), File.ReadAllText(imported),
+                "导入是原样搬运，不该重新序列化改掉作者的排版");
+
+            // 列表里立刻就能看见它（面板 IMPORT 之后就是靠这个重扫）
+            List<LevelJsonEntry> entries = LevelJsonLibrary.Scan(out List<string> problems);
+            bool listed = false;
+            foreach (LevelJsonEntry entry in entries)
+            {
+                if (entry.Path == imported) listed = true;
+            }
+            Assert.IsTrue(listed, "导入完的关卡应该出现在扫描结果里：" + string.Join("；", problems));
+        }
+
+        [Test]
+        public void TryImportFile_RejectsBrokenJson_WithoutWritingAnything()
+        {
+            string external = WriteExternalJson("Broken.json", "这不是关卡，只是一段文字");
+
+            Assert.IsFalse(LevelJsonLibrary.TryImportFile(external, out string imported, out string error),
+                "读不通的东西不该被导进来");
+            Assert.IsNull(imported);
+            Assert.IsNotEmpty(error, "失败要说清原因（面板只报一句，细节在 Console）");
+            Assert.IsFalse(File.Exists(Path.Combine(LevelJsonLibrary.Folder, "Broken.json")),
+                "验货没过就不该落盘");
+        }
+
+        [Test]
+        public void TryImportFile_RepeatedImportOverwritesInsteadOfPilingUp()
+        {
+            string external = WriteExternalJson("Repeat.json", LevelJsonSerializer.ToJson(LoadAssetOrFail()));
+
+            Assert.IsTrue(LevelJsonLibrary.TryImportFile(external, out string first, out string firstError), firstError);
+            writtenFiles.Add(first);
+
+            Assert.IsTrue(LevelJsonLibrary.TryImportFile(external, out string second, out string secondError), secondError);
+
+            Assert.AreEqual(first, second, "同一份文件重复导入应该覆盖它自己，而不是长出 _02");
+            Assert.IsFalse(File.Exists(Path.Combine(LevelJsonLibrary.Folder, "Repeat_02.json")));
+        }
+
+        [Test]
+        public void ImportFromDropFolders_PicksUpInboxFiles()
+        {
+            LevelJsonLibrary.EnsureFolder();
+            Assert.Contains(LevelJsonLibrary.IncomingFolder, LevelJsonLibrary.DropFolders(),
+                "收件箱必须是投放目录之一，否则 IMPORT · FROM INBOX 永远导不出东西");
+
+            string inbox = Path.Combine(LevelJsonLibrary.IncomingFolder, FilePrefix + "Inbox.json");
+            File.WriteAllText(inbox, LevelJsonSerializer.ToJson(LoadAssetOrFail()));
+
+            string destination = Path.Combine(LevelJsonLibrary.Folder, FilePrefix + "Inbox.json");
+            try
+            {
+                int imported = LevelJsonLibrary.ImportFromDropFolders(out List<string> problems);
+
+                Assert.GreaterOrEqual(imported, 1, "收件箱里的关卡要能被导入：" + string.Join("；", problems));
+                Assert.IsTrue(File.Exists(destination), "导入之后正式目录要有一份：" + destination);
+                writtenFiles.Add(destination);
+
+                // 收件箱里的原件留着：玩家自己决定删不删，导入不是「搬走」
+                Assert.IsTrue(File.Exists(inbox), "导入不该吃掉收件箱里那份");
+            }
+            finally
+            {
+                if (File.Exists(inbox)) File.Delete(inbox);
+                if (File.Exists(destination)) File.Delete(destination);
+            }
+        }
+
         // ------------------------------------------------------------------ 小工具
 
         static LevelTypeRegistrySO LoadRegistryOrFail()
@@ -316,6 +411,22 @@ namespace ShiftGo.BitFlow.Tests
             string path = Path.Combine(LevelJsonLibrary.Folder, FilePrefix + fileName);
             File.WriteAllText(path, json);
             writtenFiles.Add(path);
+            return path;
+        }
+
+        /// <summary>
+        /// 写到关卡目录**之外**（系统临时目录），模拟「玩家从下载目录 / U 盘挑一个 json」。
+        /// 只有目录外的东西才会真的走 <see cref="LevelJsonLibrary.TryImportFile"/> 的复制分支 ——
+        /// 目录内的文件会被当成「已经导入过」直接放行。
+        /// </summary>
+        string WriteExternalJson(string fileName, string json)
+        {
+            string folder = Path.Combine(Path.GetTempPath(), "ShiftGoLevelImportTests");
+            if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+
+            string path = Path.Combine(folder, FilePrefix + fileName);
+            File.WriteAllText(path, json);
+            externalFiles.Add(path);
             return path;
         }
     }

@@ -71,8 +71,13 @@ Tools/LevelStudio/ShiftGoLevelStudio.csproj
 
 1. 编辑器里点「保存」，目录选 `LevelJson/incoming`（工程里的中转站）；
 2. 回 Unity 跑菜单 `同步到运行时目录`（或一键那个）；
-   打包后的玩家则直接点**选关面板**里的 `OPEN FOLDER`，把 json 丢进那个目录；
-3. 选关面板 `CUSTOM · LEVEL JSON` 分区里就会出现这一关，点一下进关。
+   打包后的玩家则**直接点 `IMPORT · FROM FILE` 挑那个 json**（Windows 系统文件对话框），
+   或者把 json 丢进关卡目录下的 `incoming\` 再点 `IMPORT · FROM INBOX`；
+3. 选关面板（游戏里按 `L` 打开）的 `MY LEVELS` 分区里就会出现这一关，点一下进关。
+
+`MY LEVELS` 每一行右边有 `X`：点一次变红 `SURE`，3 秒内再点一次真删文件。
+顶部 `FILES` 那一组负责 `IMPORT / EXPORT / VIEW JSON / SHARE FOLDER / COPY FOLDER PATH / REFRESH`，
+完整操作说明见 **[PLAYER_GUIDE.md](PLAYER_GUIDE.md)**。
 
 想让玩家进关后还能自己动手改布局，勾上「允许玩家进关后自己改」（= JSON 的 `allowBuild: true`）。
 

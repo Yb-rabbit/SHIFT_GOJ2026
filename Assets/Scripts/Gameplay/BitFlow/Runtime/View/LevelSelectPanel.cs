@@ -9,6 +9,8 @@ namespace ShiftGo.BitFlow.View
     /// <summary>
     /// 选关面板：把所有关卡列成一列按钮，通关的打勾，当前这关高亮。
     ///
+    /// 入口有两个：游戏里按 <c>L</c>（见 <see cref="Update"/>），或结算面板上的 LEVELS 按钮。
+    ///
     /// 三个约束：
     /// 1. 面板自己一套 Canvas（sortingOrder 40），盖在黑幕（30）和 HUD（0）之上 ——
     ///    结算面板里的 LEVELS 按钮就是在"HUD 之上再盖一层"，不能和 HUD 共用 Canvas。
@@ -25,6 +27,9 @@ namespace ShiftGo.BitFlow.View
         static readonly Color RowColor = new Color(0.10f, 0.14f, 0.18f, 1f);
         static readonly Color RowCurrentColor = new Color(0.14f, 0.26f, 0.32f, 1f);
         static readonly Color ClearedColor = new Color(0.45f, 0.86f, 0.62f, 1f);
+
+        /// <summary>危险动作（删关）的确认色：红得够明显，又不至于像报错。</summary>
+        static readonly Color DangerColor = new Color(0.62f, 0.16f, 0.18f, 1f);
 
         const float RowHeight = 56f;
         const float RowGap = 10f;
@@ -65,6 +70,13 @@ namespace ShiftGo.BitFlow.View
         bool deleteArmed;
         float deleteArmedAt;
 
+        /// <summary>
+        /// 列表行上那颗 X 的两段式确认（和上面那条 DELETE 同一套路，但记的是**哪一行**）。
+        /// 行会被 Rebuild 反复重建，所以认路径而不是认按钮对象。
+        /// </summary>
+        string rowDeleteArmedPath;
+        float rowDeleteArmedAt;
+
         /// <summary>「再点一次确认」的有效时长。</summary>
         const float ConfirmSeconds = 3f;
 
@@ -76,6 +88,16 @@ namespace ShiftGo.BitFlow.View
 
         // 每次 Open 重扫一遍目录：玩家/AI 直接改 JSON 文件，重开面板就能看到最新内容
         readonly List<LevelJsonEntry> jsonEntries = new List<LevelJsonEntry>();
+
+        /// <summary>
+        /// 下一次 <see cref="Rebuild"/> 要不要把列表拉回顶部。
+        ///
+        /// 为什么要这个开关：重建前读到的 <c>verticalNormalizedPosition</c> 是<b>旧内容</b>的滚动位置，
+        /// 而第一次打开面板时内容高度还是 0，读出来恒等于 0（= 底部）——
+        /// 于是面板一开就停在最下面，内置关卡和 MY LEVELS 全在可视区之上，看起来像"一关都没有"。
+        /// 换屏（新建 / 看 JSON）同理，必须从上往下读。
+        /// </summary>
+        bool scrollToTop = true;
 
         void Awake()
         {
@@ -93,8 +115,24 @@ namespace ShiftGo.BitFlow.View
 
         void Update()
         {
-            // 只处理 ESC 关面板。其余按键全部交给 InputGate 挡掉的那套逻辑。
-            if (open && Input.GetKeyDown(KeyCode.Escape)) Close();
+            if (!open)
+            {
+                // L：随时打开选关（原来只有「打完一关的结算面板」里有 LEVELS 按钮，
+                // 于是想删一关 / 导入一个 json 得先故意通关一次）。
+                // 黑幕演出、换关、工坊进行中都不抢：那些时候开选关等于把玩家正在做的事打断。
+                if (Input.GetKeyDown(KeyCode.L) && !InputGate.Locked && flow != null && !WorkshopOpen()) Open();
+                return;
+            }
+
+            // 面板里只处理 ESC / L 关闭。其余按键全部交给 InputGate 挡掉的那套逻辑。
+            if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.L)) Close();
+        }
+
+        /// <summary>工坊开着时不接管 L（工坊有自己的 DONE / HOME，是唯一一处改动草稿的地方）。</summary>
+        static bool WorkshopOpen()
+        {
+            BitFlowWorkshop workshop = FindObjectOfType<BitFlowWorkshop>();
+            return workshop != null && workshop.IsOpen;
         }
 
         void OnDestroy()
@@ -110,6 +148,7 @@ namespace ShiftGo.BitFlow.View
             open = true;
             sizePickMode = false;
             jsonViewMode = false;
+            scrollToTop = true;          // 每次开面板都从"内置关卡"那一段开始读
             InputGate.Acquire();
             canvasObject.SetActive(true);
             Rebuild();
@@ -136,7 +175,9 @@ namespace ShiftGo.BitFlow.View
         {
             // 滚动位置要跨重建保留：结算后 Refresh、按下 IMPORT 都会重建列表，
             // 每次跳回顶部的话，玩家刚滚到底找到了 FILES，一按就又被弹回关卡头部。
-            float previousScroll = listScroll != null ? listScroll.verticalNormalizedPosition : 1f;
+            // scrollToTop 例外：开面板 / 换屏时那个"旧位置"没有意义（见字段注释）。
+            float previousScroll = scrollToTop || listScroll == null ? 1f : listScroll.verticalNormalizedPosition;
+            scrollToTop = false;
 
             for (int i = listRoot.childCount - 1; i >= 0; i--)
             {
@@ -243,11 +284,14 @@ namespace ShiftGo.BitFlow.View
             if (flow != null)
             {
                 CreateCaption("FILES", ref y);
+                CreateAction("IMPORT  ·  FROM FILE", ImportFromFile, ref y);
+                CreateAction("IMPORT  ·  FROM INBOX", ImportFromInbox, ref y);
                 CreateAction("IMPORT  ·  FROM CLIPBOARD", ImportFromClipboard, ref y);
                 CreateAction("EXPORT  ·  CURRENT LEVEL", ExportCurrent, ref y);
                 CreateAction("VIEW JSON  ·  CURRENT LEVEL", BeginJsonView, ref y);
                 CreateAction("DELETE  ·  CURRENT LEVEL", DeleteCurrentJson, ref y);
                 CreateAction("SHARE FOLDER", OpenJsonFolder, ref y);
+                CreateAction("COPY FOLDER PATH", CopyFolderPath, ref y);
                 CreateAction("REFRESH", RefreshList, ref y);
             }
 
@@ -327,6 +371,66 @@ namespace ShiftGo.BitFlow.View
         }
 
         // ---------------------------------------------------------------- 文件进出
+
+        /// <summary>
+        /// 系统文件对话框 → 关卡目录。这是最「正常」的一条导入路：
+        /// 玩家从下载目录 / U 盘 / 聊天记录里挑一个 json，面板验完货就落盘。
+        ///
+        /// 平台不支持（macOS / Linux 独立版）或玩家点了取消时，返回 null ——
+        /// 不弹报错、不假装成功，只在结果行上指一条还能走的路（收件箱）。
+        /// </summary>
+        void ImportFromFile()
+        {
+            LevelJsonLibrary.EnsureFolder();
+
+            string picked = FilePicker.PickJson("IMPORT LEVEL JSON", LevelJsonLibrary.IncomingFolder);
+            if (string.IsNullOrEmpty(picked))
+            {
+                Flash(FilePicker.IsSupported ? "NOTHING PICKED" : "USE IMPORT  ·  FROM INBOX");
+                return;
+            }
+
+            if (!LevelJsonLibrary.TryImportFile(picked, out string path, out string error))
+            {
+                Debug.LogWarning("[BitFlow] 导入关卡 JSON 失败：" + picked + " → " + error);
+                Flash("NOT A LEVEL  ·  SEE CONSOLE");
+                return;
+            }
+
+            Debug.Log("[BitFlow] 已导入关卡 JSON：" + picked + " → " + path);
+            Flash("IMPORTED  " + System.IO.Path.GetFileNameWithoutExtension(path));
+        }
+
+        /// <summary>
+        /// 「投放目录 → 关卡目录」：把玩家自己丢进收件箱（或程序旁边 <c>LevelJson/</c>）的
+        /// 所有 json 一次性导进来。适合「一次给朋友十关」的情况。
+        /// </summary>
+        void ImportFromInbox()
+        {
+            int imported = LevelJsonLibrary.ImportFromDropFolders(out List<string> problems);
+
+            foreach (string problem in problems) Debug.LogWarning("[BitFlow] 关卡 JSON 导入：" + problem);
+
+            if (imported > 0)
+            {
+                Flash("IMPORTED  " + imported + "  LEVEL(S)");
+                return;
+            }
+
+            // 导入 0 个有两种结局：目录里本来就没有东西 / 有东西但读不通。这两种要分开说
+            Flash(problems.Count > 0 ? "FILE ERROR  ·  SEE CONSOLE" : "INBOX IS EMPTY");
+        }
+
+        /// <summary>
+        /// 目录路径进剪贴板。比「打开资源管理器」更能应付「路径太长、窗口被别的程序抢走焦点」
+        /// 这些情况 —— 玩家可以直接粘进资源管理器的地址栏。
+        /// </summary>
+        void CopyFolderPath()
+        {
+            LevelJsonLibrary.EnsureFolder();
+            WriteClipboard(LevelJsonLibrary.Folder);
+            Flash("PATH COPIED  ·  PASTE IN EXPLORER");
+        }
 
         /// <summary>
         /// 剪贴板 → 关卡目录。这就是玩家侧的「导入」：别人把 JSON 发过来，
@@ -447,6 +551,47 @@ namespace ShiftGo.BitFlow.View
             }
 
             Debug.Log("[BitFlow] 已删除关卡 JSON：" + path);
+            if (flow != null) flow.NotifyJsonDeleted(path);
+            Flash("DELETED  " + System.IO.Path.GetFileNameWithoutExtension(path));
+        }
+
+        /// <summary>这一行是不是正等着「再点一次确认」。</summary>
+        bool IsRowDeleteArmed(string path)
+        {
+            if (string.IsNullOrEmpty(rowDeleteArmedPath) || rowDeleteArmedPath != path) return false;
+            return Time.unscaledTime - rowDeleteArmedAt <= ConfirmSeconds;
+        }
+
+        /// <summary>
+        /// 列表行上的 X：第一次点把它变成 <c>SURE</c>（3 秒内有效），第二次点才真删。
+        ///
+        /// 两段式而不是弹窗确认：这个面板没有模态对话框那套东西，
+        /// 而「按钮变成 SURE」本身就把后果说清楚了 —— 手滑点不到第二下。
+        /// </summary>
+        void RequestRowDelete(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+
+            if (!IsRowDeleteArmed(path))
+            {
+                rowDeleteArmedPath = path;
+                rowDeleteArmedAt = Time.unscaledTime;
+                Rebuild();          // 让那一行立刻显示成 SURE（别的行自动取消）
+                SetStatus("PRESS SURE TO DELETE  ·  " + System.IO.Path.GetFileNameWithoutExtension(path));
+                return;
+            }
+
+            rowDeleteArmedPath = null;
+
+            if (!LevelJsonLibrary.TryDelete(path, out string error))
+            {
+                Debug.LogWarning("[BitFlow] 删不掉关卡 JSON：" + path + " → " + error);
+                Flash("DELETE FAILED  ·  SEE CONSOLE");
+                return;
+            }
+
+            Debug.Log("[BitFlow] 已删除关卡 JSON：" + path);
+            if (flow != null) flow.NotifyJsonDeleted(path);
             Flash("DELETED  " + System.IO.Path.GetFileNameWithoutExtension(path));
         }
 
@@ -643,18 +788,41 @@ namespace ShiftGo.BitFlow.View
             }
 
             // 打勾用 OK 两个字母：像素字体没有 ✓ 字形（打包后会变方块）
+            // JSON 行右端要多一颗 X，所以这两种装饰整体左移，别和删除按钮叠在一起
+            float clearedX = entry != null ? -76f : -22f;
+            float nowX = entry != null ? -118f : -60f;
+
             if (SaveStore.IsCleared(displayName))
             {
                 Text cleared = CreateText("Cleared", rowRect, "OK", PixelFont.Small, TextAnchor.MiddleCenter, ClearedColor);
                 SetRect(cleared.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
-                    new Vector2(40f, RowHeight - 8f), new Vector2(-22f, 0f));
+                    new Vector2(40f, RowHeight - 8f), new Vector2(clearedX, 0f));
             }
 
             if (isCurrent)
             {
                 Text now = CreateText("Now", rowRect, "NOW  ", PixelFont.Small, TextAnchor.MiddleRight, MutedColor);
                 SetRect(now.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
-                    new Vector2(80f, RowHeight - 8f), new Vector2(-60f, 0f));
+                    new Vector2(80f, RowHeight - 8f), new Vector2(nowX, 0f));
+            }
+
+            // 每一行自己的删除键：删关这件事必须在「看得见那一关的地方」发生。
+            // 底部那条 DELETE · CURRENT LEVEL 要求先把关载进来，玩家几乎不可能想到。
+            if (entry != null)
+            {
+                string path = entry.Path;
+                bool armed = IsRowDeleteArmed(path);
+
+                Button remove = CreateButton("Delete", rowRect, armed ? "SURE" : "X",
+                    new Vector2(48f, RowHeight - 14f), new Vector2(-24f, 0f), () => RequestRowDelete(path));
+
+                RectTransform removeRect = remove.GetComponent<RectTransform>();
+                SetRect(removeRect, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
+                    new Vector2(48f, RowHeight - 14f), new Vector2(-24f, 0f));
+
+                remove.GetComponent<Image>().color = armed
+                    ? DangerColor
+                    : new Color(0.16f, 0.10f, 0.12f, 0.95f);
             }
         }
 
