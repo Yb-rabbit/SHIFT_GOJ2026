@@ -44,13 +44,15 @@ LevelJson/
 
 | 字段 | 说明 |
 |---|---|
-| `schema` | 格式版本，当前 `1`，可省 |
+| `schema` | 格式版本，当前 `2`，可省。旧文件（`1`）照读：缺的字段一律取默认值 |
 | `displayName` `width` `height` `tickInterval` | 关卡信息（tickInterval = 秒/步） |
 | `wallType` | 墙的类型资产名，一般 `"Type_Wall"`，可省 |
 | `wallRows` | 墙字符画：**一行一个 y，第 1 行是 y=0（从下往上）**，`#` 是墙，其余留空 |
 | `wallMap` | 旧写法（`\n` 分行）；没有 `wallRows` 时才看它 |
 | `elements` | 元件数组 |
 | `supplies` | 手牌数组 |
+| `allowBuild` | `schema 2` 新增：`true` = 玩家进关后可以自己搬元件（沙盒关）；缺省 `false` = 只玩作者摆好的样子 |
+
 
 ## 元件字段
 
@@ -107,11 +109,13 @@ LevelJson/
 
 运行时（打包后也要能跑的那一半）：
 
-刷新类型注册表 · 同步到运行时目录 · 打开运行时关卡目录 · 一键：刷新注册表并同步
+刷新类型注册表 · 同步到运行时目录 · 打开运行时关卡目录 · 一键：刷新注册表并同步 · 导出类型目录（给外部编辑器）· 打开外部关卡编辑器
 
 实现：
 - `Runtime/Data/LevelJsonSerializer.cs`（序列化核心，EditMode 测试覆盖）
 - `Editor/BitFlow/LevelJsonTool.cs`（资产解析与菜单）
 - `Runtime/Data/LevelTypeRegistrySO.cs` / `LevelTypeRegistryResolver.cs` / `LevelJsonLibrary.cs`（运行时读取，EditMode 测试覆盖）
 - `Editor/BitFlow/LevelJsonRuntimeSetup.cs`（注册表刷新与单向同步）
+- `Runtime/Core/LevelDocument.cs` / `LevelDocumentBuilder.cs` / `LevelDocumentWriter.cs` / `LevelTypeCatalog.cs`（纯 C# 数据层，Unity 之外也能编译 —— 见 `docs/LEVEL_STUDIO.md`）
+- `Tools/LevelStudio/`（Unity 之外的关卡编辑器：放元件、看朝向、跑真引擎自测、存 JSON）
 

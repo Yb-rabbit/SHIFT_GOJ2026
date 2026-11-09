@@ -64,6 +64,18 @@ namespace ShiftGo.BitFlow.View
         Text pauseButtonLabel;
         Text speedButtonLabel;
 
+        // 四个底部按钮的引用：工坊要把它们整套换成 DONE / TEST / CLEAR / HOME，
+        // 换完还能原样换回来（退出工坊 = 玩家继续玩关）。
+        Button pauseButtonControl;
+        Button stepButtonControl;
+        Button resetButtonControl;
+        Button speedButtonControl;
+        Text stepButtonLabel;
+        Text resetButtonLabel;
+
+        /// <summary>底部四个按钮现在是不是工坊动作条。工坊期间不许 <see cref="Update"/> 把标签改回 PLAY/PAUSE。</summary>
+        bool workshopBar;
+
         RectTransform receiverPanel;
         readonly List<Text> receiverLabels = new List<Text>();
 
@@ -285,17 +297,20 @@ namespace ShiftGo.BitFlow.View
             // 滑杆关掉后整行垂直居中（0），否则 64 高的条里按钮会顶出上边缘。
             // x 是实算的（条宽 540 = 四个按钮 120+100+120+100 + 三个 20 的缝 + 两侧 20 边距）：
             //   PAUSE -250..-130 / STEP -110..-10 / REPLAY 10..130 / SPEED 150..250
-            Button pauseButton = CreateButton("Pause", bar, "PAUSE", new Vector2(120f, 44f), new Vector2(-190f, ButtonRowY), OnPauseClicked);
-            pauseButtonLabel = pauseButton.GetComponentInChildren<Text>();
-            pauseButtonImage = pauseButton.GetComponent<Image>();
+            pauseButtonControl = CreateButton("Pause", bar, "PAUSE", new Vector2(120f, 44f), new Vector2(-190f, ButtonRowY), OnPauseClicked);
+            pauseButtonLabel = pauseButtonControl.GetComponentInChildren<Text>();
+            pauseButtonImage = pauseButtonControl.GetComponent<Image>();
 
-            CreateButton("Step", bar, "STEP", new Vector2(100f, 44f), new Vector2(-60f, ButtonRowY), OnStepClicked);
-            CreateButton("Reset", bar, "REPLAY", new Vector2(120f, 44f), new Vector2(70f, ButtonRowY), OnResetClicked);
+            stepButtonControl = CreateButton("Step", bar, "STEP", new Vector2(100f, 44f), new Vector2(-60f, ButtonRowY), OnStepClicked);
+            stepButtonLabel = stepButtonControl.GetComponentInChildren<Text>();
+
+            resetButtonControl = CreateButton("Reset", bar, "REPLAY", new Vector2(120f, 44f), new Vector2(70f, ButtonRowY), OnResetClicked);
+            resetButtonLabel = resetButtonControl.GetComponentInChildren<Text>();
 
             // 倍速：一个小按钮循环 1× → 2× → 3× → 4× → 1×。
             // 比滑杆省一块地方（不用两行条），也不会出现"拖到 1.37 倍"这种没人用得上的档位。
-            Button speedButton = CreateButton("Speed", bar, "1x", new Vector2(100f, 44f), new Vector2(200f, ButtonRowY), OnSpeedClicked);
-            speedButtonLabel = speedButton.GetComponentInChildren<Text>();
+            speedButtonControl = CreateButton("Speed", bar, "1x", new Vector2(100f, 44f), new Vector2(200f, ButtonRowY), OnSpeedClicked);
+            speedButtonLabel = speedButtonControl.GetComponentInChildren<Text>();
 
             // 倍速滑杆：暂时关闭（见 ShowSpeedControl），标签和滑杆一起挂在这个开关下。
             // OnSpeedChanged / CreateSlider 保留未删，重新打开时不需要再补任何东西。
@@ -318,6 +333,70 @@ namespace ShiftGo.BitFlow.View
 
             // 最后一个就位，并且带过冲：全场只有这一块要玩家动手，收尾得比上面两个角重一点
             RegisterChrome(bar, new Vector2(ChromeSlideDistance, -ChromeSlideDistance), 0.20f, true);
+        }
+
+        // ---------------------------------------------------------------- 工坊动作条
+        //
+        // 工坊不另建一条底栏，而是<b>把现有这四颗按钮换成别的事</b>：
+        // 按钮的尺寸和位置都是算死的（540×64，120+100+120+100），新起一条就要重新对一遍，
+        // 还会动到 BottomBarScreenRect —— 那条矩形是待排区用来避让的，一改卡排就得重新排版。
+        // 换标签 + 换监听 = 零布局风险，退出时再原样换回来。
+
+        /// <summary>
+        /// 四个按钮换成功坊动作条。顺序不变（左 → 右）：DONE / TEST / CLEAR / HOME。
+        /// 传进来的都是 <see cref="BitFlowWorkshop"/> 的公开入口 —— HUD 不认识工坊内部，
+        /// 只负责把点击转过去。
+        /// </summary>
+        public void EnterWorkshopBar(UnityAction done, UnityAction test, UnityAction clear, UnityAction home)
+        {
+            workshopBar = true;
+
+            Bind(pauseButtonControl, pauseButtonLabel, "DONE", done);
+            Bind(stepButtonControl, stepButtonLabel, "TEST", test);
+            Bind(resetButtonControl, resetButtonLabel, "CLEAR", clear);
+            Bind(speedButtonControl, speedButtonLabel, "HOME", home);
+
+            // 工坊里没有「正放着」这件事，暂停键的呼吸高亮要收掉
+            if (pauseButtonImage != null) pauseButtonImage.color = ButtonColor;
+        }
+
+        /// <summary>退出工坊：把四个按钮恢复成 PAUSE / STEP / REPLAY / 倍速。</summary>
+        public void ExitWorkshopBar()
+        {
+            if (!workshopBar) return;
+            workshopBar = false;
+
+            Bind(pauseButtonControl, pauseButtonLabel, "PAUSE", OnPauseClicked);
+            Bind(stepButtonControl, stepButtonLabel, "STEP", OnStepClicked);
+            Bind(resetButtonControl, resetButtonLabel, "REPLAY", OnResetClicked);
+            Bind(speedButtonControl, speedButtonLabel, SpeedLabel(), OnSpeedClicked);
+        }
+
+        /// <summary>TEST 按钮在「正在试跑」时改成 STOP，玩家一眼知道再点一下就回到编辑。</summary>
+        public void SetWorkshopTesting(bool testing)
+        {
+            if (!workshopBar || stepButtonLabel == null) return;
+
+            string label = testing ? "STOP" : "TEST";
+            if (stepButtonLabel.text != label) stepButtonLabel.text = label;
+        }
+
+        string SpeedLabel()
+        {
+            float speed = runner != null ? runner.Speed : 1f;
+            return Mathf.RoundToInt(speed).ToString() + "x";
+        }
+
+        static void Bind(Button button, Text label, string text, UnityAction onClick)
+        {
+            if (button == null) return;
+
+            // RemoveAllListeners 而不是额外加一个：工坊反复进出时监听会一层层叠上去，
+            // 最后点一次 DONE 等于把这辈子的 DONE 都执行一遍。
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(onClick);
+
+            if (label != null && label.text != text) label.text = text;
         }
 
         void LateUpdate()
@@ -478,6 +557,7 @@ namespace ShiftGo.BitFlow.View
 
             bool want = !chromeHidden
                         && !playHintSeen
+                        && !workshopBar      // 工坊里那颗按钮写着 DONE，招呼它「PRESS PLAY」是错的
                         && runner != null
                         && !runner.IsFinished
                         && runner.TickIndex == 0
@@ -718,13 +798,13 @@ namespace ShiftGo.BitFlow.View
 
             UpdatePlayHint();
 
-            if (pauseButtonLabel != null && runner != null)
+            if (!workshopBar && pauseButtonLabel != null && runner != null)
             {
                 string label = runner.IsFinished ? "DONE" : (runner.IsPaused ? "PLAY" : "PAUSE");
                 if (pauseButtonLabel.text != label) pauseButtonLabel.text = label;
             }
 
-            RefreshSpeedLabel();
+            if (!workshopBar) RefreshSpeedLabel();
         }
 
         void OnPauseClicked()
@@ -863,6 +943,10 @@ namespace ShiftGo.BitFlow.View
             if (runner != null) RefreshReceiverLabels(runner.Simulation);
             RefreshTickText();
             RefreshStatus();
+
+            // 工坊试跑不弹结算面板：玩家只是想知道机器跑不跑得起来，
+            // 弹一个 PASS/FAIL 盖住网格，还得再点一次关掉。结论由工坊那行状态文字说。
+            if (workshopBar) return;
 
             // HUD 自身可能已随场景卸载，这里做防御，避免 MissingReferenceException 刷屏
             if (resultPanel == null || resultTitle == null || resultDetail == null) return;

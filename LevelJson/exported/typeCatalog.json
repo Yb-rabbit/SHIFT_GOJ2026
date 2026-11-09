@@ -1,0 +1,137 @@
+{
+  "schema": 2,
+  "types": [
+    {
+      "key": "Type_Emitter_E1",
+      "kind": "Emitter",
+      "label": "E1",
+      "hint": "EMITTER E1\n1011 x2  FACE →",
+      "dir": "Right",
+      "dir2": "Down",
+      "sequence": "1011",
+      "count": 8,
+      "acceptAnyFace": true,
+      "pass": 1
+    },
+    {
+      "key": "Type_Emitter_E2",
+      "kind": "Emitter",
+      "label": "E2",
+      "hint": "EMITTER E2\n100 x1  FACE →",
+      "dir": "Right",
+      "dir2": "Down",
+      "sequence": "100",
+      "count": 3,
+      "acceptAnyFace": true,
+      "pass": 1
+    },
+    {
+      "key": "Type_Filter_F0",
+      "kind": "Filter",
+      "label": "F0",
+      "hint": "FILTER F0\nPASS 0  OUT →",
+      "dir": "Right",
+      "dir2": "Down",
+      "sequence": "1",
+      "count": 1,
+      "acceptAnyFace": true,
+      "pass": 0
+    },
+    {
+      "key": "Type_Filter_F1",
+      "kind": "Filter",
+      "label": "F1",
+      "hint": "FILTER F1\nPASS 1  OUT →",
+      "dir": "Right",
+      "dir2": "Down",
+      "sequence": "1",
+      "count": 1,
+      "acceptAnyFace": true,
+      "pass": 1
+    },
+    {
+      "key": "Type_NotGate_N1",
+      "kind": "NotGate",
+      "label": "N1",
+      "hint": "NOT N1\nINVERT  OUT →",
+      "dir": "Right",
+      "dir2": "Down",
+      "sequence": "1",
+      "count": 1,
+      "acceptAnyFace": true,
+      "pass": 1
+    },
+    {
+      "key": "Type_Receiver_R1",
+      "kind": "Receiver",
+      "label": "R1",
+      "hint": "RECEIVER R1\nNEED 1 x6  ANY FACE",
+      "dir": "Down",
+      "dir2": "Down",
+      "sequence": "1",
+      "count": 6,
+      "acceptAnyFace": true,
+      "pass": 1
+    },
+    {
+      "key": "Type_Receiver_R2",
+      "kind": "Receiver",
+      "label": "R2",
+      "hint": "RECEIVER R2\nNEED 0 x2  ANY FACE",
+      "dir": "Left",
+      "dir2": "Down",
+      "sequence": "0",
+      "count": 2,
+      "acceptAnyFace": true,
+      "pass": 1
+    },
+    {
+      "key": "Type_Receiver_R3",
+      "kind": "Receiver",
+      "label": "R3",
+      "hint": "RECEIVER R3\nNEED 1 x2  ANY FACE",
+      "dir": "Left",
+      "dir2": "Down",
+      "sequence": "1",
+      "count": 2,
+      "acceptAnyFace": true,
+      "pass": 1
+    },
+    {
+      "key": "Type_Receiver_R4",
+      "kind": "Receiver",
+      "label": "R4",
+      "hint": "RECEIVER R4\nNEED 1 x6  ANY FACE",
+      "dir": "Left",
+      "dir2": "Down",
+      "sequence": "1",
+      "count": 6,
+      "acceptAnyFace": true,
+      "pass": 1
+    },
+    {
+      "key": "Type_Splitter_L1",
+      "kind": "Splitter",
+      "label": "L1",
+      "hint": "SPLITTER L1\n1 ↑   0 →",
+      "dir": "Up",
+      "dir2": "Right",
+      "sequence": "1",
+      "count": 1,
+      "acceptAnyFace": true,
+      "pass": 1
+    },
+    {
+      "key": "Type_Wall",
+      "kind": "Wall",
+      "label": "WALL",
+      "hint": "WALL",
+      "dir": "Right",
+      "dir2": "Down",
+      "sequence": "1",
+      "count": 1,
+      "acceptAnyFace": true,
+      "pass": 1
+    }
+  ]
+}

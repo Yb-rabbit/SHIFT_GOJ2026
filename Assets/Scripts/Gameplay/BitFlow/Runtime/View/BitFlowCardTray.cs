@@ -225,6 +225,22 @@ namespace ShiftGo.BitFlow.View
         LevelSO level;
         LevelDraft draft;
 
+        /// <summary>工坊模式：卡排内容由外部注入（见 <see cref="EnterWorkshop"/>），库存无限。</summary>
+        bool workshopMode;
+
+        /// <summary>工坊模式的卡面来源（六种元件，顺序 = 注册表顺序）。</summary>
+        IReadOnlyList<ElementTypeSO> workshopPalette;
+
+        /// <summary>草稿被改动（放置 / 拾回 / 旋转 / 撤销）后触发。工坊用它刷新自己的读数。</summary>
+        public event System.Action DraftChanged;
+
+        /// <summary>
+        /// 是否处于工坊模式。
+        /// 工坊的草稿没有对应的 <see cref="LevelSO"/>，所以不能走 <see cref="OnLevelLoaded"/> 那条路：
+        /// 那条路会按 <c>supplies</c> 把库存压成有限张（supplies 为空时干脆把卡排整排关掉）。
+        /// </summary>
+        public bool IsWorkshop => workshopMode;
+
         /// <summary>本关手牌总数（<see cref="LevelSO.supplies"/> 里所有张数之和，含已经放下的）。状态行显示 "手牌 2/3" 用。</summary>
         int handTotal;
 
@@ -320,6 +336,10 @@ namespace ShiftGo.BitFlow.View
         /// <summary>换关：按新关卡重新生成草稿与卡排（预设件、手牌、撤销栈全部重来）。</summary>
         void OnLevelLoaded(LevelSO next)
         {
+            // 工坊期间草稿归工坊所有：这时候若有人换关（自动开场的补加载、外部脚本调 Load），
+            // 把草稿换掉会让「PIECES n」和板上的东西对不上。工坊退出时会自己 flow.Retry() 装回关卡。
+            if (workshopMode) return;
+
             level = next;
             armedType = null;
             armedRotation = 0;
@@ -339,6 +359,65 @@ namespace ShiftGo.BitFlow.View
             RefreshCards();
         }
 
+        // ---------------------------------------------------------------- 工坊模式
+
+        /// <summary>
+        /// 切进工坊：草稿由外部持有（<paramref name="target"/>），卡排按 <paramref name="palette"/> 铺一排<b>无限</b>卡。
+        ///
+        /// 为什么库存是无限：<see cref="LevelDraft"/> 只有在登记过手牌（<c>SetStock</c>）之后才进入有限模式，
+        /// 而工坊的草稿是 <c>new LevelDraft(w, h)</c> 造的空草稿 —— <see cref="LevelDraft.StockEnabled"/> 为 false，
+        /// <see cref="LevelDraft.Remaining"/> 恒定返回 -1（不限量）。所以这里什么都不用改，卡面显示 INF 即可。
+        /// </summary>
+        public void EnterWorkshop(LevelDraft target, IReadOnlyList<ElementTypeSO> palette)
+        {
+            if (target == null) return;
+
+            workshopMode = true;
+            workshopPalette = palette;
+
+            level = null;
+            draft = target;
+            armedType = null;
+            armedRotation = 0;
+            hovered = null;
+            handTotal = 0;
+            statusMessage = "PLACE  ·  R ROTATE  ·  CTRL+Z UNDO";
+
+            if (ghost != null) ghost.Clear();
+            if (cardRoot != null) cardRoot.SetActive(true);
+
+            RebuildCards();
+            RefreshStatus();
+            RefreshCards();
+        }
+
+        /// <summary>退出工坊：收起卡排、清掉草稿。下一关由工坊自己负责重载。</summary>
+        public void ExitWorkshop()
+        {
+            if (!workshopMode) return;
+
+            workshopMode = false;
+            workshopPalette = null;
+            armedType = null;
+            level = null;
+            draft = null;
+            statusMessage = string.Empty;
+
+            if (ghost != null) ghost.Clear();
+            RebuildCards();
+            RefreshStatus();
+        }
+
+        /// <summary>
+        /// 外部改状态行文字（工坊的 DONE / TEST / CLEAR 反馈都走这一条）。
+        /// 不直接暴露 <c>statusMessage</c> 字段：改完必须重新排版一次，否则玩家看不到。
+        /// </summary>
+        public void SetStatus(string message)
+        {
+            statusMessage = message ?? string.Empty;
+            RefreshStatus();
+        }
+
         void Update()
         {
             if (draft == null) return;
@@ -352,7 +431,8 @@ namespace ShiftGo.BitFlow.View
                 return;
             }
 
-            if (runner == null || runner.IsBuildModeEnabled)
+            // 工坊本来就在编辑，作者模式的 BUILD MODE 不该再把手牌盘压掉
+            if (runner == null || (!workshopMode && runner.IsBuildModeEnabled))
             {
                 // 作者模式接管输入时不抢事件，也别留下一个过期的格子预览
                 if (ghost != null) ghost.Hide();
@@ -495,7 +575,30 @@ namespace ShiftGo.BitFlow.View
             cards.Clear();
             hovered = null;
 
-            if (level == null || level.supplies == null || cardRoot == null) return;
+            if (cardRoot == null) return;
+
+            // 工坊：卡面来源是外部注入的调色板，与 supplies 无关；库存无限所以没有"用完了"这回事
+            if (workshopMode)
+            {
+                if (workshopPalette == null) return;
+
+                // 按「种类」去重，而不是按类型 Key：卡面美术是 <see cref="CardArtLibrary"/> 一个种类一张图，
+                // 注册表里常有好几份同种类的变体（不同序列的发射器之类），摆出来就是几张一模一样的牌 ——
+                // 玩家分不清哪张是哪张。一种只给一张，用的就是注册表里第一份。
+                HashSet<CellKind> drawnKinds = new HashSet<CellKind>();
+                foreach (ElementTypeSO type in workshopPalette)
+                {
+                    if (type == null || string.IsNullOrEmpty(type.Key)) continue;
+                    if (!drawnKinds.Add(KindOf(type))) continue;
+
+                    cards.Add(CreateCard(type));
+                }
+
+                RefreshLayout();
+                return;
+            }
+
+            if (level == null || level.supplies == null) return;
 
             // 库存按类型 Key 记账，同一个类型写两条 = 一摞牌里多几张。
             // 这里必须按 Key 去重：不然会画出两张一模一样的卡，还共用同一个数字（看着像计数坏了）。
@@ -642,7 +745,7 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         void RefreshLayout()
         {
-            if (cards.Count == 0 || mainCamera == null || level == null) return;
+            if (cards.Count == 0 || mainCamera == null) return;
 
             float pxScale = PixelScale();
 
@@ -672,7 +775,9 @@ namespace ShiftGo.BitFlow.View
             float gap = CardGap * shrink;
             width = count * cardWidth + (count - 1) * gap;
 
-            float gridCenterX = (level.width - 1) * 0.5f;
+            // 横向落点对准网格中心。工坊没有 LevelSO，宽度以草稿为准（草稿是唯一权威）。
+            int gridWidth = draft != null ? draft.Width : (level != null ? level.width : 1);
+            float gridCenterX = (gridWidth - 1) * 0.5f;
             float gridCenterPx = mainCamera.WorldToScreenPoint(new Vector3(gridCenterX, RowY, rowZ)).x;
             float halfPx = width * pxPerUnit * 0.5f;
             float centerPx = Mathf.Clamp(gridCenterPx, bandLeft + halfPx, bandRight - halfPx);
@@ -1076,7 +1181,8 @@ namespace ShiftGo.BitFlow.View
             switch (result)
             {
                 case PlaceResult.Ok:
-                    if (draft.Remaining(armedType.Key) <= 0) armedType = null; // 这摞用完了
+                    // 只有真的耗尽（== 0）才松开手牌；工坊不限量时 Remaining 是 -1，必须继续握着
+                    if (draft.Remaining(armedType.Key) == 0) armedType = null;
                     Apply("PLACED");
                     // 必须排在 Apply 之后：Apply 会重建整个舞台，旧的 ElementView 已经没了
                     PlayDropInAt(cell);
@@ -1125,7 +1231,21 @@ namespace ShiftGo.BitFlow.View
 
         ElementTypeSO FindSupplyType(string typeKey)
         {
-            if (level == null || level.supplies == null || string.IsNullOrEmpty(typeKey)) return null;
+            if (string.IsNullOrEmpty(typeKey)) return null;
+
+            // 工坊的"手牌"就是那一排无限卡：拾回一个件时要能拿回同款继续放
+            if (workshopMode)
+            {
+                if (workshopPalette == null) return null;
+
+                foreach (ElementTypeSO type in workshopPalette)
+                {
+                    if (type != null && type.Key == typeKey) return type;
+                }
+                return null;
+            }
+
+            if (level == null || level.supplies == null) return null;
 
             foreach (ElementSupply supply in level.supplies)
             {
@@ -1155,7 +1275,8 @@ namespace ShiftGo.BitFlow.View
         {
             if (type == null || draft == null) return;
 
-            if (draft.Remaining(type.Key) <= 0)
+            // == 0 才是真没牌；-1 是不限量（工坊 / 作者模式），不该拦住选卡
+            if (draft.Remaining(type.Key) == 0)
             {
                 Fail(LabelOf(type) + " LEFT");
                 return;
@@ -1183,6 +1304,7 @@ namespace ShiftGo.BitFlow.View
             statusMessage = message;
             if (draft != null) runner.ShowDefinition(draft.ToDefinition());
             RefreshAll();
+            DraftChanged?.Invoke();
         }
 
         void Fail(string message)
@@ -1205,8 +1327,12 @@ namespace ShiftGo.BitFlow.View
                 if (entry.Root == null) continue;
 
                 int left = draft != null ? draft.Remaining(entry.Key) : 0;
+
+                // -1 = 不限量（工坊模式 / 作者模式）：显示 INF，而且**不能压暗** ——
+                // 压暗是"这摞用完了"的语义，无限量永远用不完。
+                bool unlimited = left < 0;
                 bool selected = armedType == entry.Type;
-                bool empty = left <= 0;
+                bool empty = !unlimited && left <= 0;
 
                 // 选中态走那根强调条：卡面是不透明美术图，改底色会把它一起染掉
                 if (entry.Mark != null) entry.Mark.gameObject.SetActive(selected);
@@ -1216,7 +1342,7 @@ namespace ShiftGo.BitFlow.View
 
                 if (entry.Count != null)
                 {
-                    entry.Count.text = "x" + Mathf.Max(0, left);
+                    entry.Count.text = unlimited ? "INF" : "x" + Mathf.Max(0, left);
                     entry.Count.color = empty ? CountTextEmptyColor : (entry.HasArt ? CountTextColor : TextColor);
                 }
             }
@@ -1225,6 +1351,14 @@ namespace ShiftGo.BitFlow.View
         void RefreshStatus()
         {
             if (statusText == null) return;
+
+            // 工坊：没有手牌张数这回事，改成报「已经摆了几件」—— 那是玩家唯一关心的数字
+            if (workshopMode)
+            {
+                string parts = "PIECES " + (draft != null ? draft.Count : 0);
+                statusText.text = string.IsNullOrEmpty(statusMessage) ? parts : parts + "  /  " + statusMessage;
+                return;
+            }
 
             if (draft == null)
             {

@@ -121,8 +121,25 @@ namespace ShiftGo.BitFlow.View
             ClearJsonLevel();
             index = target;
             runner.LoadLevel(level);
+            ApplyBuildMode(level);
             LevelLoaded?.Invoke(level);
             return true;
+        }
+
+        /// <summary>
+        /// 进关后决定「玩家能不能自己搬元件」。
+        /// JSON 里写了 <c>allowBuild: true</c> 就开（沙盒关）；否则沿用 <see cref="disableBuildMode"/>
+        /// —— 正式关默认关掉，作者场景默认留着，行为和加这个字段之前完全一致。
+        /// </summary>
+        void ApplyBuildMode(LevelSO level)
+        {
+            if (level != null && level.allowBuild)
+            {
+                runner.EnableBuildMode();
+                return;
+            }
+
+            if (disableBuildMode) runner.DisableBuildMode();
         }
 
         /// <summary>
@@ -154,6 +171,7 @@ namespace ShiftGo.BitFlow.View
             index = -1;
 
             runner.LoadLevel(level);
+            ApplyBuildMode(level);
             LevelLoaded?.Invoke(level);
             return true;
         }

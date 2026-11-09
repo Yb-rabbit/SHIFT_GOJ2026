@@ -59,7 +59,12 @@ namespace ShiftGo.BitFlow.Data
     /// </summary>
     public static class LevelJsonSerializer
     {
-        public const int SchemaVersion = 1;
+        /// <summary>
+        /// 当前格式版本。历史：
+        /// 1 = 最初版本；2 = 加了 <c>allowBuild</c>（其余字段零改动，旧文件照读）。
+        /// 比这个更新的文件只警告不拒载；更旧的按缺省值补（所有字段都有初值，等于自动迁移）。
+        /// </summary>
+        public const int SchemaVersion = 2;
 
         /// <summary>JSON 顶层。所有字段都给了初值 —— JsonUtility 对缺失字段保留初值，所以初值就是"没写"。</summary>
         [Serializable]
@@ -86,6 +91,9 @@ namespace ShiftGo.BitFlow.Data
             public List<LevelJsonCell> elements;
 
             public List<LevelJsonSupply> supplies;
+
+            /// <summary>schema 2：允许玩家进关后自己搬元件（沙盒关）。缺省 false = 只玩作者摆好的样子。</summary>
+            public bool allowBuild;
         }
 
         /// <summary>一格元件。数值字段用 -1 表示"没写"，字符串用空串表示"没写"。</summary>
@@ -157,6 +165,9 @@ namespace ShiftGo.BitFlow.Data
             builder.Append("  \"width\": ").Append(width).Append(",\n");
             builder.Append("  \"height\": ").Append(height).Append(",\n");
             builder.Append("  \"tickInterval\": ").Append(Number(level.tickInterval));
+
+            // 只有 true 才写出来：老关卡（allowBuild=false）导出的字节一个都不变
+            if (level.allowBuild) builder.Append(",\n  \"allowBuild\": true");
 
             string[] wallRows = BuildWallRows(level, width, height);
             if (wallRows.Length > 0)
@@ -501,6 +512,7 @@ namespace ShiftGo.BitFlow.Data
             level.width = Mathf.Max(1, file.width);
             level.height = Mathf.Max(1, file.height);
             level.tickInterval = file.tickInterval > 0.01f ? Mathf.Clamp(file.tickInterval, 0.05f, 5f) : 0.35f;
+            level.allowBuild = file.allowBuild;
             level.placements = new List<ElementPlacement>();
             level.supplies = new List<ElementSupply>();
 

@@ -30,6 +30,10 @@ namespace ShiftGo.BitFlow.View
         const float RowGap = 10f;
         const float CaptionHeight = 26f;
         const float HintHeight = 22f;
+        const float ActionHeight = 34f;
+
+        /// <summary>列表区高度 = 面板 620 - 标题占的 96 - 底部 CLOSE 占的 90。</summary>
+        const float ListHeight = 434f;
 
         LevelFlow flow;
         IntroCurtain curtain;
@@ -40,6 +44,9 @@ namespace ShiftGo.BitFlow.View
         Text emptyText;
 
         bool open;
+
+        /// <summary>列表当前显示的是关卡列表，还是「新建关卡选尺寸」那一屏。</summary>
+        bool sizePickMode;
 
         // 每次 Open 重扫一遍目录：玩家/AI 直接改 JSON 文件，重开面板就能看到最新内容
         readonly List<LevelJsonEntry> jsonEntries = new List<LevelJsonEntry>();
@@ -75,6 +82,7 @@ namespace ShiftGo.BitFlow.View
             if (open) return;
 
             open = true;
+            sizePickMode = false;
             InputGate.Acquire();
             canvasObject.SetActive(true);
             Rebuild();
@@ -104,6 +112,14 @@ namespace ShiftGo.BitFlow.View
                 Destroy(listRoot.GetChild(i).gameObject);
             }
 
+            // 「新建关卡」是同一块列表的第二屏：点 + NEW LEVEL 进来挑尺寸，点 BACK 回关卡列表。
+            // 不另开一层面板 —— 尺寸只有四档，多一层 Canvas 反而要多处理一次输入锁的引用计数。
+            if (sizePickMode)
+            {
+                RebuildSizePick();
+                return;
+            }
+
             jsonEntries.Clear();
 
             LevelCatalogSO catalog = flow != null ? flow.Catalog : null;
@@ -113,12 +129,15 @@ namespace ShiftGo.BitFlow.View
             List<string> jsonProblems = null;
             if (flow != null)
             {
+                // 先建目录再扫：首次运行目录还不存在时 Scan 会把「还没有关卡目录」记成一条 problem，
+                // 面板上就会莫名其妙挂个 FILE ERROR。建完再扫，空目录 = 干净的 0 条。
+                LevelJsonLibrary.EnsureFolder();
                 jsonEntries.AddRange(LevelJsonLibrary.Scan(out jsonProblems));
                 foreach (string problem in jsonProblems) Debug.LogWarning("[BitFlow] 关卡 JSON：" + problem);
             }
 
             bool hasJsonSection = jsonEntries.Count > 0 || (jsonProblems != null && jsonProblems.Count > 0);
-            if (catalogCount == 0 && !hasJsonSection)
+            if (catalogCount == 0 && !hasJsonSection && flow == null)
             {
                 emptyText.gameObject.SetActive(true);
                 listRoot.gameObject.SetActive(false);
@@ -146,9 +165,17 @@ namespace ShiftGo.BitFlow.View
                 CreateRow(row++, level, null, isCurrent, () => Select(captured), ref y);
             }
 
-            if (hasJsonSection)
+            // MY LEVELS 一整段：标题 → + NEW LEVEL → 存档行 → 报错提示。
+            // 新建入口排在存档列表前面：这是玩家唯一「从零做一关」的路，不该被二十条存档压到屏幕外。
+            if (hasJsonSection || flow != null)
             {
-                CreateCaption("CUSTOM  ·  LEVEL JSON", ref y);
+                CreateCaption("MY LEVELS", ref y);
+
+                if (flow != null)
+                {
+                    CreateAction("+  NEW LEVEL", BeginSizePick, ref y);
+                    if (jsonEntries.Count == 0) CreateHint("NO LEVELS YET  ·  PRESS + NEW LEVEL", ref y);
+                }
 
                 foreach (LevelJsonEntry entry in jsonEntries)
                 {
@@ -160,12 +187,79 @@ namespace ShiftGo.BitFlow.View
                 if (jsonProblems != null && jsonProblems.Count > 0)
                 {
                     // 像素字体没有中文字形：面板上只说「有错、看日志」，细节都在 Console
-                    CreateHint("JSON ERROR  ·  SEE CONSOLE", ref y);
+                    CreateHint("FILE ERROR  ·  SEE CONSOLE", ref y);
                 }
+            }
+
+            // 自己的关卡放哪、刷新一下看到新文件 —— 少了这两个按钮，玩家得自己去翻
+            // AppData/LocalLow 里的隐藏目录，等于没有这个功能
+            if (flow != null)
+            {
+                CreateAction("SHARE FOLDER", OpenJsonFolder, ref y);
+                CreateAction("REFRESH", RefreshList, ref y);
             }
 
             // listRoot 自上而下排：y 一路走成负数，高度取它的绝对值
             listRoot.sizeDelta = new Vector2(listRoot.sizeDelta.x, Mathf.Max(0f, -y));
+        }
+
+        /// <summary>
+        /// 「新建关卡」第二屏：四档网格尺寸，点一个就开工坊。
+        /// 为什么不做输入框：工程里没有 TextMeshPro / InputField，自由输入尺寸要另搭一套中文输入处理，
+        /// 而四档尺寸已经覆盖了「小谜题 → 大地图」的全部需要。
+        /// </summary>
+        void RebuildSizePick()
+        {
+            emptyText.gameObject.SetActive(false);
+            listRoot.gameObject.SetActive(true);
+
+            float y = 0f;
+            CreateCaption("NEW LEVEL  ·  PICK A GRID", ref y);
+
+            Vector2Int standard = BitFlowWorkshop.SizePresets.Length > 0
+                ? BitFlowWorkshop.SizePresets[0]
+                : new Vector2Int(9, 8);
+
+            foreach (Vector2Int size in BitFlowWorkshop.SizePresets)
+            {
+                Vector2Int captured = size;
+                string label = size.x + " x " + size.y + (size == standard ? "   STANDARD" : string.Empty);
+                CreateAction(label, () => BeginWorkshop(captured), ref y);
+            }
+
+            CreateAction("BACK", BackToLevels, ref y);
+
+            listRoot.sizeDelta = new Vector2(listRoot.sizeDelta.x, Mathf.Max(0f, -y));
+        }
+
+        void BeginSizePick()
+        {
+            sizePickMode = true;
+            Rebuild();
+        }
+
+        void BackToLevels()
+        {
+            sizePickMode = false;
+            Rebuild();
+        }
+
+        void RefreshList()
+        {
+            sizePickMode = false;
+            Rebuild();
+        }
+
+        /// <summary>
+        /// 开工坊。顺序：<b>先关面板放锁、再开工坊</b> —— 工坊期间手牌盘必须能收到点击，
+        /// 所以这一路不能留着选关面板那把输入锁。
+        /// </summary>
+        void BeginWorkshop(Vector2Int size)
+        {
+            sizePickMode = false;
+            Close();
+
+            BitFlowWorkshop.Ensure().Open(size.x, size.y);
         }
 
         /// <summary>
@@ -250,6 +344,60 @@ namespace ShiftGo.BitFlow.View
             y -= HintHeight;
         }
 
+        /// <summary>可点的一行动作（打开目录 / 刷新列表）。标签只用 ASCII：像素字体没有中文字形。</summary>
+        void CreateAction(string label, UnityAction onClick, ref float y)
+        {
+            GameObject rowObject = new GameObject("Action", typeof(RectTransform), typeof(Image), typeof(Button));
+            rowObject.transform.SetParent(listRoot, false);
+
+            RectTransform rowRect = rowObject.GetComponent<RectTransform>();
+            SetRect(rowRect, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(600f, ActionHeight), new Vector2(0f, y));
+            y -= ActionHeight + RowGap;
+
+            Image background = rowObject.GetComponent<Image>();
+            background.color = RowColor;
+
+            Button button = rowObject.GetComponent<Button>();
+            button.targetGraphic = background;
+            button.onClick.AddListener(onClick);
+
+            Text title = CreateText("Title", rowRect, label, PixelFont.Small, TextAnchor.MiddleCenter, MutedColor);
+            SetRect(title.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        }
+
+        /// <summary>
+        /// 在资源管理器里打开「玩家自己放关卡」的目录（<c>Application.persistentDataPath/LevelJson</c>）。
+        ///
+        /// 为什么不做系统文件对话框：那要引 System.Windows.Forms 或写一堆平台分支，
+        /// 而玩家真正需要的只有「把 json 丢进去」这一件事 —— 打开目录就够了。
+        /// 移动端 / 主机没有这个概念，直接跳过（路径仍会写进 Console）。
+        /// </summary>
+        void OpenJsonFolder()
+        {
+            LevelJsonLibrary.EnsureFolder();
+            string folder = LevelJsonLibrary.Folder;
+            Debug.Log("[BitFlow] 关卡 JSON 目录：" + folder);
+
+            RuntimePlatform platform = Application.platform;
+            bool windows = platform == RuntimePlatform.WindowsPlayer || platform == RuntimePlatform.WindowsEditor;
+            bool mac = platform == RuntimePlatform.OSXPlayer || platform == RuntimePlatform.OSXEditor;
+            bool linux = platform == RuntimePlatform.LinuxPlayer || platform == RuntimePlatform.LinuxEditor;
+
+            if (!windows && !mac && !linux) return;
+
+            try
+            {
+                if (windows) System.Diagnostics.Process.Start("explorer.exe", "\"" + folder + "\"");
+                else if (mac) System.Diagnostics.Process.Start("open", "\"" + folder + "\"");
+                else System.Diagnostics.Process.Start("xdg-open", "\"" + folder + "\"");
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogWarning("[BitFlow] 打不开关卡目录：" + exception.Message + "（路径见上一条日志）");
+            }
+        }
+
         /// <summary>
         /// 选中某一关。顺序很讲究：<b>先</b>让黑幕盖住并拿到输入锁，<b>再</b>关掉面板放锁 ——
         /// 引用计数从 2 降到 1，全程都是锁着的，不会闪一帧让玩家点到正在拆的关卡。
@@ -329,7 +477,7 @@ namespace ShiftGo.BitFlow.View
 
             RectTransform panelRect = panelObject.GetComponent<RectTransform>();
             SetRect(panelRect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(700f, 560f), Vector2.zero);
+                new Vector2(700f, 620f), Vector2.zero);
 
             Image panelImage = panelObject.GetComponent<Image>();
             panelImage.color = PanelColor;
@@ -338,11 +486,36 @@ namespace ShiftGo.BitFlow.View
             SetRect(title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
                 new Vector2(600f, 44f), new Vector2(0f, -46f));
 
+            // 列表区裁剪 + 竖向滚动：玩家最多能存 30 关，一行 56+10，不裁剪就会画到面板外面 ——
+            // 而且溢出面板但仍在屏幕内的按钮照样能点到，看起来像「面板外面也有关卡」。
+            GameObject clipObject = new GameObject("ListClip", typeof(RectTransform), typeof(RectMask2D),
+                typeof(ScrollRect));
+            clipObject.transform.SetParent(panelRect, false);
+
+            RectTransform clipRect = clipObject.GetComponent<RectTransform>();
+            SetRect(clipRect, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(600f, ListHeight), new Vector2(0f, -96f));
+
             GameObject listObject = new GameObject("List", typeof(RectTransform));
-            listObject.transform.SetParent(panelRect, false);
+            listObject.transform.SetParent(clipRect, false);
             listRoot = listObject.GetComponent<RectTransform>();
             SetRect(listRoot, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(600f, 0f), new Vector2(0f, -96f));
+                new Vector2(600f, 0f), Vector2.zero);
+
+            ScrollRect scroll = clipObject.GetComponent<ScrollRect>();
+            scroll.viewport = clipRect;
+            scroll.content = listRoot;
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 40f;
+            scroll.inertia = false;   // 像素 UI 带惯性会滑过头，读起来像卡了一下
+
+            // 透明的可点背景：让滚轮在行与行之间的空白处也生效，
+            // 顺带把「点列表空白 = 关面板」这个误触挡掉（遮罩层还是能点）。
+            Image clipImage = clipObject.AddComponent<Image>();
+            clipImage.color = Color.clear;
+            clipImage.raycastTarget = true;
 
             emptyText = CreateText("Empty", panelRect, "NO LEVELS", PixelFont.Body,
                 TextAnchor.MiddleCenter, MutedColor);

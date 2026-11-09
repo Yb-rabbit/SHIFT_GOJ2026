@@ -46,6 +46,7 @@ namespace ShiftGo.BitFlow.View
                 case CellKind.Splitter: return "Card_Split";
                 case CellKind.NotGate: return "Card_NoGate";
                 case CellKind.Filter: return "Card_filt";
+                case CellKind.Wall: return "Card_Wall";
                 default: return string.Empty;
             }
         }

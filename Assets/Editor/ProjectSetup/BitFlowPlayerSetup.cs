@@ -471,6 +471,10 @@ namespace ShiftGo.EditorTools
             root.AddComponent<IntroCurtain>();
             root.AddComponent<LevelSelectPanel>();
 
+            // 玩家关卡工坊：选关面板上的 "+ NEW LEVEL" 会用 BitFlowWorkshop.Ensure() 现取，
+            // 所以老场景没有这一行也能开工坊；新生成的场景顺手挂上，摆在同一棵树下更好找。
+            root.AddComponent<BitFlowWorkshop>();
+
             SerializedObject runnerSerialized = new SerializedObject(runner);
             SetObjectReference(runnerSerialized, "levelAsset", firstLevel);
             SetBool(runnerSerialized, "allowBuildMode", false);

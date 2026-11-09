@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>SHIFT GO · BitFlow 关卡编辑器</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">SHIFT&nbsp;GO<span class="dim"> / BitFlow 关卡编辑器</span></div>
+  <div class="meta">
+    <label>关卡名 <input id="displayName" type="text" spellcheck="false" /></label>
+    <label>宽 <input id="width" type="number" min="2" max="40" /></label>
+    <label>高 <input id="height" type="number" min="2" max="40" /></label>
+    <label>tick <input id="tickInterval" type="number" min="0.05" max="5" step="0.05" /></label>
+    <label class="check"><input id="allowBuild" type="checkbox" /> 允许玩家进关后自己改</label>
+  </div>
+</header>
+
+<main>
+
+  <section class="panel palette">
+    <h2>元件</h2>
+    <div id="palette" class="palette-list"></div>
+    <p class="hint">左键放、右键擦。方向键的朝向就是位会走的方向。</p>
+  </section>
+
+  <section class="panel stage">
+    <div class="row">
+      <span id="coordLabel" class="dim">—</span>
+      <span class="grow"></span>
+      <button id="btnRotate" title="顺时针旋转 90°（快捷键 R）">旋转 R</button>
+      <button id="btnErase" title="擦掉这一格">擦除这一格</button>
+      <button id="btnClear" title="清空所有元件和墙">清空</button>
+    </div>
+    <div id="grid" class="grid"></div>
+    <div id="problems" class="problems"></div>
+  </section>
+
+  <section class="panel inspector">
+    <h2>选中格子</h2>
+    <div id="inspector" class="inspector-body"><p class="dim">先点一下网格里的格子。</p></div>
+
+    <h2>自测</h2>
+    <button id="btnCheck" class="primary">跑一遍真引擎</button>
+    <div id="checkResult" class="result dim">还没测。</div>
+  </section>
+
+  <section class="panel files">
+    <h2>文件</h2>
+    <div class="row">
+      <select id="where">
+        <option value="incoming">LevelJson/incoming（待导入）</option>
+        <option value="exported">LevelJson/exported（Unity 导出）</option>
+        <option value="player">玩家存档目录</option>
+      </select>
+      <button id="btnRefresh">刷新</button>
+      <button id="btnOpenFolder">打开目录</button>
+    </div>
+    <ul id="fileList" class="file-list"></ul>
+    <p id="pathInfo" class="path dim"></p>
+
+    <h2>存盘</h2>
+    <div class="row">
+      <input id="saveName" type="text" spellcheck="false" placeholder="文件名（不含 .json）" />
+      <button id="btnSave" class="primary">保存</button>
+    </div>
+    <div class="row">
+      <button id="btnExport">导出 JSON</button>
+      <button id="btnCopy">复制 JSON</button>
+      <button id="btnDownload">下载</button>
+    </div>
+    <textarea id="jsonBox" spellcheck="false" placeholder="导出的 JSON 会出现在这里（也可以直接粘一份进来，然后点下面的按钮读进编辑器）"></textarea>
+    <div class="row">
+      <button id="btnImport">把这段 JSON 读进编辑器</button>
+    </div>
+    <p id="status" class="status"></p>
+  </section>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

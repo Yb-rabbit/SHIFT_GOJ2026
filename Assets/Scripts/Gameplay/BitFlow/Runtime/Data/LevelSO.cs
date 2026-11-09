@@ -46,6 +46,11 @@ namespace ShiftGo.BitFlow.Data
                  "placements 给的是场景，supplies 给的是玩家能做的事")]
         public List<ElementSupply> supplies = new List<ElementSupply>();
 
+        [Header("规则")]
+        [Tooltip("允许玩家进关后自己搬元件（沙盒关）。默认关掉 = 玩家只能玩作者摆好的样子。\n" +
+                 "对应 JSON 里的 allowBuild（schema 2 起）")]
+        public bool allowBuild;
+
         /// <summary>有没有给玩家手牌。false 时这个关卡只是演示/作者的沙盒。</summary>
         public bool HasSupplies => supplies != null && supplies.Count > 0;
 
