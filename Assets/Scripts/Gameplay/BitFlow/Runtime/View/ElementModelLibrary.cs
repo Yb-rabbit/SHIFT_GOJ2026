@@ -120,6 +120,40 @@ namespace ShiftGo.BitFlow.View
         }
 
         /// <summary>
+        /// 开场舞台专用：把模型原样实例化到 <paramref name="parent"/> 下 ——
+        /// <b>不做</b>归一化、<b>不</b>改朝向、<b>不</b>贴地，尺寸和摆位全交给调用方
+        /// （开场要的是"背景里占多少视觉分量"，不是"刚好占一格"，见 <see cref="IntroStage"/>）。
+        ///
+        /// 只做这个库本来就该兜底的两件事：材质在当前管线下画不出来时换成能画的版本、关掉阴影。
+        /// 取不到模型时返回 <c>null</c>（已经警告过一次），调用方直接跳过即可。
+        /// </summary>
+        public static GameObject SpawnDisplay(string modelName, Transform parent)
+        {
+            GameObject asset = Load(modelName);
+            if (asset == null) return null;
+
+            GameObject mesh = Object.Instantiate(asset, parent, false);
+            mesh.name = modelName;
+            mesh.transform.localPosition = Vector3.zero;
+            mesh.transform.localRotation = Quaternion.identity;
+            mesh.transform.localScale = Vector3.one;
+
+            // 模型自带的碰撞体 / 灯光 / 相机一律丢掉：开场舞台上不交互，留着只会有意外
+            foreach (Collider collider in mesh.GetComponentsInChildren<Collider>(true)) Destroy(collider);
+            foreach (Light light in mesh.GetComponentsInChildren<Light>(true)) Destroy(light);
+            foreach (Camera childCamera in mesh.GetComponentsInChildren<Camera>(true)) Destroy(childCamera);
+
+            foreach (Renderer renderer in mesh.GetComponentsInChildren<Renderer>(true))
+            {
+                EnsureRenderableMaterial(renderer);
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+            }
+
+            return mesh;
+        }
+
+        /// <summary>
         /// 把模型挂到 <paramref name="parent"/> 下面：等比归一化到一格、底面落地、水平居中、按 <paramref name="facing"/> 转向。
         ///
         /// 缩放只有一次等比归一化（水平方向占满 <see cref="CellFootprint"/> 格，再乘 <paramref name="modelScale"/>），

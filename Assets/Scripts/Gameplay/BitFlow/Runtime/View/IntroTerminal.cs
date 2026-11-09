@@ -42,6 +42,7 @@ namespace ShiftGo.BitFlow.View
         LevelFlow flow;
         BitFlowRunner runner;
         TerminalView view;
+        IntroStage stage;
         bool holdsGate;
 
         void Awake()
@@ -76,6 +77,11 @@ namespace ShiftGo.BitFlow.View
             view = TerminalView.Create(transform, script != null ? script : TerminalScript.CreateDefaultIntro());
             view.SetAlpha(0f);   // PlayOpen 里也会压到 0，这里先设一次，免得 Create 到子协程首帧之间闪一帧满亮度
 
+            // 终端面板是半透明的：先把背后的开场舞台搭起来（空网格 + 左右两台机器），
+            // 否则那段台词在画面上就是对着两块空白在说话。
+            // 必须在 PlayOpen 之前 —— 开机动画的第一帧就该看到机器在后面。
+            stage = IntroStage.Build();
+
             // 开机动画自带透明度上升（线点亮 → 撑满 → 回弹），这里不要再 FadeTo 一次，
             // 两次淡入叠在前 0.1 秒会让画面先发一层灰
             yield return view.PlayOpen(fadeInDuration);
@@ -93,6 +99,15 @@ namespace ShiftGo.BitFlow.View
 
             if (view != null) Destroy(view.gameObject);
             view = null;
+
+            // 舞台拆在放关卡之前：灯光 / 雾 / 机位在这里全部还回原样，
+            // 紧接着 ReleaseFlow 建出来的关卡拿到的就是它本来那套环境。
+            // 这一刻屏幕上已经全黑（断开动画收在熄灭上），拆场景不会被看见。
+            if (stage != null)
+            {
+                stage.Dispose();
+                stage = null;
+            }
 
             // 顺序很重要：先把关卡放出来（它同步触发 LevelLoaded，黑幕只是把这一关
             // 记成 pendingLevel，画面还是黑屏不动的），再 cue 黑幕。
@@ -123,6 +138,14 @@ namespace ShiftGo.BitFlow.View
         {
             // 演出中途被卸载（切场景）时别把输入锁留在一个已经死掉的组件上
             DropGate();
+
+            // 舞台改了相机 / 灯光 / 雾这些全局状态，被提前卸载时必须还回去，
+            // 否则下一个场景会继承开场的黑场灯光
+            if (stage != null)
+            {
+                stage.Dispose();
+                stage = null;
+            }
 
             // 闸门也要还回去：万一演出被提前掐掉，关卡还得能自己进来，
             // 否则玩家会停在一个永远没有关卡的场景里。

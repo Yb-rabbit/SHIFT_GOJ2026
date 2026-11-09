@@ -1816,6 +1816,18 @@ namespace ShiftGo.BitFlow.View
             }
         }
 
+        // ---------------------------------------------------------------- 状态行文案
+
+        /// <summary>
+        /// 这一关没发手牌时，左下角状态行显示的那句话。
+        ///
+        /// <para>两种情况共用同一句——「压根没有手牌草稿」和「有草稿但这关的 supplies 没发牌」，
+        /// 对玩家来说都是「这关没有牌可用」，分成两句只会多一份要同步维护的文案。</para>
+        ///
+        /// <para>只用 ASCII 大写：屏幕字体是位图字体，没有中文字形（见 <see cref="PixelFont"/>）。</para>
+        /// </summary>
+        const string NoHandStatus = "NO CARDS THIS LEVEL";
+
         void RefreshStatus()
         {
             if (statusText == null) return;
@@ -1831,13 +1843,9 @@ namespace ShiftGo.BitFlow.View
                 return;
             }
 
-            if (draft == null)
+            if (draft == null || !draft.StockEnabled)
             {
-                statusText.text = "NO HAND THIS LEVEL";
-            }
-            else if (!draft.StockEnabled)
-            {
-                statusText.text = "DEMO - NO HAND";
+                statusText.text = NoHandStatus;
             }
             else
             {
