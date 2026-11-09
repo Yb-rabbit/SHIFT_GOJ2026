@@ -1,0 +1,33 @@
+﻿12: public sealed class EditableElement
+14: public CellKind Kind = CellKind.Wall;
+15: public GridPoint Coord;
+18: public Dir PrimaryDir = Dir.Right;
+21: public Dir SecondaryDir = Dir.Down;
+24: public string Sequence = "1";
+27: public int Count = 1;
+30: public byte PassValue = 1;
+36: public string TypeKey = string.Empty;
+39: public static EditableElement CreateDefault(CellKind kind, GridPoint coord)
+76: public static EditableElement FromDefinition(ElementDefinition definition)
+115: public EditableElement Clone()
+131: public void Rotate()
+138: public ElementDefinition ToDefinition(int id)
+194: public string Summary()
+230: public sealed partial class LevelDraft
+234: public string DisplayName = "CUSTOM LEVEL";
+235: public float TickInterval = 0.35f;
+237: public int Width { get; private set; }
+238: public int Height { get; private set; }
+240: public LevelDraft(int width, int height, float tickInterval = 0.35f)
+248: public static LevelDraft FromDefinition(LevelDefinition level)
+264: public int Count => cells.Count;
+266: public IEnumerable<EditableElement> Cells => cells.Values;
+268: public bool InBounds(GridPoint coord)
+273: public EditableElement GetAt(GridPoint coord)
+279: public EditableElement PlaceDefault(CellKind kind, GridPoint coord)
+290: public bool Place(EditableElement element)
+299: public bool Place(EditableElement element, bool locked)
+311: public bool Remove(GridPoint coord)
+321: public bool Rotate(GridPoint coord)
+331: public int CountOf(CellKind kind)
+345: public LevelDefinition ToDefinition()

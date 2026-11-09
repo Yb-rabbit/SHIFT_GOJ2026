@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using ShiftGo.BitFlow.Data;
 
@@ -26,14 +27,27 @@ namespace ShiftGo.BitFlow.View
         bool autoStartHeld;
         bool pendingAutoStart;
 
+        // 运行时从 JSON 读进来的关卡：不是资产，得由这里负责建、负责回收。
+        // 只在 LoadJson 期间有效，切回目录关卡就销毁。
+        LevelSO currentJsonLevel;
+        string currentJsonPath;
+
         /// <summary>换关后触发（参数是新的 LevelSO），HUD / 手牌盘靠它刷新。</summary>
         public event Action<LevelSO> LevelLoaded;
 
         public BitFlowRunner Runner => runner;
         public int CurrentIndex => index;
         public int LevelCount => catalog != null ? catalog.Count : 0;
-        public LevelSO Current => catalog != null ? catalog.Get(index) : null;
-        public bool HasNext => catalog != null && index + 1 < catalog.Count;
+        public LevelSO Current => currentJsonLevel != null
+            ? currentJsonLevel
+            : (catalog != null ? catalog.Get(index) : null);
+        public bool HasNext => currentJsonLevel == null && catalog != null && index + 1 < catalog.Count;
+
+        /// <summary>当前跑的是不是运行时 JSON 关卡（不是资产，重试要重新读盘）。</summary>
+        public bool IsJsonLevel => currentJsonLevel != null;
+
+        /// <summary>当前 JSON 关卡的磁盘路径；不是 JSON 关卡时为 null。</summary>
+        public string CurrentJsonPath => currentJsonPath;
 
         /// <summary>关卡表本体（选关面板要按它列全部关卡）。可能为 null：单关演示场景没挂表。</summary>
         public LevelCatalogSO Catalog => catalog;
@@ -104,24 +118,76 @@ namespace ShiftGo.BitFlow.View
                 return false;
             }
 
+            ClearJsonLevel();
             index = target;
             runner.LoadLevel(level);
             LevelLoaded?.Invoke(level);
             return true;
         }
 
-        /// <summary>下一关；已经是最后一关则返回 false（HUD 据此把按钮收起来）。</summary>
+        /// <summary>
+        /// 加载一份运行时 JSON 关卡（选关面板里的 CUSTOM 行）。读盘/解析失败只警告不改当前关。
+        ///
+        /// 走的是同一条路：JSON → 临时 <see cref="LevelSO"/> → <see cref="BitFlowRunner.LoadLevel"/>，
+        /// 所以打包后的 Player 和编辑器 Play 行为完全一致，没有第二套加载逻辑。
+        /// </summary>
+        public bool LoadJson(LevelJsonEntry entry)
+        {
+            return entry != null && LoadJson(entry.Path);
+        }
+
+        /// <summary>按磁盘路径加载运行时 JSON 关卡。</summary>
+        public bool LoadJson(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+
+            if (!LevelJsonLibrary.TryLoad(path, out LevelSO level, out List<string> problems))
+            {
+                Debug.LogWarning("[BitFlow] 关卡 JSON 读不进来：" + path + " → " + string.Join("；", problems));
+                return false;
+            }
+
+            ClearJsonLevel();
+
+            currentJsonLevel = level;
+            currentJsonPath = path;
+            index = -1;
+
+            runner.LoadLevel(level);
+            LevelLoaded?.Invoke(level);
+            return true;
+        }
+
+        /// <summary>下一关；已经是最后一关则返回 false（HUD 据此把按钮收起来）。JSON 关卡没有「下一关」。</summary>
         public bool Next()
         {
+            if (IsJsonLevel) return false;
             if (index < 0) return Load(0);
             if (!HasNext) return false;
             return Load(index + 1);
         }
 
-        /// <summary>重试当前关：连预设布局和手牌一起复原，撤销栈也一起清掉。</summary>
+        /// <summary>
+        /// 重试当前关：连预设布局和手牌一起复原，撤销栈也一起清掉。
+        /// JSON 关卡重新读盘 —— 玩家手改了文件，重试一次就生效。
+        /// </summary>
         public bool Retry()
         {
+            if (IsJsonLevel) return LoadJson(currentJsonPath);
             return Load(index < 0 ? 0 : index);
+        }
+
+        void ClearJsonLevel()
+        {
+            LevelSO previous = currentJsonLevel;
+            currentJsonLevel = null;
+            currentJsonPath = null;
+            LevelJsonLibrary.DestroyLevel(previous);
+        }
+
+        void OnDestroy()
+        {
+            ClearJsonLevel();
         }
     }
 }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
@@ -27,6 +28,8 @@ namespace ShiftGo.BitFlow.View
 
         const float RowHeight = 56f;
         const float RowGap = 10f;
+        const float CaptionHeight = 26f;
+        const float HintHeight = 22f;
 
         LevelFlow flow;
         IntroCurtain curtain;
@@ -37,6 +40,9 @@ namespace ShiftGo.BitFlow.View
         Text emptyText;
 
         bool open;
+
+        // 每次 Open 重扫一遍目录：玩家/AI 直接改 JSON 文件，重开面板就能看到最新内容
+        readonly List<LevelJsonEntry> jsonEntries = new List<LevelJsonEntry>();
 
         void Awake()
         {
@@ -98,8 +104,21 @@ namespace ShiftGo.BitFlow.View
                 Destroy(listRoot.GetChild(i).gameObject);
             }
 
+            jsonEntries.Clear();
+
             LevelCatalogSO catalog = flow != null ? flow.Catalog : null;
-            if (catalog == null || catalog.Count == 0)
+            int catalogCount = catalog != null ? catalog.Count : 0;
+
+            // 场上没有 LevelFlow 就不去扫目录：这种面板点了也进不了关
+            List<string> jsonProblems = null;
+            if (flow != null)
+            {
+                jsonEntries.AddRange(LevelJsonLibrary.Scan(out jsonProblems));
+                foreach (string problem in jsonProblems) Debug.LogWarning("[BitFlow] 关卡 JSON：" + problem);
+            }
+
+            bool hasJsonSection = jsonEntries.Count > 0 || (jsonProblems != null && jsonProblems.Count > 0);
+            if (catalogCount == 0 && !hasJsonSection)
             {
                 emptyText.gameObject.SetActive(true);
                 listRoot.gameObject.SetActive(false);
@@ -109,56 +128,98 @@ namespace ShiftGo.BitFlow.View
             emptyText.gameObject.SetActive(false);
             listRoot.gameObject.SetActive(true);
 
-            int count = catalog.Count;
-            listRoot.sizeDelta = new Vector2(listRoot.sizeDelta.x, count * (RowHeight + RowGap));
+            string currentName = flow != null && flow.Current != null ? flow.Current.displayName : null;
+            string currentJsonPath = flow != null ? flow.CurrentJsonPath : null;
 
-            string currentName = flow.Current != null ? flow.Current.displayName : null;
+            float y = 0f;
+            int row = 0;
 
-            for (int i = 0; i < count; i++)
+            for (int i = 0; i < catalogCount; i++)
             {
                 LevelSO level = catalog.Get(i);
                 if (level == null) continue;
 
-                bool isCurrent = !string.IsNullOrEmpty(currentName) && level.displayName == currentName;
-                CreateRow(i, level, isCurrent);
+                bool isCurrent = string.IsNullOrEmpty(currentJsonPath) && !string.IsNullOrEmpty(currentName)
+                    && level.displayName == currentName;
+
+                int captured = i;
+                CreateRow(row++, level, null, isCurrent, () => Select(captured), ref y);
             }
+
+            if (hasJsonSection)
+            {
+                CreateCaption("CUSTOM  ·  LEVEL JSON", ref y);
+
+                foreach (LevelJsonEntry entry in jsonEntries)
+                {
+                    LevelJsonEntry captured = entry;
+                    bool isCurrent = currentJsonPath == entry.Path;
+                    CreateRow(row++, null, captured, isCurrent, () => SelectJson(captured), ref y);
+                }
+
+                if (jsonProblems != null && jsonProblems.Count > 0)
+                {
+                    // 像素字体没有中文字形：面板上只说「有错、看日志」，细节都在 Console
+                    CreateHint("JSON ERROR  ·  SEE CONSOLE", ref y);
+                }
+            }
+
+            // listRoot 自上而下排：y 一路走成负数，高度取它的绝对值
+            listRoot.sizeDelta = new Vector2(listRoot.sizeDelta.x, Mathf.Max(0f, -y));
         }
 
-        void CreateRow(int index, LevelSO level, bool isCurrent)
+        /// <summary>
+        /// 画一行可点的关卡。level 与 entry 二选一：
+        /// 前者是关卡表里的资产，后者是运行时从 JSON 读进来的关卡。
+        /// </summary>
+        void CreateRow(int row, LevelSO level, LevelJsonEntry entry, bool isCurrent, UnityAction onClick, ref float y)
         {
-            // 列表本身是自上而下排的，所以第 0 关放在最上面
-            float y = -index * (RowHeight + RowGap);
-
-            GameObject rowObject = new GameObject("Level" + index, typeof(RectTransform), typeof(Image), typeof(Button));
+            GameObject rowObject = new GameObject("Row" + row, typeof(RectTransform), typeof(Image), typeof(Button));
             rowObject.transform.SetParent(listRoot, false);
 
             RectTransform rowRect = rowObject.GetComponent<RectTransform>();
             SetRect(rowRect, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
                 new Vector2(600f, RowHeight), new Vector2(0f, y));
+            y -= RowHeight + RowGap;
 
             Image background = rowObject.GetComponent<Image>();
             background.color = isCurrent ? RowCurrentColor : RowColor;
 
             Button button = rowObject.GetComponent<Button>();
             button.targetGraphic = background;
+            button.onClick.AddListener(onClick);
 
-            int captured = index;                 // 闭包必须拿局部副本：直接捕获 index 会全部指向最后一个
-            button.onClick.AddListener(() => Select(captured));
+            string displayName = level != null ? level.displayName : entry.DisplayName;
+            string subtitle = entry != null ? "JSON  ·  " + entry.Subtitle : string.Empty;
 
-            string label = string.IsNullOrEmpty(level.displayName)
-                ? "LEVEL " + (index + 1).ToString("00")
-                : level.displayName;
+            string label = string.IsNullOrEmpty(displayName)
+                ? "LEVEL " + (row + 1).ToString("00")
+                : displayName;
 
             Text title = CreateText("Title", rowRect, label, PixelFont.Body,
                 TextAnchor.MiddleLeft, isCurrent ? TitleColor : MutedColor);
-            SetRect(title.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(430f, RowHeight - 8f), new Vector2(22f, 0f));
+
+            if (string.IsNullOrEmpty(subtitle))
+            {
+                SetRect(title.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
+                    new Vector2(430f, RowHeight - 8f), new Vector2(22f, 0f));
+            }
+            else
+            {
+                // 两行：上面是关卡名，下面是「从哪个文件读来的」，作者一眼知道该改哪份
+                SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
+                    new Vector2(430f, 24f), new Vector2(22f, -8f));
+
+                Text detail = CreateText("Detail", rowRect, subtitle, PixelFont.Small,
+                    TextAnchor.MiddleLeft, MutedColor);
+                SetRect(detail.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
+                    new Vector2(430f, 18f), new Vector2(22f, -32f));
+            }
 
             // 打勾用 OK 两个字母：像素字体没有 ✓ 字形（打包后会变方块）
-            string mark = SaveStore.IsCleared(level.displayName) ? "OK" : string.Empty;
-            if (mark.Length > 0)
+            if (SaveStore.IsCleared(displayName))
             {
-                Text cleared = CreateText("Cleared", rowRect, mark, PixelFont.Small, TextAnchor.MiddleCenter, ClearedColor);
+                Text cleared = CreateText("Cleared", rowRect, "OK", PixelFont.Small, TextAnchor.MiddleCenter, ClearedColor);
                 SetRect(cleared.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
                     new Vector2(40f, RowHeight - 8f), new Vector2(-22f, 0f));
             }
@@ -169,6 +230,24 @@ namespace ShiftGo.BitFlow.View
                 SetRect(now.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
                     new Vector2(80f, RowHeight - 8f), new Vector2(-60f, 0f));
             }
+        }
+
+        /// <summary>分区小标题（不可点）。</summary>
+        void CreateCaption(string content, ref float y)
+        {
+            Text caption = CreateText("Caption", listRoot, content, PixelFont.Small, TextAnchor.MiddleLeft, MutedColor);
+            SetRect(caption.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(600f, CaptionHeight), new Vector2(0f, y));
+            y -= CaptionHeight;
+        }
+
+        /// <summary>灰色提示行（不可点），用来报「有错、看 Console」这类信息。</summary>
+        void CreateHint(string content, ref float y)
+        {
+            Text hint = CreateText("Hint", listRoot, content, PixelFont.Small, TextAnchor.MiddleLeft, MutedColor);
+            SetRect(hint.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(600f, HintHeight), new Vector2(0f, y));
+            y -= HintHeight;
         }
 
         /// <summary>
@@ -188,6 +267,25 @@ namespace ShiftGo.BitFlow.View
             flow.Load(index);
         }
 
+        /// <summary>同 <see cref="Select"/>，只是关卡来自运行时 JSON 文件。</summary>
+        void SelectJson(LevelJsonEntry entry)
+        {
+            if (flow == null || entry == null) return;
+
+            // 先确认这份 JSON 真能读通再盖黑幕：读不通就留在面板上，
+            // 否则黑幕盖住却等不到关卡，玩家会盯着一片黑。
+            if (!LevelJsonLibrary.TryLoad(entry.Path, out LevelSO probe, out List<string> problems))
+            {
+                Debug.LogWarning("[BitFlow] 关卡 JSON 读不进来：" + entry.Path + " → " + string.Join("；", problems));
+                return;
+            }
+            LevelJsonLibrary.DestroyLevel(probe);
+
+            if (curtain != null) curtain.CoverImmediately();
+            Close();
+
+            flow.LoadJson(entry);
+        }
 
         // ---------------------------------------------------------------- 搭建
 

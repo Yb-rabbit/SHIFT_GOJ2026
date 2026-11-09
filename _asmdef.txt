@@ -1,0 +1,2 @@
+﻿D:\UnityHubLab\SHIFT_GO2026\Assets\Scripts\Gameplay\BitFlow\Runtime\ShiftGo.BitFlow.asmdef
+D:\UnityHubLab\SHIFT_GO2026\Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\ShiftGo.BitFlow.Tests.EditMode.asmdef

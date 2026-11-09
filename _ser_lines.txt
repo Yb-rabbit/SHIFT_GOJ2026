@@ -1,0 +1,17 @@
+﻿30: public sealed class LevelJsonReadResult
+60: public static class LevelJsonSerializer
+62: public const int SchemaVersion = 1;
+66: public sealed class LevelJsonFile
+69: public int schema = SchemaVersion;
+93: public sealed class LevelJsonCell
+131: public sealed class LevelJsonSupply
+155: builder.Append("  \"schema\": ").Append(SchemaVersion).Append(",\n");
+387: public static LevelJsonFile FromJson(string json, List<string> errors)
+393: errors.Add("JSON 是空的");
+402: errors.Add("JSON 顶层必须是一个 { } 对象");
+409: errors.Add("JSON 语法错误：" + exception.Message);
+489: result.Errors.Add("没有可用的类型解析器（找不到元件类型资产）");
+493: if (file.schema > SchemaVersion)
+495: result.Warnings.Add("JSON 的 schema 是 " + file.schema + "，比本工具支持的 " + SchemaVersion
+568: result.Errors.Add(where + " 解析不出元件类型：" + DescribeCell(cell));
+638: result.Errors.Add(where + " 解析不出元件类型：" + DescribeCell(probe));

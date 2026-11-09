@@ -1,0 +1,96 @@
+﻿                foreach (ElementSupply supply in level.supplies)
+                {
+                    if (supply == null || supply.type == null) continue;
+                    stacks.Add("{ \"type\": " + Quote(supply.type.Key)
+                        + ", \"kind\": " + Quote(KindOf(supply.type).ToString())
+                        + ", \"count\": " + Mathf.Max(0, supply.count) + " }");
+                }
+
+                if (stacks.Count > 0)
+                {
+                    builder.Append(",\n  \"supplies\": [\n");
+                    for (int i = 0; i < stacks.Count; i++)
+                    {
+                        builder.Append("    ").Append(stacks[i]);
+                        if (i < stacks.Count - 1) builder.Append(',');
+                        builder.Append('\n');
+                    }
+                    builder.Append("  ]");
+                }
+            }
+
+            builder.Append("\n}\n");
+            return builder.ToString();
+        }
+
+        /// <summary>一格摆放 → 一行 JSON。只写「确实需要写」的字段，人读起来才不会全是噪声。</summary>
+        static string PlacementJson(ElementPlacement placement)
+        {
+            ElementTypeSO type = placement.type;
+            CellKind kind = KindOf(type);
+
+            StringBuilder builder = new StringBuilder();
+            builder.Append("{ \"type\": ").Append(Quote(type.Key));
+            builder.Append(", \"kind\": ").Append(Quote(kind.ToString()));
+            builder.Append(", \"x\": ").Append(placement.coord.x);
+            builder.Append(", \"y\": ").Append(placement.coord.y);
+
+            int steps = ((placement.rotationSteps % 4) + 4) % 4;
+            builder.Append(", \"rot\": ").Append(steps);
+
+            Dir primary;
+            Dir secondary;
+            ReadDirs(placement, out primary, out secondary);
+            builder.Append(", \"dir\": ").Append(Quote(primary.ToString()));
+            if (kind == CellKind.Splitter) builder.Append(", \"dir2\": ").Append(Quote(secondary.ToString()));
+
+            // sequence / count / face 只在「这一格确实覆盖了资产」时才写出来 ——
+            // 导出 → 导入 → 再导出才能字节一致
+            if (placement.overrideSequence)
+            {
+                string sequence = string.IsNullOrEmpty(placement.sequence) ? "1" : placement.sequence;
+                builder.Append(", \"sequence\": ").Append(Quote(sequence));
+            }
+
+            if (placement.overrideCount) builder.Append(", \"count\": ").Append(Mathf.Max(0, placement.count));
+            if (placement.overrideFace) builder.Append(", \"face\": ").Append(Quote(placement.acceptAnyFace ? "any" : "in"));
+            if (placement.playerEditable) builder.Append(", \"playerEditable\": true");
+
+            builder.Append(" }");
+            return builder.ToString();
+        }
+
+        /// <summary>
+        /// wallMap → 一行一个 y 的字符画（第一行是 y=0，从下往上，和 wallMap 的行序一致）。
+        /// 整块铺满 width × height 且只保留 '#'，所以导出多少次都是同一份文本；
+        /// 一面墙都没有时返回空数组（等于这一关不带墙层）。
+        /// </summary>
+        static string[] BuildWallRows(LevelSO level, int width, int height)
+        {
+            if (level.wallType == null || string.IsNullOrEmpty(level.wallMap)) return Array.Empty<string>();
+
+            string[] lines = level.wallMap.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            char[,] grid = new char[height, width];
+            bool anyWall = false;
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++) grid[y, x] = '.';
+            }
+
+            for (int y = 0; y < lines.Length && y < height; y++)
+            {
+                string line = lines[y];
+                for (int x = 0; x < line.Length && x < width; x++)
+                {
+                    if (line[x] != '#') continue;
+                    grid[y, x] = '#';
+                    anyWall = true;
+                }
+            }
+
+            if (!anyWall) return Array.Empty<string>();
+
+            string[] rows = new string[height];
+            char[] buffer = new char[width];
+            for (int y = 0; y < height; y++)

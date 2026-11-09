@@ -1,0 +1,130 @@
+﻿            {
+                for (int x = 0; x < width; x++) buffer[x] = grid[y, x];
+                rows[y] = new string(buffer);
+            }
+            return rows;
+        }
+
+        // ------------------------------------------------------------------ 小工具
+
+        /// <summary>类型资产 → 元件种类（建一份 0 号定义再读 Kind，够用，不用在资产上加字段）。</summary>
+        internal static CellKind KindOf(ElementTypeSO type)
+        {
+            if (type == null) return CellKind.Wall;
+            ElementDefinition definition = type.CreateDefinition(new GridPoint(0, 0), 0, 0);
+            return definition != null ? definition.Kind : CellKind.Wall;
+        }
+
+        /// <summary>摆放落成之后的实际朝向（类型资产基准朝向 × 旋转档）。</summary>
+        internal static void ReadDirs(ElementPlacement placement, out Dir primary, out Dir secondary)
+        {
+            primary = Dir.Right;
+            secondary = Dir.Down;
+            if (placement == null || placement.type == null) return;
+
+            ElementDefinition definition = placement.type.CreateDefinition(
+                new GridPoint(placement.coord.x, placement.coord.y), placement.rotationSteps, 0);
+            if (definition == null) return;
+
+            switch (definition)
+            {
+                case EmitterDefinition emitter:
+                    primary = emitter.Facing;
+                    break;
+
+                case ReceiverDefinition receiver:
+                    primary = receiver.FeedFace;
+                    break;
+
+                case SplitterDefinition splitter:
+                    primary = splitter.OneArm;
+                    secondary = splitter.ZeroArm;
+                    break;
+
+                case NotGateDefinition notGate:
+                    primary = notGate.OutputDir;
+                    break;
+
+                case FilterDefinition filter:
+                    primary = filter.OutputDir;
+                    break;
+            }
+        }
+
+        static int ComparePlacements(ElementPlacement left, ElementPlacement right)
+        {
+            if (left.coord.y != right.coord.y) return left.coord.y.CompareTo(right.coord.y);
+            return left.coord.x.CompareTo(right.coord.x);
+        }
+
+        static string Number(float value)
+        {
+            return value.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        static string Quote(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return "\"\"";
+
+            StringBuilder builder = new StringBuilder(value.Length + 2);
+            builder.Append('"');
+            foreach (char c in value)
+            {
+                switch (c)
+                {
+                    case '"': builder.Append("\\\""); break;
+                    case '\\': builder.Append("\\\\"); break;
+                    case '\n': builder.Append("\\n"); break;
+                    case '\r': builder.Append("\\r"); break;
+                    case '\t': builder.Append("\\t"); break;
+                    default: builder.Append(c); break;
+                }
+            }
+            builder.Append('"');
+            return builder.ToString();
+        }
+
+        // ------------------------------------------------------------------ 导入
+
+        /// <summary>JSON 文本 → DTO。语法错误只记进 errors 并返回 null，绝不抛出去。</summary>
+        public static LevelJsonFile FromJson(string json, List<string> errors)
+        {
+            if (errors == null) errors = new List<string>();
+
+            if (string.IsNullOrEmpty(json) || json.Trim().Length == 0)
+            {
+                errors.Add("JSON 是空的");
+                return null;
+            }
+
+            try
+            {
+                LevelJsonFile file = JsonUtility.FromJson<LevelJsonFile>(json);
+                if (file == null)
+                {
+                    errors.Add("JSON 顶层必须是一个 { } 对象");
+                    return null;
+                }
+                return file;
+            }
+            catch (Exception exception)
+            {
+                errors.Add("JSON 语法错误：" + exception.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 朝向解析：Up/Right/Down/Left（不分大小写），也认 ↑ → ↓ ← 和 上/右/下/左 ——
+        /// 外部作者用哪种写法都不用回来看文档。
+        /// </summary>
+        public static bool TryParseDir(string text, out Dir dir)
+        {
+            dir = Dir.Right;
+            if (string.IsNullOrEmpty(text)) return false;
+
+            switch (text.Trim())
+            {
+                case "↑": dir = Dir.Up; return true;
+                case "→": dir = Dir.Right; return true;
+                case "↓": dir = Dir.Down; return true;

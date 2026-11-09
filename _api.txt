@@ -1,0 +1,6 @@
+﻿60: public static class LevelJsonSerializer
+146: public static string ToJson(LevelSO level)
+387: public static LevelJsonFile FromJson(string json, List<string> errors)
+418: public static bool TryParseDir(string text, out Dir dir)
+439: public static bool TryParseKind(string text, out CellKind kind)
+480: public static LevelJsonReadResult Read(string json, ILevelJsonTypeResolver resolver)

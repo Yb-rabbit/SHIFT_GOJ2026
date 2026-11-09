@@ -1,0 +1,79 @@
+﻿                }
+                return resolution.Type;
+            }
+
+            public WallTypeSO ResolveWall()
+            {
+                foreach (ElementTypeSO candidate in pool)
+                {
+                    if (candidate is WallTypeSO wall) return wall;
+                }
+                return null;
+            }
+
+            static EditableElement BuildDraft(CellKind kind, LevelJsonSerializer.LevelJsonCell cell)
+            {
+                EditableElement draft = EditableElement.CreateDefault(kind, new GridPoint(cell.x, cell.y));
+
+                if (LevelJsonSerializer.TryParseDir(cell.dir, out Dir dir)) draft.PrimaryDir = dir;
+                if (LevelJsonSerializer.TryParseDir(cell.dir2, out Dir dir2)) draft.SecondaryDir = dir2;
+
+                if (!string.IsNullOrEmpty(cell.sequence)) draft.Sequence = cell.sequence.Trim();
+                if (cell.count >= 0) draft.Count = cell.count;
+                if (cell.pass >= 0) draft.PassValue = cell.pass == 0 ? (byte)0 : (byte)1;
+
+                // 宽松模式不认识资产名，从零开始找等价资产
+                draft.TypeKey = string.Empty;
+                return draft;
+            }
+
+            public void Dispose()
+            {
+                foreach (ElementTypeSO type in temporary)
+                {
+                    if (type != null) UnityEngine.Object.DestroyImmediate(type);
+                }
+                temporary.Clear();
+            }
+        }
+
+        // ------------------------------------------------------------------ 跑一份 JSON
+
+        /// <summary>一份 JSON 的处理结果（诊断 + 试跑结论）。</summary>
+        sealed class JsonRun
+        {
+            public string Path;
+            public string FileName;
+            public LevelJsonReadResult Result;
+            public string CheckText = string.Empty;
+            public bool Success;
+
+            /// <summary>解析器给的附加信息（会新建哪些变体）。</summary>
+            public readonly List<string> Notes = new List<string>();
+
+            public string ToText()
+            {
+                StringBuilder builder = new StringBuilder();
+                builder.AppendLine("关卡 JSON：" + FileName);
+
+                if (Result != null && Result.Errors.Count > 0)
+                {
+                    builder.AppendLine("错误 " + Result.Errors.Count + " 条");
+                    foreach (string error in Result.Errors) builder.AppendLine("  ✗ " + error);
+                }
+
+                if (Result != null && Result.Warnings.Count > 0)
+                {
+                    builder.AppendLine("警告 " + Result.Warnings.Count + " 条");
+                    foreach (string warning in Result.Warnings) builder.AppendLine("  ⚠ " + warning);
+                }
+
+                foreach (string note in Notes) builder.AppendLine("  · " + note);
+
+                if (Result != null && Result.HasLevel)
+                {
+                    builder.AppendLine(DescribeLevel(Result.Level));
+=== serializer kind/dir helpers ===
+146: public static string ToJson(LevelSO level)
+417: public static bool TryParseDir(string text, out Dir dir)
+438: public static bool TryParseKind(string text, out CellKind kind)

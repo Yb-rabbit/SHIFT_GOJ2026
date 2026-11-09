@@ -1,0 +1,19 @@
+﻿Assets\Scripts\Gameplay\BitFlow\Runtime\ShiftGo.BitFlow.asmdef
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\ShiftGo.BitFlow.Tests.EditMode.asmdef
+=== test files ===
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\BitFlowMechanicsTests.cs
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\BitFlowSimulationTests.cs
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\ElementModelLibraryTests.cs
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\ElementViewMotionTests.cs
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\ElementViewReadabilityTests.cs
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\LevelBuilderSmokeTests.cs
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\LevelDataTests.cs
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\LevelDraftTests.cs
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\LevelJsonTests.cs
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\LevelRevealStageTests.cs
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\PixelFontTests.cs
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\PlacementParamsTests.cs
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\PlayerDraftTests.cs
+Assets\Scripts\Gameplay\BitFlow\Tests\EditMode\TerminalPlayerTests.cs
+=== LevelCheck ===
+Assets\Scripts\Gameplay\BitFlow\Runtime\Core\LevelCheck.cs:17

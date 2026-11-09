@@ -46,8 +46,14 @@ namespace ShiftGo.BitFlow.Data
         [Tooltip("接收器专用：true（默认）= 四面都能收；false = 只认进料面，其余面撞上销毁")]
         public bool acceptAnyFace = true;
 
+        [Tooltip("过滤器专用：勾上 = 这一格自己决定放行哪个值（JSON 的 kind=Filter + pass 就落在这里）")]
+        public bool overridePassValue;
+
+        [Tooltip("过滤器专用：放行的值（0 或 1）")]
+        public byte passValue = 1;
+
         /// <summary>这一格有没有改过参数（= 和类型资产的默认值不一样）。</summary>
-        public bool HasParamOverride => overrideSequence || overrideCount || overrideFace;
+        public bool HasParamOverride => overrideSequence || overrideCount || overrideFace || overridePassValue;
 
         /// <summary>
         /// 把本格参数套到生成好的逻辑定义上。只在勾了 override 的字段上动手，
@@ -69,6 +75,10 @@ namespace ShiftGo.BitFlow.Data
                     if (overrideCount) receiver.TargetCount = Math.Max(0, count);
                     if (overrideFace) receiver.AcceptAnyFace = acceptAnyFace;
                     break;
+
+                case FilterDefinition filter:
+                    if (overridePassValue) filter.PassValue = (byte)(passValue == 0 ? 0 : 1);
+                    break;
             }
         }
 
@@ -87,6 +97,10 @@ namespace ShiftGo.BitFlow.Data
                     if (overrideSequence) element.Sequence = sequence;
                     if (overrideCount) element.Count = Math.Max(0, count);
                     break;
+
+                case CellKind.Filter:
+                    if (overridePassValue) element.PassValue = passValue == 0 ? (byte)0 : (byte)1;
+                    break;
             }
         }
 
@@ -99,7 +113,15 @@ namespace ShiftGo.BitFlow.Data
             string seq = overrideSequence ? sequence : "(资产序列)";
             string cnt = overrideCount ? count.ToString() : "(资产次数)";
             string face = overrideFace ? (acceptAnyFace ? " · 四面可收" : " · 只认进料面") : string.Empty;
-            return seq + " · " + cnt + face;
+            string pass = overridePassValue ? " · 放行 " + (passValue == 0 ? 0 : 1) : string.Empty;
+
+            // 只改了过滤器放行值时，别把「序列 / 次数」那堆无关字段也糊上来
+            if (overridePassValue && !overrideSequence && !overrideCount && !overrideFace)
+            {
+                return "放行 " + (passValue == 0 ? 0 : 1);
+            }
+
+            return seq + " · " + cnt + face + pass;
         }
     }
 }

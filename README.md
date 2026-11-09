@@ -48,6 +48,13 @@
 - 想保留改造成果用 `F5`，会写到 `Application.persistentDataPath/ShiftGoLevels/custom_level.json`。
 - 编辑结果对 `REPLAY` 同样生效，可以边改边看能不能跑通。
 
+需要外部手写 / 批量改关卡时，走 JSON 双向通道（导出 → 手改 → 校验 → 导入或覆盖），
+文件放在工程根目录 `LevelJson/`，字段与菜单见 **[docs/LEVEL_JSON.md](docs/LEVEL_JSON.md)**。
+
+同一份 JSON 也能**直接当关卡跑**（打包后照旧）：菜单 `关卡 JSON/一键：刷新注册表并同步`
+会把 `LevelJson/` 里的关复制到 `Application.persistentDataPath/LevelJson/`，
+选关面板底部的 `CUSTOM · LEVEL JSON` 分区就能点到它们。细节见同一份文档的「运行时通道」。
+
 ## 画面怎么看
 
 不靠文字也能读关卡，靠的是统一的视觉语言（悬停任意元件还会显示同样的说明）：

@@ -1,0 +1,9 @@
+﻿ElementTypeSO.cs:25:         public abstract ElementDefinition CreateDefinition(GridPoint coord, int rotationSteps, int id);
+ElementTypeSO.cs:33:             ElementDefinition definition = CreateDefinition(coord, rotationSteps, 0);
+ElementTypeSO.cs:37:             EditableElement element = EditableElement.FromDefinition(definition);
+LevelTypeRegistrySO.cs:34:         public static LevelTypeRegistrySO Load()
+LevelTypeRegistrySO.cs:48:         public static void ClearCache()
+LevelTypeRegistrySO.cs:94:         public static CellKind KindOf(ElementTypeSO type)
+LevelTypeRegistrySO.cs:98:             ElementDefinition definition = type.CreateDefinition(new GridPoint(0, 0), 0, 0);
+LevelDraftInventory.cs:170:         public static LevelDraft FromDefinition(LevelDefinition level, IEnumerable<GridPoint> lockedCoords)
+LevelDraftInventory.cs:172:             LevelDraft draft = FromDefinition(level);

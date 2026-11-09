@@ -1,0 +1,17 @@
+﻿=== Resources? ===
+False
+=== Assets\Data\Elements ===
+Assets\Data\Elements\Emitter\Type_Emitter_E1.asset
+Assets\Data\Elements\Emitter\Type_Emitter_E2.asset
+Assets\Data\Elements\Filter\Type_Filter_F0.asset
+Assets\Data\Elements\Filter\Type_Filter_F1.asset
+Assets\Data\Elements\NotGate\Type_NotGate_N1.asset
+Assets\Data\Elements\Receiver\Type_Receiver_R1.asset
+Assets\Data\Elements\Receiver\Type_Receiver_R2.asset
+Assets\Data\Elements\Receiver\Type_Receiver_R3.asset
+Assets\Data\Elements\Receiver\Type_Receiver_R4.asset
+Assets\Data\Elements\Splitter\Type_Splitter_L1.asset
+Assets\Data\Elements\Wall\Type_Wall.asset
+=== LevelJson ===
+LevelJson\exported\Level_01.json (1092)
+=== Tests ===

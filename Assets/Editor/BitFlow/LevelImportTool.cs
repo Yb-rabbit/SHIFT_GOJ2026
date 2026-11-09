@@ -126,7 +126,7 @@ namespace ShiftGo.EditorTools
 
         // ------------------------------------------------------------------ 类型解析
 
-        readonly struct Resolution
+        internal readonly struct Resolution
         {
             public readonly ElementTypeSO Type;
             public readonly int Steps;
@@ -144,10 +144,14 @@ namespace ShiftGo.EditorTools
         /// 给一格找「类型资产 + 旋转档」。优先复用现有资产（含之前导入生成的变体），
         /// 实在没有等价的一份才新建变体 —— 所以第二次导入同一关时 created 会掉到 0。
         /// </summary>
-        static Resolution ResolveType(
+        /// <param name="saveAsset">
+        /// false = 允许造变体但不落盘（校验 JSON 时用：能跑通模拟器，又不该在工程里留下垃圾资产）。
+        /// </param>
+        internal static Resolution ResolveType(
             EditableElement cell,
             List<ElementTypeSO> pool,
-            Dictionary<string, ElementTypeSO> variants)
+            Dictionary<string, ElementTypeSO> variants,
+            bool saveAsset = true)
         {
             // 1) 先试 JSON 自带的 typeKey：从正式关卡进 BUILD MODE 改过的关都带着它，基本一击命中
             if (!string.IsNullOrEmpty(cell.TypeKey))
@@ -176,7 +180,7 @@ namespace ShiftGo.EditorTools
                 return new Resolution(cached, 0, false);
             }
 
-            ElementTypeSO variant = CreateVariant(cell, variants.Count + 1);
+            ElementTypeSO variant = CreateVariant(cell, variants.Count + 1, saveAsset);
             if (variant == null) return default;
 
             variants[signature] = variant;
@@ -225,7 +229,7 @@ namespace ShiftGo.EditorTools
             }
         }
 
-        static ElementTypeSO FindByKey(List<ElementTypeSO> pool, string typeKey)
+        internal static ElementTypeSO FindByKey(List<ElementTypeSO> pool, string typeKey)
         {
             foreach (ElementTypeSO candidate in pool)
             {
@@ -234,17 +238,23 @@ namespace ShiftGo.EditorTools
             return null;
         }
 
-        /// <summary>按一格的具体参数生成等价类型资产（写在 Assets/Data/Elements/Generated）。</summary>
-        static ElementTypeSO CreateVariant(EditableElement cell, int serial)
+        /// <summary>
+        /// 按一格的具体参数生成等价类型资产（写在 Assets/Data/Elements/Generated）。
+        /// <paramref name="saveAsset"/> = false 时只在内存里造一份（校验 JSON 用，不留垃圾资产）。
+        /// </summary>
+        internal static ElementTypeSO CreateVariant(EditableElement cell, int serial, bool saveAsset = true)
         {
-            EnsureFolder(GeneratedFolder);
+            if (saveAsset) EnsureFolder(GeneratedFolder);
 
             int suffix = Mathf.Max(1, serial);
             string path = GeneratedFolder + "/Type_" + cell.Kind + "_Auto" + suffix + ".asset";
-            while (File.Exists(path))
+            if (saveAsset)
             {
-                suffix++;
-                path = GeneratedFolder + "/Type_" + cell.Kind + "_Auto" + suffix + ".asset";
+                while (File.Exists(path))
+                {
+                    suffix++;
+                    path = GeneratedFolder + "/Type_" + cell.Kind + "_Auto" + suffix + ".asset";
+                }
             }
 
             ElementTypeSO variant;
@@ -295,8 +305,13 @@ namespace ShiftGo.EditorTools
             }
 
             variant.label = LabelPrefix(cell.Kind) + suffix;
-            AssetDatabase.CreateAsset(variant, path);
-            EditorUtility.SetDirty(variant);
+            variant.name = "Type_" + cell.Kind + "_Auto" + suffix; // 不落盘时也要有 Key（Key 默认取资产名）
+
+            if (saveAsset)
+            {
+                AssetDatabase.CreateAsset(variant, path);
+                EditorUtility.SetDirty(variant);
+            }
             return variant;
         }
 
@@ -416,7 +431,7 @@ namespace ShiftGo.EditorTools
         }
 
         /// <summary>找 Levels 目录里第一个没被占用的 Level_NN.asset 路径。</summary>
-        static string NextLevelPath()
+        internal static string NextLevelPath()
         {
             EnsureFolder(LevelsFolder);
 

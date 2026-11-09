@@ -1,0 +1,31 @@
+﻿Assets\Scripts\Gameplay\BitFlow\Runtime\View\BitFlowBuildMode.cs:356: // BUILD MODE 只在作者模式出现，正式关卡由 LevelFlow 摘掉，和手牌不会同时抢焦点。
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\BitFlowCardTray.cs:221: LevelFlow flow;
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\BitFlowCardTray.cs:270: flow = FindObjectOfType<LevelFlow>();
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\BitFlowCardTray.cs:296: // LevelFlow 的 Start 比这里早（执行顺序 -10），第一次 LevelLoaded 已经错过了，
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\BitFlowCardTray.cs:347: // 这里只返回而不 enabled = false：Start 里订阅了 LevelFlow.LevelLoaded，
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\BitFlowHud.cs:84: LevelFlow flow;
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\BitFlowHud.cs:133: flow = FindObjectOfType<LevelFlow>();
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\BitFlowHud.cs:551: // 有下一关时才出现：单关演示场景里 LevelFlow 是空的，这个按钮就一直藏着
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\BitFlowHud.cs:749: // 有 LevelFlow 就整关重来（预设件 + 手牌 + 撤销栈全部复原），
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\BitFlowRunner.cs:24: "有限手牌就形同虚设；LevelFlow 会主动把它关掉")]
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\BitFlowRunner.cs:81: // 作者场景直接 Play 就能进编辑模式；正式关卡由 LevelFlow 调 DisableBuildMode 关掉。
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\BitFlowRunner.cs:131: /// 有人建过（<see cref="LevelFlow.LoadLevel"/> 已经走完）就什么都不做 ——
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\BitFlowRunner.cs:258: /// 「下一关是哪一关」由 <see cref="LevelFlow"/> 决定，这里只负责加载。
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\InputGate.cs:10: /// <see cref="LevelFlow.LevelLoaded"/>，关掉组件会连带把新关卡的刷新一起停掉。
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\IntroCurtain.cs:26: ///    手牌盘在 Start 里订阅了 LevelFlow.LevelLoaded，关组件会连带停掉换关后的刷新。
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\IntroCurtain.cs:53: LevelFlow flow;
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\IntroCurtain.cs:93: // Awake 里就盖住：LevelFlow.Start（执行顺序 -10）会在第一帧把关卡建出来，
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\IntroCurtain.cs:112: flow = FindObjectOfType<LevelFlow>();
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\IntroCurtain.cs:125: // LevelFlow 的 Start 比这里早，第一次 LevelLoaded 已经错过了 —— 这里补一次
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\IntroCurtain.cs:193: /// 选关面板切关时用：先盖幕再让 LevelFlow 换关，玩家就不会看见新关卡"啪"地跳出来，
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\IntroCurtain.cs:194: /// 随后 <see cref="LevelFlow.LevelLoaded"/> 会接着把整段演出演完。
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\IntroTerminal.cs:42: LevelFlow flow;
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\IntroTerminal.cs:54: // LevelFlow 的 Start 会加载第一关，BitFlowRunner 的 Start 自己也会建关。
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\IntroTerminal.cs:56: flow = FindObjectOfType<LevelFlow>();
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\IntroTerminal.cs:111: /// 把关卡放出来：先让 LevelFlow 补做被压住的首次加载
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\IntroTerminal.cs:113: /// 再让 Runner 兜底（单关场景没有 LevelFlow，得靠它自己建）。
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\LevelFlow.cs:14: public sealed class LevelFlow : MonoBehaviour
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\LevelFlow.cs:46: Debug.LogWarning("[BitFlow] LevelFlow 没找到 BitFlowRunner，已自动禁用");
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\LevelSelectPanel.cs:31: LevelFlow flow;
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\LevelSelectPanel.cs:49: flow = FindObjectOfType<LevelFlow>();
+Assets\Scripts\Gameplay\BitFlow\Runtime\View\LevelSelectPanel.cs:52: if (flow == null) Debug.LogWarning("[BitFlow] 没找到 LevelFlow，选关面板不会列出任何关卡");

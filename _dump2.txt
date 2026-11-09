@@ -1,0 +1,240 @@
+﻿                if (data.supplies != null)
+                {
+                    for (int i = 0; i < data.supplies.Count; i++)
+                    {
+                        LevelJsonSerializer.LevelJsonSupply supply = data.supplies[i];
+                        if (supply == null || string.IsNullOrEmpty(supply.type)) continue;
+                        if (LevelImportTool.FindByKey(pool, supply.type) != null) continue;
+
+                        broken++;
+                        builder.AppendLine(name + " supplies[" + i + "] type=\"" + supply.type + "\" 找不到对应资产");
+                    }
+                }
+            }
+
+            string message = broken == 0
+                ? "扫了 " + scanned + " 个 JSON，type 引用都在。"
+                : "扫了 " + scanned + " 个 JSON，发现 " + broken + " 条断链（改过资产名或删过资产就会这样）：\n\n"
+                    + builder + "\n改回资产名，或者把 type 换成 kind 写法。";
+
+            SaveText(ReportFolder + "/_broken_types.txt", message);
+            Debug.Log("[BitFlow] " + message);
+            EditorUtility.DisplayDialog("type 断链检查", message, "好");
+        }
+
+        // ------------------------------------------------------------------ JSON → 类型资产
+
+        /// <summary>
+        /// 把 JSON 的一格落到真实类型资产上：
+        /// <c>type</c> 精确找资产；<c>kind</c> 走 <see cref="LevelImportTool.ResolveType"/> 那套
+        /// 「先复用、没有才造变体」的逻辑（和导入 custom_level.json 共享同一份实现）。
+        /// 干跑时造的变体只在内存里，退出时销毁。
+        /// </summary>
+        sealed class AssetResolver : ILevelJsonTypeResolver
+        {
+            readonly List<ElementTypeSO> pool = LevelImportTool.LoadTypePool();
+            readonly Dictionary<string, ElementTypeSO> variants = new Dictionary<string, ElementTypeSO>();
+            readonly List<ElementTypeSO> temporary = new List<ElementTypeSO>();
+            readonly bool dryRun;
+
+            /// <summary>这一份 JSON 会新建哪些变体 —— 直接写进报告，提醒作者「其实你可以复用现成资产」。</summary>
+            public readonly List<string> WouldCreate = new List<string>();
+
+            public AssetResolver(bool dryRun)
+            {
+                this.dryRun = dryRun;
+            }
+
+            public ElementTypeSO Resolve(LevelJsonSerializer.LevelJsonCell cell, out int rotationSteps)
+            {
+                rotationSteps = 0;
+                if (cell == null) return null;
+
+                // 1) 精确模式：type = 类型资产 Key。找不到就直接报错，不猜 —— 猜错比报错更难查
+                if (!string.IsNullOrEmpty(cell.type))
+                {
+                    ElementTypeSO exact = LevelImportTool.FindByKey(pool, cell.type);
+                    if (exact == null) return null;
+
+                    rotationSteps = ((cell.rot % 4) + 4) % 4;
+                    return exact;
+                }
+
+                // 2) 宽松模式：kind + 绝对朝向
+                if (string.IsNullOrEmpty(cell.kind)) return null;
+                if (!LevelJsonSerializer.TryParseKind(cell.kind, out CellKind kind)) return null;
+
+                EditableElement draft = BuildDraft(kind, cell);
+                LevelImportTool.Resolution resolution = LevelImportTool.ResolveType(draft, pool, variants, !dryRun);
+                if (resolution.Type == null) return null;
+
+                rotationSteps = resolution.Steps;
+                if (resolution.Created)
+                {
+                    WouldCreate.Add(resolution.Type.name);
+                    if (dryRun) temporary.Add(resolution.Type);
+                }
+                return resolution.Type;
+            }
+
+            public WallTypeSO ResolveWall()
+            {
+                foreach (ElementTypeSO candidate in pool)
+                {
+                    if (candidate is WallTypeSO wall) return wall;
+                }
+                return null;
+            }
+
+            static EditableElement BuildDraft(CellKind kind, LevelJsonSerializer.LevelJsonCell cell)
+            {
+                EditableElement draft = EditableElement.CreateDefault(kind, new GridPoint(cell.x, cell.y));
+
+                if (LevelJsonSerializer.TryParseDir(cell.dir, out Dir dir)) draft.PrimaryDir = dir;
+                if (LevelJsonSerializer.TryParseDir(cell.dir2, out Dir dir2)) draft.SecondaryDir = dir2;
+
+                if (!string.IsNullOrEmpty(cell.sequence)) draft.Sequence = cell.sequence.Trim();
+                if (cell.count >= 0) draft.Count = cell.count;
+                if (cell.pass >= 0) draft.PassValue = cell.pass == 0 ? (byte)0 : (byte)1;
+
+                // 宽松模式不认识资产名，从零开始找等价资产
+                draft.TypeKey = string.Empty;
+                return draft;
+            }
+
+            public void Dispose()
+            {
+                foreach (ElementTypeSO type in temporary)
+                {
+                    if (type != null) UnityEngine.Object.DestroyImmediate(type);
+                }
+                temporary.Clear();
+            }
+        }
+
+        // ------------------------------------------------------------------ 跑一份 JSON
+
+        /// <summary>一份 JSON 的处理结果（诊断 + 试跑结论）。</summary>
+        sealed class JsonRun
+        {
+            public string Path;
+            public string FileName;
+            public LevelJsonReadResult Result;
+            public string CheckText = string.Empty;
+            public bool Success;
+
+            /// <summary>解析器给的附加信息（会新建哪些变体）。</summary>
+            public readonly List<string> Notes = new List<string>();
+
+            public string ToText()
+            {
+                StringBuilder builder = new StringBuilder();
+                builder.AppendLine("关卡 JSON：" + FileName);
+
+                if (Result != null && Result.Errors.Count > 0)
+                {
+                    builder.AppendLine("错误 " + Result.Errors.Count + " 条");
+                    foreach (string error in Result.Errors) builder.AppendLine("  ✗ " + error);
+                }
+
+                if (Result != null && Result.Warnings.Count > 0)
+                {
+                    builder.AppendLine("警告 " + Result.Warnings.Count + " 条");
+                    foreach (string warning in Result.Warnings) builder.AppendLine("  ⚠ " + warning);
+                }
+
+                foreach (string note in Notes) builder.AppendLine("  · " + note);
+
+                if (Result != null && Result.HasLevel)
+                {
+                    builder.AppendLine(DescribeLevel(Result.Level));
+                    builder.AppendLine("试跑：" + CheckText);
+                }
+                else
+                {
+                    builder.AppendLine("没读出任何关卡。");
+                }
+
+                return builder.ToString();
+            }
+        }
+
+        static JsonRun Run(string path, bool dryRun)
+        {
+            JsonRun run = new JsonRun { Path = path, FileName = Path.GetFileName(path) };
+            run.Result = new LevelJsonReadResult();
+
+            string json;
+            try
+            {
+                json = File.ReadAllText(path);
+            }
+            catch (Exception exception)
+            {
+                run.Result.Errors.Add("读不了文件：" + exception.Message);
+                return run;
+            }
+
+            AssetResolver resolver = new AssetResolver(dryRun);
+            try
+            {
+                run.Result = LevelJsonSerializer.Read(json, resolver);
+
+                if (run.Result.HasLevel)
+                {
+                    run.CheckText = LevelCheck.Run(run.Result.Level.ToDefinition(), out bool success);
+                    run.Success = success;
+                }
+            }
+            catch (Exception exception)
+            {
+                run.Result.Errors.Add("解析时出错：" + exception.Message);
+            }
+            finally
+            {
+                string prefix = dryRun ? "将新建类型变体：" : "新建类型变体：";
+                foreach (string name in resolver.WouldCreate) run.Notes.Add(prefix + name);
+                resolver.Dispose();
+            }
+
+            return run;
+        }
+
+        /// <summary>把内存关卡落成资产并追加进关卡表，返回资产路径。</summary>
+        static string CreateLevelAsset(LevelSO level)
+        {
+            string assetPath = LevelImportTool.NextLevelPath();
+            AssetDatabase.CreateAsset(level, assetPath);
+            EditorUtility.SetDirty(level);
+
+            int catalogIndex = LevelImportTool.AppendToCatalog(level);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            Debug.Log("[BitFlow] 关卡 JSON → " + assetPath
+                + (catalogIndex >= 0
+                    ? "（关卡表第 " + (catalogIndex + 1) + " 项，索引 0 是开局第一关）"
+                    : "（没找到 " + CatalogPath + "，需要手动把关卡拖进关卡表）"));
+
+            return assetPath;
+        }
+
+        static void CopyInto(LevelSO target, LevelSO source)
+        {
+            target.displayName = source.displayName;
+            target.width = source.width;
+            target.height = source.height;
+            target.tickInterval = source.tickInterval;
+            target.placements = source.placements;
+            target.wallType = source.wallType;
+            target.wallMap = source.wallMap;
+            target.supplies = source.supplies;
+        }
+
+        static string DescribeLevel(LevelSO level)
+        {
+            if (level == null) return "(空)";
+
+            int walls = 0;
+            foreach (Vector2Int _ in level.ParseWalls()) walls++;
+

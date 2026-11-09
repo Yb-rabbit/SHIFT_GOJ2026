@@ -1,0 +1,60 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
+using UnityEngine;
+using ShiftGo.BitFlow.Core;
+
+namespace ShiftGo.BitFlow.Data
+{
+    /// <summary>
+    /// 鎶?JSON 閲岀殑涓€鏍艰В鏋愭垚銆岀被鍨嬭祫浜?+ 鏃嬭浆妗ｃ€嶃€?
+    ///
+    /// 涓轰粈涔堟槸鎺ュ彛锛氭壘璧勪骇瑕佽蛋 AssetDatabase锛圗ditor 涓撳睘锛夛紝鑰岃繖涓€灞傛槸 Runtime 鈥斺€?
+    /// 搴忓垪鍖栨牳蹇冩斁 Runtime 鎵嶈兘琚?EditMode 娴嬭瘯鐩存帴椹卞姩锛堟祴璇曢噷濉炰竴涓唴瀛樺瓧鍏稿疄鐜板嵆鍙級銆?
+    /// 缂栬緫鍣ㄤ晶鐨勫疄鐜拌 Assets/Editor/BitFlow/LevelJsonTool.cs銆?
+    /// </summary>
+    public interface ILevelJsonTypeResolver
+    {
+        /// <summary>
+        /// <c>type</c>锛堢簿纭紝= 绫诲瀷璧勪骇 Key锛夋垨 <c>kind</c>锛堝鏉剧畝鍐欙級浜岄€変竴銆?
+        /// 杩斿洖 null 琛ㄧず杩欎竴鏍兼病娉曡惤鍦帮紙璋冪敤鏂硅礋璐ｈ閿欒锛夈€?
+        /// </summary>
+        ElementTypeSO Resolve(LevelJsonSerializer.LevelJsonCell cell, out int rotationSteps);
+
+        /// <summary>wallRows 閲岀殑 # 瑕佺敤鐨勫绫诲瀷璧勪骇锛涜繑鍥?null 琛ㄧず杩欎竴鍏冲甫涓嶄簡澧欏眰銆?/summary>
+        WallTypeSO ResolveWall();
+    }
+
+    /// <summary>璇?JSON 鐨勭粨鏋滐細瑙ｆ瀽鍑烘潵鐨勫叧鍗?+ 缁欎汉鐪嬬殑璇婃柇銆傛湁 Errors 鏃?Level 閲屽搴旀牸瀛愬凡琚烦杩囥€?/summary>
+    public sealed class LevelJsonReadResult
+    {
+        public LevelSO Level;
+
+        public readonly List<string> Errors = new List<string>();
+        public readonly List<string> Warnings = new List<string>();
+
+        public bool HasLevel => Level != null;
+
+        /// <summary>娌℃湁閿欒銆佷笖纭疄璇诲嚭浜嗕竴浠藉叧鍗°€?/summary>
+        public bool Ok => Level != null && Errors.Count == 0;
+    }
+
+    /// <summary>
+    /// 鍏冲崱 JSON 鐨勩€屽彲鎵嬪啓鏍煎紡銆嶏細鍙屽悜杞崲 <see cref="LevelSO"/> 鈫?鏂囨湰銆?
+    ///
+    /// 鍜?<see cref="LevelDraftSerializer"/>锛堟父鎴忓唴瀛樻。锛夌殑鍖哄埆锛氶偅浠芥槸缁欐父鎴忚鐨勩€佸瓧娈靛叏鏄笅鏍囨暟瀛楋紱
+    /// 杩欎唤鏄粰浜哄啓鐨?鈥斺€?鍏冧欢鎸?(y, x) 鎺掑簭銆佹柟鍚戝啓 Up/Right/Down/Left銆佸鐢ㄥ瓧绗︾敾涓€琛屼竴涓?y銆?
+    ///
+    /// 涓ょ鍐欏厓浠剁殑濮垮娍锛?
+    /// - <c>type</c>锛氱簿纭紩鐢ㄧ被鍨嬭祫浜э紙= <see cref="ElementTypeSO.Key"/>锛屽嵆璧勪骇鍚嶏級锛屽鍑烘案杩滃甫瀹冿紝寰€杩旀棤鎹燂紱
+    /// - <c>kind</c>锛氬彧鍐?Emitter / Receiver / Splitter / NotGate / Filter + 缁濆鏈濆悜锛?
+    ///   鐢卞鍏ュ櫒鍘荤幇鏈夎祫浜ч噷鎵剧瓑浠风殑涓€浠斤紝鎵句笉鍒版墠閫犲彉浣?鈥斺€?澶栭儴浣滆€呬笉鐢ㄨ璇?Unity 璧勪骇鍚嶃€?
+    ///
+    /// 璇箟瑕佺偣锛堜篃鍐欒繘浜?docs/LEVEL_JSON.md锛夛細
+    /// - <c>sequence</c> / <c>count</c> / <c>face</c> 鍑虹幇鍗宠涓恒€岃繖涓€鏍艰鐩栫被鍨嬭祫浜с€嶏紱
+    /// - <c>count</c> 鏄彂灏勬€讳綅鏁?/ 鎺ユ敹鎬讳釜鏁帮紙鍜?LevelDraft 涓€鑷达紝涓嶆槸璧勪骇涓婄殑銆岃疆鏁般€嶏級锛?
+    /// - <c>playerEditable</c> 缂虹渷 false = 鍏冲崱棰勮浠讹紙鐜╁鎼笉鍔級锛?
+    /// - <c>wallRows</c> 浼樺厛锛屾病鏈夋墠鐪?<c>wallMap</c>锛堝吋瀹规棫鐨勬墜鍐欐牸寮忥級銆?
+    /// </summary>
+    public static class LevelJsonSerializer

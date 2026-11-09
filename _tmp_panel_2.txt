@@ -1,0 +1,64 @@
+        /// <summary>
+        /// 画一行可点的关卡。level 与 entry 二选一：
+        /// 前者是关卡表里的资产，后者是运行时从 JSON 读进来的关卡。
+        /// </summary>
+        void CreateRow(int row, LevelSO level, LevelJsonEntry entry, bool isCurrent, UnityAction onClick, ref float y)
+        {
+            GameObject rowObject = new GameObject("Row" + row, typeof(RectTransform), typeof(Image), typeof(Button));
+            rowObject.transform.SetParent(listRoot, false);
+
+            RectTransform rowRect = rowObject.GetComponent<RectTransform>();
+            SetRect(rowRect, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(600f, RowHeight), new Vector2(0f, y));
+            y -= RowHeight + RowGap;
+
+            Image background = rowObject.GetComponent<Image>();
+            background.color = isCurrent ? RowCurrentColor : RowColor;
+
+            Button button = rowObject.GetComponent<Button>();
+            button.targetGraphic = background;
+            button.onClick.AddListener(onClick);
+
+            string displayName = level != null ? level.displayName : entry.DisplayName;
+            string subtitle = entry != null ? "JSON  ·  " + entry.Subtitle : string.Empty;
+
+            string label = string.IsNullOrEmpty(displayName)
+                ? "LEVEL " + (row + 1).ToString("00")
+                : displayName;
+
+            Text title = CreateText("Title", rowRect, label, PixelFont.Body,
+                TextAnchor.MiddleLeft, isCurrent ? TitleColor : MutedColor);
+
+            if (string.IsNullOrEmpty(subtitle))
+            {
+                SetRect(title.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
+                    new Vector2(430f, RowHeight - 8f), new Vector2(22f, 0f));
+            }
+            else
+            {
+                // 两行：上面是关卡名，下面是「从哪个文件读来的」，作者一眼知道该改哪份
+                SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
+                    new Vector2(430f, 24f), new Vector2(22f, -8f));
+
+                Text detail = CreateText("Detail", rowRect, subtitle, PixelFont.Small,
+                    TextAnchor.MiddleLeft, MutedColor);
+                SetRect(detail.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
+                    new Vector2(430f, 18f), new Vector2(22f, -32f));
+            }
+
+            // 打勾用 OK 两个字母：像素字体没有 ✓ 字形（打包后会变方块）
+            if (SaveStore.IsCleared(displayName))
+            {
+                Text cleared = CreateText("Cleared", rowRect, "OK", PixelFont.Small, TextAnchor.MiddleCenter, ClearedColor);
+                SetRect(cleared.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
+                    new Vector2(40f, RowHeight - 8f), new Vector2(-22f, 0f));
+            }
+
+            if (isCurrent)
+            {
+                Text now = CreateText("Now", rowRect, "NOW  ", PixelFont.Small, TextAnchor.MiddleRight, MutedColor);
+                SetRect(now.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
+                    new Vector2(80f, RowHeight - 8f), new Vector2(-60f, 0f));
+            }
+        }
+

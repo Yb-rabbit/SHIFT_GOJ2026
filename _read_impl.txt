@@ -1,0 +1,220 @@
+﻿        public static LevelJsonReadResult Read(string json, ILevelJsonTypeResolver resolver)
+        {
+            LevelJsonReadResult result = new LevelJsonReadResult();
+
+            LevelJsonFile file = FromJson(json, result.Errors);
+            if (file == null) return result;
+
+            if (resolver == null)
+            {
+                result.Errors.Add("没有可用的类型解析器（找不到元件类型资产）");
+                return result;
+            }
+
+            if (file.schema > SchemaVersion)
+            {
+                result.Warnings.Add("JSON 的 schema 是 " + file.schema + "，比本工具支持的 " + SchemaVersion
+                    + " 新：不认识的字段会被忽略");
+            }
+
+            LevelSO level = ScriptableObject.CreateInstance<LevelSO>();
+            level.displayName = string.IsNullOrEmpty(file.displayName) ? "CUSTOM LEVEL" : file.displayName;
+            level.width = Mathf.Max(1, file.width);
+            level.height = Mathf.Max(1, file.height);
+            level.tickInterval = file.tickInterval > 0.01f ? Mathf.Clamp(file.tickInterval, 0.05f, 5f) : 0.35f;
+            level.placements = new List<ElementPlacement>();
+            level.supplies = new List<ElementSupply>();
+
+            string wallMap = BuildWallMap(file, level.height, result.Warnings);
+            if (!string.IsNullOrEmpty(wallMap))
+            {
+                WallTypeSO wallType = resolver.ResolveWall();
+                if (wallType == null)
+                {
+                    result.Warnings.Add("这一关有墙，但找不到墙类型资产 → 墙会被忽略");
+                }
+                else
+                {
+                    level.wallType = wallType;
+                    level.wallMap = wallMap;
+                }
+            }
+
+            ReadElements(file, level, resolver, result);
+            ReadSupplies(file, level, resolver, result);
+            WarnWallOverlap(level, result);
+
+            // 统一按 (y, x) 排序：同一份 JSON 无论行序怎么排，落出来的资产都一样，导出也是幂等的
+            level.placements.Sort((left, right) =>
+            {
+                if (left.coord.y != right.coord.y) return left.coord.y.CompareTo(right.coord.y);
+                return left.coord.x.CompareTo(right.coord.x);
+            });
+
+            result.Level = level;
+            return result;
+        }
+
+        static void ReadElements(LevelJsonFile file, LevelSO level, ILevelJsonTypeResolver resolver, LevelJsonReadResult result)
+        {
+            if (file.elements == null) return;
+
+            HashSet<Vector2Int> used = new HashSet<Vector2Int>();
+            for (int i = 0; i < file.elements.Count; i++)
+            {
+                LevelJsonCell cell = file.elements[i];
+                if (cell == null) continue;
+
+                string where = "elements[" + i + "]";
+                Vector2Int coord = new Vector2Int(cell.x, cell.y);
+
+                if (coord.x < 0 || coord.y < 0 || coord.x >= level.width || coord.y >= level.height)
+                {
+                    result.Warnings.Add(where + " 坐标 " + Describe(coord) + " 越界（本关 "
+                        + level.width + "×" + level.height + "），已跳过");
+                    continue;
+                }
+
+                if (!used.Add(coord))
+                {
+                    result.Warnings.Add(where + " 坐标 " + Describe(coord) + " 与前面的格子重复，已跳过");
+                    continue;
+                }
+
+                int steps;
+                ElementTypeSO type = resolver.Resolve(cell, out steps);
+                if (type == null)
+                {
+                    used.Remove(coord);
+                    result.Errors.Add(where + " 解析不出元件类型：" + DescribeCell(cell));
+                    continue;
+                }
+
+                ElementPlacement placement = new ElementPlacement
+                {
+                    type = type,
+                    coord = coord,
+                    rotationSteps = ((steps % 4) + 4) % 4,
+                    playerEditable = cell.playerEditable,
+                };
+
+                if (!string.IsNullOrEmpty(cell.sequence))
+                {
+                    placement.overrideSequence = true;
+                    placement.sequence = cell.sequence.Trim();
+                }
+
+                if (cell.count >= 0)
+                {
+                    placement.overrideCount = true;
+                    placement.count = Mathf.Max(0, cell.count);
+                }
+
+                string face = ParseFace(cell.face);
+                if (face == "?")
+                {
+                    result.Warnings.Add(where + " face \"" + cell.face + "\" 看不懂（只认 any / in），按跟随资产处理");
+                }
+                else if (face.Length > 0)
+                {
+                    placement.overrideFace = true;
+                    placement.acceptAnyFace = face != "in";
+                }
+
+                if (cell.pass >= 0)
+                {
+                    if (string.IsNullOrEmpty(cell.type))
+                    {
+                        // 宽松模式（kind）才能改放行值：存在摆放上，不依赖「专门为它造一份类型资产」
+                        placement.overridePassValue = true;
+                        placement.passValue = (byte)(cell.pass == 0 ? 0 : 1);
+                    }
+                    else
+                    {
+                        result.Warnings.Add(where + " 写了 pass，但用 type 精确引用时改不了过滤器放行值；"
+                            + "改用 kind=Filter 才能覆盖");
+                    }
+                }
+
+                level.placements.Add(placement);
+            }
+        }
+
+        static void ReadSupplies(LevelJsonFile file, LevelSO level, ILevelJsonTypeResolver resolver, LevelJsonReadResult result)
+        {
+            if (file.supplies == null) return;
+
+            for (int i = 0; i < file.supplies.Count; i++)
+            {
+                LevelJsonSupply supply = file.supplies[i];
+                if (supply == null) continue;
+
+                string where = "supplies[" + i + "]";
+                LevelJsonCell probe = new LevelJsonCell { type = supply.type, kind = supply.kind };
+
+                int steps;
+                ElementTypeSO type = resolver.Resolve(probe, out steps);
+                if (type == null)
+                {
+                    result.Errors.Add(where + " 解析不出元件类型：" + DescribeCell(probe));
+                    continue;
+                }
+
+                int count = supply.count >= 0 ? supply.count : 1;
+                if (count == 0)
+                {
+                    result.Warnings.Add(where + " count=0 等于不给这张牌，已跳过");
+                    continue;
+                }
+
+                level.supplies.Add(new ElementSupply { type = type, count = count });
+            }
+        }
+
+        /// <summary>墙层和元件叠在同一格时，墙会被盖掉 —— 这种图画错很难自己发现，直接说出来。</summary>
+        static void WarnWallOverlap(LevelSO level, LevelJsonReadResult result)
+        {
+            if (string.IsNullOrEmpty(level.wallMap)) return;
+
+            HashSet<Vector2Int> placed = new HashSet<Vector2Int>();
+            foreach (ElementPlacement placement in level.placements) placed.Add(placement.coord);
+
+            int overlapped = 0;
+            foreach (Vector2Int coord in level.ParseWalls())
+            {
+                if (placed.Contains(coord)) overlapped++;
+            }
+
+            if (overlapped > 0)
+            {
+                result.Warnings.Add("墙层和 elements 有 " + overlapped + " 个格子重叠，那些格子的墙会被元件盖掉");
+            }
+        }
+
+        static string BuildWallMap(LevelJsonFile file, int height, List<string> warnings)
+        {
+            if (file.wallRows != null && file.wallRows.Count > 0)
+            {
+                if (file.wallRows.Count > height)
+                {
+                    warnings.Add("wallRows 有 " + file.wallRows.Count + " 行，超过 height=" + height + "，多出来的行会被忽略");
+                }
+
+                StringBuilder builder = new StringBuilder();
+                for (int i = 0; i < file.wallRows.Count; i++)
+                {
+                    if (i > 0) builder.Append('\n');
+                    builder.Append(file.wallRows[i] ?? string.Empty);
+                }
+                return builder.ToString();
+            }
+
+            return string.IsNullOrEmpty(file.wallMap) ? string.Empty : file.wallMap;
+        }
+
+        static string Describe(Vector2Int coord)
+        {
+            return "(" + coord.x + "," + coord.y + ")";
+        }
+
+        static string DescribeCell(LevelJsonCell cell)

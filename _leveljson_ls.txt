@@ -1,0 +1,2 @@
+﻿D:\UnityHubLab\SHIFT_GO2026\LevelJson\exported
+D:\UnityHubLab\SHIFT_GO2026\LevelJson\incoming
