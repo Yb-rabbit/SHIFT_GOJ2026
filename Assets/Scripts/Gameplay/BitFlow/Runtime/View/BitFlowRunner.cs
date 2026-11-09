@@ -181,6 +181,10 @@ namespace ShiftGo.BitFlow.View
             }
 
             timer = 0f;
+
+            // 机位跟着网格走：尺寸变了（工坊换板 / 选关面板换关 / 重播）就立刻落到新的最终机位。
+            // 尺寸没变时 Frame 内部直接返回，所以每摆一件都调也不会打断开场推近。
+            Rig?.Frame(definition);
         }
 
         void Update()
@@ -273,6 +277,28 @@ namespace ShiftGo.BitFlow.View
             paused = true;
             ResetPerformed?.Invoke();
             return true;
+        }
+
+        // ---------------------------------------------------------------- 相机
+
+        CameraRig rig;
+        bool rigSearched;
+
+        /// <summary>
+        /// 延迟查找固定机位。不放在 Awake 里缓存死：场景里可能根本没有 CameraRig
+        /// （作者直接 Play 某个测试场景），找不到时不能每帧都去全场景扫一遍。
+        /// </summary>
+        CameraRig Rig
+        {
+            get
+            {
+                if (!rigSearched)
+                {
+                    rig = FindObjectOfType<CameraRig>();
+                    rigSearched = true;
+                }
+                return rig;
+            }
         }
 
         /// <summary>切进编辑模式时用：停住时间轴，避免编辑和推进互相打架。</summary>

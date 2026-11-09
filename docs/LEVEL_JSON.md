@@ -51,7 +51,7 @@ LevelJson/
 | `wallMap` | 旧写法（`\n` 分行）；没有 `wallRows` 时才看它 |
 | `elements` | 元件数组 |
 | `supplies` | 手牌数组 |
-| `allowBuild` | `schema 2` 新增：`true` = 玩家进关后可以自己搬元件（沙盒关）；缺省 `false` = 只玩作者摆好的样子 |
+| `allowBuild` | `schema 2` 新增：`true` = 玩家进关后可以自己动手（搬件 / 放手牌）；缺省 `false` = 只玩作者摆好的样子。<br>有 `supplies` 时自动为 `true`（发得出牌就必须放得下）。<br>**注意**：它开的不是工坊那套 BUILD MODE（无限涂刷）—— 那只给「没发手牌的沙盒关」，否则玩家能凭空补件、手牌盘也会被整个压掉 |
 
 
 ## 元件字段

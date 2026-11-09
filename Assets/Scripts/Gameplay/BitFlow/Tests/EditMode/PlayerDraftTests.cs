@@ -259,6 +259,79 @@ namespace ShiftGo.BitFlow.Tests
             Assert.AreEqual(1, draft.Count);
         }
 
+        /// <summary>
+        /// 空格搬动（<see cref="LevelDraft.TryMove"/>）：整件挪过去，参数一个不丢，库存一张不动。
+        /// 这条守的是"玩家改好的件被搬一下就打回默认值"那个老 bug。
+        /// </summary>
+        [Test]
+        public void TryMove_KeepsConfig_AndDoesNotSpendCards()
+        {
+            LevelDraft draft = new LevelDraft(4, 4);
+            draft.SetStock(SplitterKey, 1);
+
+            EditableElement splitter = EditableElement.CreateDefault(CellKind.Splitter, new GridPoint(1, 1));
+            splitter.TypeKey = SplitterKey;
+            splitter.PrimaryDir = Dir.Left;   // 玩家改过的朝向
+            splitter.SecondaryDir = Dir.Up;
+            Assert.AreEqual(PlaceResult.Ok, draft.TryPlace(splitter));
+            Assert.AreEqual(0, draft.Remaining(SplitterKey));
+
+            Assert.AreEqual(PlaceResult.Ok, draft.CanMove(new GridPoint(1, 1), new GridPoint(2, 2)),
+                "空格子应该能落");
+            Assert.IsTrue(draft.TryMove(new GridPoint(1, 1), new GridPoint(2, 2)));
+
+            EditableElement moved = draft.GetAt(new GridPoint(2, 2));
+            Assert.IsNotNull(moved, "搬完应该落在新格子上");
+            Assert.IsNull(draft.GetAt(new GridPoint(1, 1)), "原位应该空了");
+            Assert.AreEqual(Dir.Left, moved.PrimaryDir, "搬动不该把朝向改回默认");
+            Assert.AreEqual(Dir.Up, moved.SecondaryDir);
+            Assert.AreEqual(SplitterKey, moved.TypeKey, "搬动不该丢掉类型归属");
+            Assert.AreEqual(0, draft.Remaining(SplitterKey), "搬动不是发新牌，库存不该变");
+
+            Assert.IsTrue(draft.CanUndo, "整次搬动只压一步撤销");
+            Assert.IsTrue(draft.Undo());
+            Assert.IsNotNull(draft.GetAt(new GridPoint(1, 1)), "撤销把件送回原位");
+            Assert.IsNull(draft.GetAt(new GridPoint(2, 2)));
+        }
+
+        [Test]
+        public void TryMove_RejectsLockedPieceAndOccupiedTarget()
+        {
+            LevelDraft draft = new LevelDraft(4, 4);
+            draft.Place(EditableElement.CreateDefault(CellKind.Receiver, new GridPoint(0, 0)), true);
+            draft.Place(EditableElement.CreateDefault(CellKind.Wall, new GridPoint(1, 0)), false);
+            draft.Place(EditableElement.CreateDefault(CellKind.Wall, new GridPoint(2, 0)), false);
+
+            Assert.AreEqual(PlaceResult.Locked, draft.CanMove(new GridPoint(0, 0), new GridPoint(3, 3)),
+                "预设件搬不动");
+            Assert.AreEqual(PlaceResult.Occupied, draft.CanMove(new GridPoint(1, 0), new GridPoint(2, 0)),
+                "目标格已经有东西");
+            Assert.AreEqual(PlaceResult.Ok, draft.CanMove(new GridPoint(1, 0), new GridPoint(1, 0)),
+                "原地放下 = 取消，不该报错");
+            Assert.IsFalse(draft.TryMove(new GridPoint(0, 0), new GridPoint(3, 3)));
+        }
+
+        /// <summary>
+        /// 工坊（<see cref="LevelDraft.AuthorMode"/>）里作者必须能搬自己标成 FIXED 的件，
+        /// 而且锁要跟着件走 —— 否则新位置对玩家变成"可搬"、旧位置变成"不可放"。
+        /// </summary>
+        [Test]
+        public void AuthorMode_MovesLockedPiece_AndCarriesTheLock()
+        {
+            LevelDraft draft = new LevelDraft(4, 4) { AuthorMode = true };
+            draft.Place(EditableElement.CreateDefault(CellKind.Emitter, new GridPoint(0, 0)), true);
+
+            Assert.AreEqual(PlaceResult.Ok, draft.CanMove(new GridPoint(0, 0), new GridPoint(2, 2)));
+            Assert.IsTrue(draft.TryMove(new GridPoint(0, 0), new GridPoint(2, 2)));
+
+            Assert.IsTrue(draft.IsLocked(new GridPoint(2, 2)), "锁跟着件走：新位置对玩家仍然固定");
+            Assert.IsFalse(draft.IsLocked(new GridPoint(0, 0)), "旧位置不该留着锁");
+
+            // 存出去的就是「这一格玩家还能不能搬」
+            LevelDefinition saved = draft.ToDefinition();
+            Assert.IsFalse(saved.Elements[0].PlayerEditable, "锁定 = playerEditable:false");
+        }
+
         [Test]
         public void Undo_RestoresCellsAndStock()
         {

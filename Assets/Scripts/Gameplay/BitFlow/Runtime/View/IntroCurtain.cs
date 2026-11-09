@@ -10,7 +10,8 @@ namespace ShiftGo.BitFlow.View
 {
     /// <summary>
     /// 换关黑幕：把"上一关结算的残影 + 新关卡忽然出现"藏起来，顺便在镜头推近之前交代本关的三件事 ——
-    /// 关名、这次<b>第一次出现</b>的元件（带一行说明）、本关手牌。
+    /// 关名、这次<b>第一次出现</b>的元件（带一行说明）、本关这一趟要做什么
+    /// （发牌的关手牌清单 / 沙盒关 / 演示关，见 <see cref="DescribeLine"/>）。
     ///
     /// 时间轴（默认 2.5s，三段都在 Inspector 里调）：
     /// <code>
@@ -317,16 +318,49 @@ namespace ShiftGo.BitFlow.View
                 : "BIT FLOW";
 
             BuildNewElementChips(level);
-            handText.text = DescribeHand(level);
+            handText.text = DescribeLine(level);
+        }
+
+        /// <summary>
+        /// 黑幕底部那一行：本关"进来该干什么"。
+        ///
+        /// 早先这里恒拼「HAND aa x1」，没发牌的关就退化成「HAND  -」——
+        /// 那既不是一份手牌清单，也不像一句人话；而目录第一关（主页那一关，纯演示关）
+        /// 正好没有手牌，玩家一进门看到的就是它，看起来像是文字被截断了。
+        ///
+        /// 现在按关卡数据分三档说：发了牌 → 手牌清单；没发牌但允许自己摆 → 沙盒关；
+        /// 其余 → 演示关，直接把唯一的入口（PLAY 那颗按钮）写在脸上。
+        /// </summary>
+        string DescribeLine(LevelSO level)
+        {
+            if (level != null && level.HasSupplies)
+            {
+                string hand = DescribeHand(level);
+                if (!string.IsNullOrEmpty(hand)) return hand;
+            }
+
+            // 关名下面的这一行一律只写英文 ASCII：像素字体没有中文字形（见 PixelFont）。
+            if (level != null && level.allowBuild) return "SANDBOX  -  BUILD, THEN PRESS PLAY";
+
+            // 目录第一关就是主页那一关（纯演示、没有手牌，唯一的入口是 PLAY）：
+            // 顺手把"再往下怎么走"也点出来，第一关按完 PASS 的去处就是 LEVELS 按钮。
+            // 运行时 JSON 关卡没有"第几关"这回事，一律按下面的演示关处理。
+            if (flow != null && !flow.IsJsonLevel && flow.CurrentIndex == 0 && flow.Current == level)
+            {
+                return "WELCOME  -  PRESS PLAY, THEN PICK A LEVEL";
+            }
+
+            return "DEMO  -  PRESS PLAY TO WATCH";
         }
 
         /// <summary>
         /// 本关手牌的第一眼交代。同一类型写了两条 supply 是"再多给几张"（<see cref="LevelDraft"/> 就是这么记账的），
         /// 所以这里按 Key 去重合并后再累加，和状态行、卡排上的数字永远一致。
+        /// 一条能用的都没有时返回空串，由 <see cref="DescribeLine"/> 换成一句关卡说明。
         /// </summary>
         static string DescribeHand(LevelSO level)
         {
-            if (level == null || level.supplies == null || level.supplies.Count == 0) return "HAND  -";
+            if (level == null || level.supplies == null || level.supplies.Count == 0) return string.Empty;
 
             List<string> order = new List<string>();
             Dictionary<string, int> counts = new Dictionary<string, int>();
@@ -346,6 +380,9 @@ namespace ShiftGo.BitFlow.View
 
                 counts[key] += Mathf.Max(0, supply.count);
             }
+
+            // 全是被扣掉 / 为空的条目：没有清单可说，交给调用方换一句关卡说明
+            if (order.Count == 0) return string.Empty;
 
             // 乘号写 x 不写 ×：像素字体里没有 U+00D7（打包后会变方块）。
             System.Text.StringBuilder builder = new System.Text.StringBuilder("HAND  ");

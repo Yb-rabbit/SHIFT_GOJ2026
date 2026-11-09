@@ -53,6 +53,10 @@ namespace ShiftGo.BitFlow.Core
                 element.Hint = cell.Spec.hint;
                 element.TypeKey = string.IsNullOrEmpty(cell.TypeKey) ? cell.Spec.key : cell.TypeKey;
 
+                // JSON 里的 playerEditable 是「玩家能不能搬这一格」的唯一来源。
+                // 缺省 false = 预设件，和 LevelJsonSerializer / LevelSO 保持同一套语义。
+                element.PlayerEditable = cell.Cell != null && cell.Cell.playerEditable;
+
                 ApplyCellOverrides(element, cell);
 
                 definition.Elements.Add(element);
@@ -61,7 +65,53 @@ namespace ShiftGo.BitFlow.Core
             }
 
             AppendWalls(document, catalog, width, height, definition, occupied, nextId, problems);
+            ReadSupplies(document, definition, problems);
             return definition;
+        }
+
+        /// <summary>
+        /// 读手牌表（作者给玩家几张牌）。规则对齐 <c>LevelJsonSerializer.ReadSupplies</c>：
+        /// <c>count</c> 缺省（-1）= 1 张，<c>count=0</c> 等于「不给这张牌」（记一条问题后跳过），
+        /// <c>type</c> 原样保留——类型资产只属于 Unity 侧，纯 C# 层不认它，但也不能把它丢掉。
+        /// </summary>
+        static void ReadSupplies(LevelDocument document, LevelDefinition definition, List<string> problems)
+        {
+            definition.Supplies.Clear();
+            if (document.supplies == null) return;
+
+            for (int i = 0; i < document.supplies.Count; i++)
+            {
+                LevelDocumentSupply supply = document.supplies[i];
+                if (supply == null) continue;
+
+                string where = "supplies[" + i + "]";
+
+                int count = supply.count >= 0 ? supply.count : 1;
+                if (count == 0)
+                {
+                    Add(problems, where + " count=0 等于不给这张牌，已跳过");
+                    continue;
+                }
+
+                CellKind kind;
+                bool hasKind = TryParseKind(supply.kind, out kind);
+
+                if (string.IsNullOrEmpty(supply.type) && !hasKind)
+                {
+                    Add(problems, where + " 既没有 type 也认不出 kind，已跳过");
+                    continue;
+                }
+
+                definition.Supplies.Add(new LevelSupplyEntry
+                {
+                    TypeKey = supply.type ?? string.Empty,
+                    Kind = hasKind ? kind : CellKind.Wall,
+                    Count = count,
+                });
+            }
+
+            // 有手牌就必须能动手：手写 JSON 忘了写 allowBuild 时，玩家会盯着一排点不动的卡
+            definition.AllowBuild = document.allowBuild || definition.Supplies.Count > 0;
         }
 
         /// <summary>只有一份文本、没有类型目录时的快捷入口（kind 模式足够描述一整关）。</summary>

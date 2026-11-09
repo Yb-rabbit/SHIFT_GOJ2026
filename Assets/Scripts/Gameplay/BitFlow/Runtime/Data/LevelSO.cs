@@ -84,6 +84,9 @@ namespace ShiftGo.BitFlow.Data
                 element.Hint = placement.type.Describe();
                 element.TypeKey = placement.type.Key;
 
+                // 和 CreatePlayerDraft 用同一个字段：作者锁着的那一件，玩家局里就该锁着
+                element.PlayerEditable = placement.playerEditable;
+
                 // 关卡设计权：这一格在编辑器里填的序列 / 次数，覆盖类型资产的默认值。
                 // 没填过的格子这里是个空操作，所以老关卡行为完全不变。
                 placement.ApplyOverrides(element);
@@ -277,7 +280,9 @@ namespace ShiftGo.BitFlow.Data
 
                 // 累加而不是覆盖：库存按类型 Key 记账，同一个类型写两条就是「再多给几张」。
                 // 覆盖会让作者手滑加两次时玩家少一张牌（Level_05 就踩过这个坑）。
-                draft.AddStock(supply.type.Key, supply.count);
+                // kind 一并登记：类型资产没有 kind 字段，得由注册表问一次，
+                // 否则写回存档时这一摞会被兜底成「墙」（自检也就认不出被发错的发射器）。
+                draft.AddStock(supply.type.Key, LevelTypeRegistrySO.KindOf(supply.type), supply.count);
             }
 
             // 关卡初始化不算玩家的一步：第一次 Ctrl+Z 不该把预设件撤掉

@@ -23,6 +23,12 @@ namespace ShiftGo.BitFlow.Tests
         const string LevelAssetPath = "Assets/Data/Levels/Level_01.asset";
         const string FilePrefix = "TestJson_";
 
+        /// <summary>
+        /// <see cref="LevelJsonLibrary.TryWriteNew"/> 的前缀。用测试专用的名字，
+        /// 免得跟玩家真的 IMPORT_/EXPORT_ 文件抢号、也不会误删它们。
+        /// </summary>
+        const string TestPrefix = "TestWrite_";
+
         readonly List<LevelSO> loadedLevels = new List<LevelSO>();
         readonly List<string> writtenFiles = new List<string>();
 
@@ -151,6 +157,86 @@ namespace ShiftGo.BitFlow.Tests
             Assert.IsFalse(ok);
             Assert.IsNull(level);
             Assert.IsNotEmpty(problems);
+        }
+
+        // ------------------------------------------------------------------ 导入 / 导出
+
+        /// <summary>
+        /// <see cref="LevelJsonLibrary.TryWriteNew"/> 的两条硬要求：<b>原文照抄</b>（不重新序列化）、
+        /// <b>永不覆盖</b>（第二次调用必须换个号）。玩家导入别人的关卡时，这两条决定了他
+        /// 看到的东西和收到的东西是不是同一份、以及会不会把自己的旧关卡冲掉。
+        /// </summary>
+        [Test]
+        public void TryWriteNew_WritesTextVerbatim_AndNeverReusesAName()
+        {
+            // 故意写成「不规范」的样子：缩进、键顺序、行尾注释风格的空白都要原样留下
+            string json = "{\"displayName\":\"HANDWRITTEN\",   \"width\":4,\n    \"height\":4}";
+
+            LevelJsonLibrary.EnsureFolder();
+
+            Assert.IsTrue(LevelJsonLibrary.TryWriteNew(TestPrefix, json, out string first, out string error),
+                "写不进关卡目录：" + error);
+            writtenFiles.Add(first);
+
+            Assert.IsTrue(File.Exists(first), "写完应该有文件：" + first);
+            Assert.AreEqual(json, File.ReadAllText(first), "落盘的必须是原文，不能是重新序列化的结果");
+            Assert.IsTrue(Path.GetFileName(first).StartsWith(TestPrefix, System.StringComparison.Ordinal),
+                "文件名要带上前缀：" + Path.GetFileName(first));
+
+            Assert.IsTrue(LevelJsonLibrary.TryWriteNew(TestPrefix, json, out string second, out string error2),
+                "第二次写应该换个文件名成功：" + error2);
+            writtenFiles.Add(second);
+
+            Assert.AreNotEqual(first, second, "同名文件绝不能被覆盖");
+            Assert.AreEqual(json, File.ReadAllText(first), "第二次写入不该动到第一个文件");
+            Assert.AreEqual(json, File.ReadAllText(second));
+        }
+
+        [Test]
+        public void TryWriteNew_WithoutContent_FailsInsteadOfWritingEmptyFile()
+        {
+            bool ok = LevelJsonLibrary.TryWriteNew(TestPrefix, null, out string path, out string error);
+
+            Assert.IsFalse(ok, "没有内容就不该写文件");
+            Assert.IsNull(path);
+            Assert.IsFalse(string.IsNullOrEmpty(error), "失败要说原因");
+        }
+
+        /// <summary>
+        /// 剪贴板导入用的判定：<see cref="LevelJsonLibrary.TryParseJson"/> 不落盘，
+        /// 但必须和「从文件读」得出同一关 —— 两边共用 <c>Parse</c>，这条测试钉住这一点。
+        /// </summary>
+        [Test]
+        public void TryParseJson_RoundTripsAnExportedLevel()
+        {
+            LevelSO source = LoadAssetOrFail();
+            string json = LevelJsonSerializer.ToJson(source);
+
+            Assert.IsTrue(LevelJsonLibrary.TryParseJson(json, out LevelSO parsed, out List<string> problems),
+                "导出的 JSON 应该能被剪贴板导入接受：" + string.Join("；", problems));
+            loadedLevels.Add(parsed);
+
+            LevelDefinition expected = source.ToDefinition();
+            LevelDefinition actual = parsed.ToDefinition();
+
+            Assert.AreEqual(expected.Width, actual.Width);
+            Assert.AreEqual(expected.Height, actual.Height);
+            Assert.AreEqual(expected.Elements.Count, actual.Elements.Count, "元件总数必须一致（含墙）");
+            Assert.AreEqual(source.displayName, parsed.displayName);
+        }
+
+        [Test]
+        public void TryParseJson_RejectsGarbageWithoutProducingALevel()
+        {
+            Assert.IsFalse(LevelJsonLibrary.TryParseJson("not a level at all", out LevelSO garbage, out List<string> problems),
+                "读不通的文本不该被当成关卡");
+            Assert.IsNull(garbage, "失败时不该交出半成品");
+            Assert.IsNotEmpty(problems, "失败要说明原因，否则面板上只有一行「NOT A LEVEL」");
+
+            Assert.IsFalse(LevelJsonLibrary.TryParseJson(string.Empty, out LevelSO empty, out List<string> emptyProblems),
+                "空文本不该被当成关卡");
+            Assert.IsNull(empty);
+            Assert.IsNotEmpty(emptyProblems);
         }
 
         // ------------------------------------------------------------------ 面板列表

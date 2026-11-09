@@ -74,7 +74,13 @@ Tools/LevelStudio/ShiftGoLevelStudio.csproj
    打包后的玩家则直接点**选关面板**里的 `OPEN FOLDER`，把 json 丢进那个目录；
 3. 选关面板 `CUSTOM · LEVEL JSON` 分区里就会出现这一关，点一下进关。
 
-想让玩家进关后还能自己改布局（沙盒关），在编辑器里勾上「允许玩家进关后自己改」（= JSON 的 `allowBuild: true`）。
+想让玩家进关后还能自己动手改布局，勾上「允许玩家进关后自己改」（= JSON 的 `allowBuild: true`）。
+
+- **发了手牌**的关卡：玩家靠手牌盘动手（点卡放牌、空格抓起已有件搬走），`allowBuild` 由手牌自动打开；
+- **没发手牌**的沙盒关：`allowBuild: true` 才会给作者那套 BUILD MODE（无限涂刷，B 键进出）。
+
+两者不共存 —— 手牌关一旦挂上 BUILD MODE，玩家就能凭空补件（有限手牌失效），
+而且手牌盘整排会让位给作者面板（表现就是"卡看得见、点不动"）。
 
 ## 测试
 

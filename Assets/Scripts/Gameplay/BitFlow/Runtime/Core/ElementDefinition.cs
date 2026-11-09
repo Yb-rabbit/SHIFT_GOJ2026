@@ -40,6 +40,17 @@ namespace ShiftGo.BitFlow.Core
         /// </summary>
         public string TypeKey = string.Empty;
 
+        /// <summary>
+        /// 这一格玩家能不能搬动（对应 JSON 的 <c>playerEditable</c>）。
+        ///
+        /// false = 关卡预设件：玩家局里搬不动、拾不回、也转不了（发射器 / 接收器 / 墙通常是这一类）；
+        /// true  = 作者留给玩家自由改的件（地板上的门、可以挪位置的分流器之类）。
+        ///
+        /// 默认 false 是刻意的：手写 JSON 忘了写这个字段时，宁愿锁着 ——
+        /// 一进关就能把作者的关卡拆了，比"想搬搬不动"糟糕得多。
+        /// </summary>
+        public bool PlayerEditable;
+
         public abstract CellKind Kind { get; }
 
         /// <summary>该元件的出口朝向集合；位从这些面逆行撞入视为违规。</summary>

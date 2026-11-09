@@ -41,5 +41,27 @@ namespace ShiftGo.BitFlow.View
         {
             return new Vector3((width - 1) * 0.5f * CellSize, height0, (height - 1) * 0.5f * CellSize);
         }
+
+        /// <summary>玩家关卡里最宽的板（9×8）。机位就是按它调校好的：不超过这个宽度一律不推远。</summary>
+        public const int CameraReferenceWidth = 9;
+
+        /// <summary>板每宽出一格，最终机位再多推远多少。0.0275 由「13×9 刚好够用 = 1.105」反推。</summary>
+        const float CameraPullBackPerColumn = 0.0275f;
+
+        /// <summary>推远上限。再远板就缩成画面中央一小块，反而更难读。</summary>
+        public const float MaxCameraPullBack = 1.15f;
+
+        /// <summary>
+        /// 板比参考板宽时，最终机位要乘以的「距离」倍数（只放大距离，俯角不变）。
+        ///
+        /// 按 1 倍摆位时，13×9 这类工坊大板的卡排底部会跑到屏幕下沿之外、网格前排两角也贴边 ——
+        /// 玩家第一眼会以为最底下那一行被卡片挡住了。宽度 ≤ <see cref="CameraReferenceWidth"/> 的板
+        /// （9×8 / 7×6 等全部玩家关卡）恒等于 1，画面逐像素不变。
+        /// </summary>
+        public static float CameraPullBack(int width)
+        {
+            int extra = Mathf.Max(0, width - CameraReferenceWidth);
+            return Mathf.Clamp(1f + extra * CameraPullBackPerColumn, 1f, MaxCameraPullBack);
+        }
     }
 }

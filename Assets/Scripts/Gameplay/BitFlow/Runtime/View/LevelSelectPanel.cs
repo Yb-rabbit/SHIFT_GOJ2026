@@ -32,8 +32,8 @@ namespace ShiftGo.BitFlow.View
         const float HintHeight = 22f;
         const float ActionHeight = 34f;
 
-        /// <summary>列表区高度 = 面板 620 - 标题占的 96 - 底部 CLOSE 占的 90。</summary>
-        const float ListHeight = 434f;
+        /// <summary>列表区高度 = 面板 620 - 标题占的 96 - 底部（结果行 48 + CLOSE 占的 76）。</summary>
+        const float ListHeight = 396f;
 
         LevelFlow flow;
         IntroCurtain curtain;
@@ -41,12 +41,38 @@ namespace ShiftGo.BitFlow.View
 
         GameObject canvasObject;
         RectTransform listRoot;
+        ScrollRect listScroll;
         Text emptyText;
+
+        /// <summary>
+        /// 动作结果行（<c>IMPORTED  IMPORT_01</c>）。挂在列表下沿和 CLOSE 之间、<b>不进滚动区</b> ——
+        /// 挂在列表末尾的话，玩家在列表底部点完按钮，回话可能正好掉到裁剪线以下，等于没回话。
+        /// </summary>
+        Text statusText;
 
         bool open;
 
         /// <summary>列表当前显示的是关卡列表，还是「新建关卡选尺寸」那一屏。</summary>
         bool sizePickMode;
+
+        /// <summary>列表当前显示的是不是「把当前关卡的 JSON 原文摊开看」那一屏。</summary>
+        bool jsonViewMode;
+
+        /// <summary>
+        /// DELETE 的两段式确认（和工坊的 CLEAR / HOME 同一套路）：第一次只记状态，
+        /// 几秒内再点一次才真删。文件删了没有回收站，一个误触不该毁掉别人做的关。
+        /// </summary>
+        bool deleteArmed;
+        float deleteArmedAt;
+
+        /// <summary>「再点一次确认」的有效时长。</summary>
+        const float ConfirmSeconds = 3f;
+
+        /// <summary>
+        /// 导入/导出这类「按一下就得有个回话」的动作留下的结果行（<c>IMPORTED  IMPORT_01</c>）。
+        /// 一次性：<see cref="Rebuild"/> 读走就清空，不会留到下一次开面板。
+        /// </summary>
+        string flash;
 
         // 每次 Open 重扫一遍目录：玩家/AI 直接改 JSON 文件，重开面板就能看到最新内容
         readonly List<LevelJsonEntry> jsonEntries = new List<LevelJsonEntry>();
@@ -83,6 +109,7 @@ namespace ShiftGo.BitFlow.View
 
             open = true;
             sizePickMode = false;
+            jsonViewMode = false;
             InputGate.Acquire();
             canvasObject.SetActive(true);
             Rebuild();
@@ -107,16 +134,34 @@ namespace ShiftGo.BitFlow.View
 
         void Rebuild()
         {
+            // 滚动位置要跨重建保留：结算后 Refresh、按下 IMPORT 都会重建列表，
+            // 每次跳回顶部的话，玩家刚滚到底找到了 FILES，一按就又被弹回关卡头部。
+            float previousScroll = listScroll != null ? listScroll.verticalNormalizedPosition : 1f;
+
             for (int i = listRoot.childCount - 1; i >= 0; i--)
             {
                 Destroy(listRoot.GetChild(i).gameObject);
             }
+
+            // 结果行是一次性的：谁触发 Rebuild 谁负责在这之前把它写进去
+            string status = flash;
+            flash = null;
+            SetStatus(status);
 
             // 「新建关卡」是同一块列表的第二屏：点 + NEW LEVEL 进来挑尺寸，点 BACK 回关卡列表。
             // 不另开一层面板 —— 尺寸只有四档，多一层 Canvas 反而要多处理一次输入锁的引用计数。
             if (sizePickMode)
             {
                 RebuildSizePick();
+                SetScroll(1f);      // 换屏了，位置没意义，从上往下读
+                return;
+            }
+
+            // JSON 原文是第三屏，同理不另开 Canvas
+            if (jsonViewMode)
+            {
+                RebuildJsonView();
+                SetScroll(1f);      // 原文从第一行开始看，接着上一屏的滚动位置会停在莫名其妙的地方
                 return;
             }
 
@@ -192,15 +237,43 @@ namespace ShiftGo.BitFlow.View
             }
 
             // 自己的关卡放哪、刷新一下看到新文件 —— 少了这两个按钮，玩家得自己去翻
-            // AppData/LocalLow 里的隐藏目录，等于没有这个功能
+            // AppData/LocalLow 里的隐藏目录，等于没有这个功能。
+            // 导入/导出也归这一组：都是「关卡文件进出这个目录」的事，排在存档列表下面，
+            // 不该把 + NEW LEVEL 和已有的关卡挤到屏幕外。
             if (flow != null)
             {
+                CreateCaption("FILES", ref y);
+                CreateAction("IMPORT  ·  FROM CLIPBOARD", ImportFromClipboard, ref y);
+                CreateAction("EXPORT  ·  CURRENT LEVEL", ExportCurrent, ref y);
+                CreateAction("VIEW JSON  ·  CURRENT LEVEL", BeginJsonView, ref y);
+                CreateAction("DELETE  ·  CURRENT LEVEL", DeleteCurrentJson, ref y);
                 CreateAction("SHARE FOLDER", OpenJsonFolder, ref y);
                 CreateAction("REFRESH", RefreshList, ref y);
             }
 
+            // 刚按完的动作结果贴在按钮正下方：和手指/鼠标最后停留的位置一致
             // listRoot 自上而下排：y 一路走成负数，高度取它的绝对值
             listRoot.sizeDelta = new Vector2(listRoot.sizeDelta.x, Mathf.Max(0f, -y));
+
+            SetScroll(previousScroll);
+        }
+
+        /// <summary>把结果行写进标题下的那一行（空字符串 = 隐藏）。</summary>
+        void SetStatus(string status)
+        {
+            if (statusText == null) return;
+
+            bool visible = !string.IsNullOrEmpty(status);
+            statusText.gameObject.SetActive(visible);
+            if (visible) statusText.text = status;
+        }
+
+        /// <summary>设列表滚动位置。<c>1</c> = 顶部，<c>0</c> = 底部。</summary>
+        void SetScroll(float normalized)
+        {
+            if (listScroll == null) return;
+
+            listScroll.verticalNormalizedPosition = Mathf.Clamp01(normalized);
         }
 
         /// <summary>
@@ -235,19 +308,278 @@ namespace ShiftGo.BitFlow.View
         void BeginSizePick()
         {
             sizePickMode = true;
+            jsonViewMode = false;
             Rebuild();
         }
 
         void BackToLevels()
         {
             sizePickMode = false;
+            jsonViewMode = false;
             Rebuild();
         }
 
         void RefreshList()
         {
             sizePickMode = false;
+            jsonViewMode = false;
             Rebuild();
+        }
+
+        // ---------------------------------------------------------------- 文件进出
+
+        /// <summary>
+        /// 剪贴板 → 关卡目录。这就是玩家侧的「导入」：别人把 JSON 发过来，
+        /// <b>复制 → 点这里 → 列表里就多一关</b>，不用去翻 AppData 里的隐藏目录，也不用文件对话框。
+        ///
+        /// 顺序刻意是「先验、再写」：<see cref="LevelJsonLibrary.TryParseJson"/> 的判定标准和进关时
+        /// 完全一致，读不通的东西一个字节都不落盘 —— 免得列表里多出一关点进去是黑的。
+        /// 落盘用的是剪贴板原文（不重新序列化），作者写的字段顺序/缩进都留着。
+        /// </summary>
+        void ImportFromClipboard()
+        {
+            string json = ReadClipboard();
+            if (string.IsNullOrEmpty(json))
+            {
+                Flash("CLIPBOARD IS EMPTY");
+                return;
+            }
+
+            if (!LevelJsonLibrary.TryParseJson(json, out LevelSO probe, out List<string> problems))
+            {
+                Debug.LogWarning("[BitFlow] 剪贴板里的关卡 JSON 读不通：" + string.Join("；", problems));
+                Flash("NOT A LEVEL  ·  SEE CONSOLE");
+                return;
+            }
+
+            // 只是验货，验完就扔（真正落盘的是剪贴板原文）
+            LevelJsonLibrary.DestroyLevel(probe);
+
+            if (!LevelJsonLibrary.TryWriteNew(LevelJsonLibrary.ImportPrefix, json, out string path, out string error))
+            {
+                Debug.LogWarning("[BitFlow] 关卡 JSON 写不进目录：" + error);
+                Flash("IMPORT FAILED  ·  SEE CONSOLE");
+                return;
+            }
+
+            Debug.Log("[BitFlow] 已导入关卡：" + path);
+            Flash("IMPORTED  " + System.IO.Path.GetFileNameWithoutExtension(path));
+        }
+
+        /// <summary>
+        /// 当前关卡 → 关卡目录 + 剪贴板。两件事一起做才叫「导出」：
+        /// 目录里那份能在列表里直接玩、直接改；剪贴板那份能直接发给别人（对方 IMPORT 就得到同一关）。
+        ///
+        /// 写的是可手写格式（<see cref="LevelJsonSerializer.ToJson"/>），和仓库里的关卡文件同一种：
+        /// 内置关卡也能这样导出来当模板，玩家不必从空白板开始。
+        /// </summary>
+        void ExportCurrent()
+        {
+            LevelSO level = flow != null ? flow.Current : null;
+            if (level == null)
+            {
+                Flash("NO LEVEL LOADED");
+                return;
+            }
+
+            string json = LevelJsonSerializer.ToJson(level);
+            if (string.IsNullOrEmpty(json))
+            {
+                Flash("NOTHING TO EXPORT");
+                return;
+            }
+
+            if (!LevelJsonLibrary.TryWriteNew(LevelJsonLibrary.ExportPrefix, json, out string path, out string error))
+            {
+                Debug.LogWarning("[BitFlow] 导出失败：" + error);
+                Flash("EXPORT FAILED  ·  SEE CONSOLE");
+                return;
+            }
+
+            WriteClipboard(json);
+            Debug.Log("[BitFlow] 已导出关卡：" + path);
+            Flash("EXPORTED  " + System.IO.Path.GetFileNameWithoutExtension(path) + "  ·  COPIED");
+        }
+
+        /// <summary>把结果行留给下一次 <see cref="Rebuild"/> 显示（顺带刷一遍列表）。</summary>
+        void Flash(string message)
+        {
+            flash = message;
+            Rebuild();
+        }
+
+        /// <summary>
+        /// 删掉「当前这一关」的 JSON 文件。
+        ///
+        /// 只对来自文件的关卡有效：内置目录（catalog）里的关卡是打包资源，没有可删的文件。
+        /// 删完刷新列表 —— 玩家要亲眼看到那一行消失，而不是怀疑按钮没生效。
+        ///
+        /// 两段式确认：第一次点只是"举手"，3 秒内再点才真删。文件删除不可逆，
+        /// 而这个按钮就挨着 SHARE FOLDER，误触的代价太大。
+        /// </summary>
+        void DeleteCurrentJson()
+        {
+            if (flow == null) return;
+
+            string path = flow.CurrentJsonPath;
+            if (string.IsNullOrEmpty(path))
+            {
+                deleteArmed = false;
+                Flash("ONLY MY LEVELS CAN BE DELETED");
+                return;
+            }
+
+            if (!deleteArmed || Time.unscaledTime - deleteArmedAt > ConfirmSeconds)
+            {
+                deleteArmed = true;
+                deleteArmedAt = Time.unscaledTime;
+                Flash("PRESS AGAIN TO DELETE");
+                return;
+            }
+
+            deleteArmed = false;
+
+            if (!LevelJsonLibrary.TryDelete(path, out string error))
+            {
+                Debug.LogWarning("[BitFlow] 删不掉关卡 JSON：" + path + " → " + error);
+                Flash("DELETE FAILED  ·  SEE CONSOLE");
+                return;
+            }
+
+            Debug.Log("[BitFlow] 已删除关卡 JSON：" + path);
+            Flash("DELETED  " + System.IO.Path.GetFileNameWithoutExtension(path));
+        }
+
+        static string ReadClipboard()
+        {
+            try
+            {
+                return GUIUtility.systemCopyBuffer;
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogWarning("[BitFlow] 读不了系统剪贴板：" + exception.Message);
+                return null;
+            }
+        }
+
+        static void WriteClipboard(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+
+            try
+            {
+                GUIUtility.systemCopyBuffer = text;
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogWarning("[BitFlow] 写不了系统剪贴板：" + exception.Message);
+            }
+        }
+
+        // ---------------------------------------------------------------- JSON 原文屏
+
+        /// <summary>原文屏里每行最多几个字符。16 号像素字体每字符 10px，54×10 = 540 &lt; 面板 600。</summary>
+        const int JsonLineChars = 54;
+
+        /// <summary>原文屏行高的兜底估算（字体没就绪时用），真实高度取自 <c>Text.preferredHeight</c>。</summary>
+        const float JsonLineHeight = PixelFont.Small + 4f;
+
+        void BeginJsonView()
+        {
+            sizePickMode = false;
+            jsonViewMode = true;
+            Rebuild();
+        }
+
+        /// <summary>
+        /// 「看一眼这关的 JSON」。只读：这块文本就是 EXPORT 会写进文件的那份字节，
+        /// 玩家想改就 COPY 出去粘到编辑器里 —— 面板自己不提供输入框（工程里没有 InputField）。
+        /// </summary>
+        void RebuildJsonView()
+        {
+            emptyText.gameObject.SetActive(false);
+            listRoot.gameObject.SetActive(true);
+
+            float y = 0f;
+
+            LevelSO level = flow != null ? flow.Current : null;
+            string json = level != null ? LevelJsonSerializer.ToJson(level) : string.Empty;
+            string name = level != null && !string.IsNullOrEmpty(level.displayName) ? level.displayName : "UNTITLED";
+
+            CreateCaption("VIEW JSON  ·  " + name, ref y);
+
+            if (string.IsNullOrEmpty(json))
+            {
+                CreateHint("NO LEVEL LOADED", ref y);
+                CreateAction("BACK", BackToLevels, ref y);
+                listRoot.sizeDelta = new Vector2(listRoot.sizeDelta.x, Mathf.Max(0f, -y));
+                return;
+            }
+
+            // 按钮排在原文<b>上面</b>：原文动辄三四屏高，按钮放末尾的话得先滚到底才看得见，
+            // 玩家会以为这一屏只有一堆字、退不出去。
+            string captured = json;
+            CreateAction("COPY TO CLIPBOARD", () => CopyJson(captured), ref y);
+            CreateAction("BACK", BackToLevels, ref y);
+
+            int lineCount;
+            string wrapped = WrapForPanel(json, JsonLineChars, out lineCount);
+
+            Text body = CreateText("Json", listRoot, wrapped, PixelFont.Small, TextAnchor.UpperLeft, MutedColor);
+            body.horizontalOverflow = HorizontalWrapMode.Overflow;   // 已经折好了，别再折一次
+
+            // 高度直接问 Text 要。硬编码「行数 × 行高」得赌字体的真实行高：
+            // 赌大了底下多出几行空白、滚到底是一片空的，赌小了最后一行被裁掉。
+            // 折行仍然自己做 —— Text 自己 Wrap 的话行数由它决定，滚动范围就对不上了。
+            float height = body.preferredHeight;
+            if (height <= 0f) height = lineCount * JsonLineHeight;   // 字体没就绪时的兜底估算
+
+            SetRect(body.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(600f, height), new Vector2(0f, y));
+            y -= height + RowGap;   // 末尾留一行空隙，滚到底时最后一行不贴着裁切边
+
+            listRoot.sizeDelta = new Vector2(listRoot.sizeDelta.x, Mathf.Max(0f, -y));
+        }
+
+        void CopyJson(string json)
+        {
+            WriteClipboard(json);
+            Flash("COPIED  ·  PASTE IT ANYWHERE");
+        }
+
+        /// <summary>
+        /// 把原文按每行 <paramref name="lineChars"/> 个字符硬折行（<b>不</b>在空格处折 ——
+        /// JSON 的长行都是紧凑的对象，按字符折反而每行都对得齐）。
+        /// 折出来的行数回填给调用方算高度。
+        /// </summary>
+        static string WrapForPanel(string text, int lineChars, out int lineCount)
+        {
+            if (lineChars < 8) lineChars = 8;
+
+            string[] source = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            System.Text.StringBuilder builder = new System.Text.StringBuilder(text.Length + text.Length / 8);
+            int lines = 0;
+
+            foreach (string line in source)
+            {
+                if (line.Length <= lineChars)
+                {
+                    builder.Append(line).Append('\n');
+                    lines++;
+                    continue;
+                }
+
+                for (int i = 0; i < line.Length; i += lineChars)
+                {
+                    int count = Mathf.Min(lineChars, line.Length - i);
+                    builder.Append(line, i, count).Append('\n');
+                    lines++;
+                }
+            }
+
+            lineCount = lines;
+            return builder.ToString();
         }
 
         /// <summary>
@@ -510,6 +842,7 @@ namespace ShiftGo.BitFlow.View
             scroll.movementType = ScrollRect.MovementType.Clamped;
             scroll.scrollSensitivity = 40f;
             scroll.inertia = false;   // 像素 UI 带惯性会滑过头，读起来像卡了一下
+            listScroll = scroll;
 
             // 透明的可点背景：让滚轮在行与行之间的空白处也生效，
             // 顺带把「点列表空白 = 关面板」这个误触挡掉（遮罩层还是能点）。
@@ -521,6 +854,13 @@ namespace ShiftGo.BitFlow.View
                 TextAnchor.MiddleCenter, MutedColor);
             SetRect(emptyText.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
                 new Vector2(600f, 40f), Vector2.zero);
+
+            // 结果行固定贴在列表下沿和 CLOSE 之间的空档里：不进滚动区，滚到哪儿都看得见。
+            statusText = CreateText("Status", panelRect, string.Empty, PixelFont.Small,
+                TextAnchor.MiddleCenter, TitleColor);
+            SetRect(statusText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+                new Vector2(600f, HintHeight), new Vector2(0f, 100f));
+            statusText.gameObject.SetActive(false);
 
             Button close = CreateButton("Close", panelRect, "CLOSE", new Vector2(160f, 44f), new Vector2(0f, 30f), Close);
             SetRect(close.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),

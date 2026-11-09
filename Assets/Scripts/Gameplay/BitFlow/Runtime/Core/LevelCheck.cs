@@ -110,5 +110,97 @@ namespace ShiftGo.BitFlow.Core
             }
             return null;
         }
+
+        // ------------------------------------------------------------------ 存档前自检
+
+        /// <summary>
+        /// 存档前的「必要条件」自检：只查那些<b>无论玩家怎么动都救不回来</b>的错。
+        ///
+        /// 为什么不是"跑一遍模拟能过就存"：
+        /// - 没有手牌的关卡（演示关）就该能直接跑通 —— 和以前的规则一致；
+        /// - 有手牌的关卡，作者摆的预设布局必须**跑不通**。预设布局自己就能通关，
+        ///   说明玩家一张牌都不用出，那手牌就是摆设 —— 这是"有限元件解谜"最常见的设计事故，
+        ///   而且模拟器一眼就能看出来，不该等玩家进关才发现；
+        /// - 空位必须够放下所有牌：4×4 的板发 20 张牌，一定有几张永远放不下。
+        ///
+        /// 真正的"这关一定有人能解"要等人去玩，所以这里只叫必要条件；
+        /// 完整验证留给工坊的 PLAYTEST AS PLAYER（phase 2）。
+        ///
+        /// 返回空表 = 可以存。每条都是能直接念给作者听的中文。
+        /// </summary>
+        public static List<string> RunForSave(LevelDefinition definition)
+        {
+            List<string> problems = new List<string>();
+            if (definition == null)
+            {
+                problems.Add("关卡定义是空的");
+                return problems;
+            }
+
+            int receivers = 0;
+            int emitters = 0;
+            foreach (ElementDefinition element in definition.Elements)
+            {
+                if (element is ReceiverDefinition) receivers++;
+                else if (element is EmitterDefinition) emitters++;
+            }
+
+            if (receivers == 0) problems.Add("这一关没有接收器，没法判定通关");
+            if (emitters == 0) problems.Add("这一关没有发射器，场上永远不会有位");
+
+            // 这条规则本身不看有没有接收器：没有接收器时 Run() 必然失败，
+            // 拿它当"预设布局跑不通"的证据没有意义，留给上面那两条去报。
+            string report = Run(definition, out bool solved);
+
+            if (!definition.HasSupplies)
+            {
+                if (receivers > 0 && emitters > 0 && !solved)
+                {
+                    problems.Add("没有手牌，但预设布局跑不通 —— 要么补件，要么发牌：" + FirstLine(report));
+                }
+            }
+            else
+            {
+                if (solved)
+                {
+                    problems.Add("预设布局自己就能通关 —— 玩家一张牌都不用出，手牌是摆设");
+                }
+
+                foreach (LevelSupplyEntry supply in definition.Supplies)
+                {
+                    if (supply == null) continue;
+
+                    if (!SupplyKinds.IsSupplyKind(supply.Kind))
+                    {
+                        problems.Add("手牌里有" + supply.Kind + "：" +
+                            "发射器 / 接收器定的是这一关的题，只能由作者给定，不能发给玩家");
+                    }
+                }
+
+                int occupied = definition.Elements.Count;
+                int empty = definition.Width * definition.Height - occupied;
+                int total = 0;
+                foreach (LevelSupplyEntry supply in definition.Supplies)
+                {
+                    if (supply != null) total += Math.Max(0, supply.Count);
+                }
+
+                if (empty < total)
+                {
+                    problems.Add("空位只有 " + empty + " 格，却发了 " + total + " 张牌 —— 一定有几张放不下");
+                }
+            }
+
+            return problems;
+        }
+
+        /// <summary>报告的第一行（"✅ 通关 12 ticks" 这种），拼进问题描述里给作者一句上下文。</summary>
+        static string FirstLine(string report)
+        {
+            if (string.IsNullOrEmpty(report)) return string.Empty;
+
+            int index = report.IndexOf('\n');
+            return index <= 0 ? report : report.Substring(0, index);
+        }
     }
 }

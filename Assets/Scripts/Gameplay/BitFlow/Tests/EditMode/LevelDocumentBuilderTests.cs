@@ -321,6 +321,48 @@ namespace ShiftGo.BitFlow.Tests
             }
         }
 
+        /// <summary>
+        /// <c>playerEditable</c> 必须穿过「草稿 → 文档 → 关卡」这一整条链路。
+        ///
+        /// 这条守的是工坊存档的老 bug：<see cref="LevelDocumentWriter"/> 以前根本不写这个字段，
+        /// 于是工坊存出来的每一件读回来都是"关卡预设件"，玩家一个都搬不动。
+        /// </summary>
+        [Test]
+        public void PlayerEditable_SurvivesDraftToDocumentToDefinition()
+        {
+            LevelDraft draft = new LevelDraft(4, 4);
+            draft.Place(EditableElement.CreateDefault(CellKind.Emitter, new GridPoint(0, 0)), true);
+            draft.Place(EditableElement.CreateDefault(CellKind.Splitter, new GridPoint(1, 1)), false);
+
+            List<string> problems = new List<string>();
+            LevelDocument document = LevelDocumentWriter.FromDefinition(draft.ToDefinition(), problems);
+            Assert.IsEmpty(problems, "这份草稿不该有写不出去的格子");
+
+            LevelDocumentCell fixedCell = FindCell(document, new GridPoint(0, 0));
+            Assert.IsNotNull(fixedCell);
+            Assert.IsFalse(fixedCell.playerEditable, "预设件写进 JSON 必须是 false");
+
+            LevelDocumentCell freeCell = FindCell(document, new GridPoint(1, 1));
+            Assert.IsNotNull(freeCell);
+            Assert.IsTrue(freeCell.playerEditable, "自由件写进 JSON 必须是 true");
+
+            LevelDefinition built = LevelDocumentBuilder.Build(document, new List<string>());
+            Dictionary<GridPoint, ElementDefinition> lookup = built.BuildLookup();
+            Assert.IsFalse(lookup[new GridPoint(0, 0)].PlayerEditable, "预设件读回来还是预设件");
+            Assert.IsTrue(lookup[new GridPoint(1, 1)].PlayerEditable, "自由件读回来还是自由的");
+        }
+
+        static LevelDocumentCell FindCell(LevelDocument document, GridPoint coord)
+        {
+            if (document.elements == null) return null;
+
+            foreach (LevelDocumentCell cell in document.elements)
+            {
+                if (cell.x == coord.X && cell.y == coord.Y) return cell;
+            }
+            return null;
+        }
+
         static int CountWalls(LevelDefinition definition)
         {
             int count = 0;

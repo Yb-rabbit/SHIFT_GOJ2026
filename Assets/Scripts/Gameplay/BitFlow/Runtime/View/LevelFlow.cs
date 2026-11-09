@@ -127,19 +127,39 @@ namespace ShiftGo.BitFlow.View
         }
 
         /// <summary>
+        /// 这一关该不该挂上<b>作者的</b> BUILD MODE（无限涂刷）。
+        ///
+        /// BUILD MODE 是开发工具：它给的是无限元件、中文调色板、F5 存盘。
+        /// 一旦它挂到玩家头上，两件坏事同时发生 ——
+        /// 1) 玩家能凭空补件，有限手牌立刻形同虚设；
+        /// 2) <see cref="BitFlowCardTray"/> 每帧看到 build mode 就直接让位（见它 Update 里的门禁），
+        ///    手牌整排变成装饰品：点不动、放不下、连预览都没有 —— 表现就是「手牌没法用」。
+        ///
+        /// 所以只有<b>没有手牌的纯沙盒关</b>（<c>allowBuild: true</c> 且 supplies 为空）才沿用旧行为；
+        /// 有手牌的关卡里，玩家的动手能力由手牌盘提供（放牌 / 空格搬件），不需要也不能给 BUILD MODE。
+        /// </summary>
+        public static bool AllowsAuthorBuildMode(LevelSO level)
+        {
+            if (level == null || !level.allowBuild) return false;
+            return !level.HasSupplies;
+        }
+
+        /// <summary>
         /// 进关后决定「玩家能不能自己搬元件」。
-        /// JSON 里写了 <c>allowBuild: true</c> 就开（沙盒关）；否则沿用 <see cref="disableBuildMode"/>
-        /// —— 正式关默认关掉，作者场景默认留着，行为和加这个字段之前完全一致。
+        /// 能挂 BUILD MODE 的只有沙盒关（见 <see cref="AllowsAuthorBuildMode"/>）；
+        /// 其余情况沿用 <see cref="disableBuildMode"/>，另外手牌关<b>必须</b>把 build mode 摘掉，
+        /// 否则哪怕场景里默认挂着（作者场景 allowBuildMode），玩家的手牌也会被压掉。
         /// </summary>
         void ApplyBuildMode(LevelSO level)
         {
-            if (level != null && level.allowBuild)
+            if (AllowsAuthorBuildMode(level))
             {
                 runner.EnableBuildMode();
                 return;
             }
 
-            if (disableBuildMode) runner.DisableBuildMode();
+            bool handLevel = level != null && level.HasSupplies;
+            if (disableBuildMode || handLevel) runner.DisableBuildMode();
         }
 
         /// <summary>

@@ -35,6 +35,10 @@ namespace ShiftGo.BitFlow.View
         bool configured;
         float elapsed;
 
+        /// <summary>上一次算机位时的网格尺寸（<see cref="Frame"/> 靠它判重：尺寸没变就不用重新摆）。</summary>
+        int framedWidth = -1;
+        int framedHeight = -1;
+
         Vector3 fromPosition;
         Quaternion fromRotation;
         Vector3 toPosition;
@@ -112,19 +116,64 @@ namespace ShiftGo.BitFlow.View
             transform.rotation = Quaternion.Slerp(fromRotation, toRotation, eased);
         }
 
+        /// <summary>
+        /// 立刻把镜头摆到<b>最终机位</b>并锁死，不演推近。
+        ///
+        /// 为什么需要这个入口：<see cref="Prepare"/> / <see cref="Play"/> 只有 <see cref="IntroCurtain"/>
+        /// 会调，而机位是按网格中心 + 网格尺寸算的 —— 工坊换一张 11×8 的板、或选关面板换一关，
+        /// 舞台重建了但没人重新算机位，画面就停在上一关的中心（小网格看起来贴在屏幕一角）。
+        ///
+        /// 判重只看「网格尺寸变没变」：尺寸一样就什么都不做（编辑器每改一格都会走这里，等于零开销），
+        /// 尺寸一变就立刻落到新机位 —— 哪怕开场推近正演到一半。
+        /// 那种情况（开场 2 秒内有人换了板）本来就极少，而且"推完锁死在上一关的机位上"是更糟的结果：
+        /// 之后再也没人重算，画面会一直歪着。
+        /// </summary>
+        public void Frame(LevelDefinition level = null)
+        {
+            if (runner == null) runner = FindObjectOfType<BitFlowRunner>();
+
+            LevelDefinition target = level;
+            if (target == null && runner != null) target = runner.Definition;
+            if (target == null) return;
+
+            // 尺寸没变、而且已经算过机位：什么都不用做
+            if (configured && framedWidth == target.Width && framedHeight == target.Height) return;
+
+            ComputePose(target);
+            transform.position = toPosition;
+            transform.rotation = toRotation;
+
+            elapsed = introDuration;
+            configured = true;
+            enabled = false;
+        }
+
         void Configure(LevelDefinition level)
         {
-            Vector3 center = GridMetrics.GridCenter(level.Width, level.Height, lookHeight);
-
-            toPosition = center + finalOffset;
-            toRotation = Quaternion.LookRotation(center - toPosition, Vector3.up);
-
-            fromPosition = center + overviewOffset;
-            fromRotation = Quaternion.LookRotation(center - fromPosition, Vector3.up);
-
+            ComputePose(level);
             transform.position = fromPosition;
             transform.rotation = fromRotation;
             configured = true;
+        }
+
+        /// <summary>只算不说话：把两个机位算好，并把网格尺寸记下来（<see cref="Frame"/> 靠它判重）。</summary>
+        void ComputePose(LevelDefinition level)
+        {
+            Vector3 center = GridMetrics.GridCenter(level.Width, level.Height, lookHeight);
+
+            // 板比参考板宽就整体拉远一点：13×9 的卡排按 1 倍摆位会掉到屏幕下沿之外，
+            // 玩家会以为最底下一行被卡片挡住了。两个机位乘同一个倍数 —— 俯角、推近轨迹都不变。
+            // 宽度 ≤ 9 的板（所有玩家关卡）倍数是 1，画面逐像素与改动前一致。
+            float pullBack = GridMetrics.CameraPullBack(level.Width);
+
+            toPosition = center + finalOffset * pullBack;
+            toRotation = Quaternion.LookRotation(center - toPosition, Vector3.up);
+
+            fromPosition = center + overviewOffset * pullBack;
+            fromRotation = Quaternion.LookRotation(center - fromPosition, Vector3.up);
+
+            framedWidth = level.Width;
+            framedHeight = level.Height;
         }
     }
 }

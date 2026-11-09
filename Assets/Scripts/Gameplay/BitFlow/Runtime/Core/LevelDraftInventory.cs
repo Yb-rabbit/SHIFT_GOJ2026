@@ -31,6 +31,13 @@ namespace ShiftGo.BitFlow.Core
 
         readonly HashSet<GridPoint> lockedCells = new HashSet<GridPoint>();
         readonly Dictionary<string, int> stock = new Dictionary<string, int>();
+
+        /// <summary>发出去的张数（只增不减）。存档要写这个，不能写 <see cref="stock"/> 的剩余量。</summary>
+        readonly Dictionary<string, int> granted = new Dictionary<string, int>();
+
+        /// <summary>每一摞牌是哪种元件。写关卡档案时按它填 <c>kind</c> 兜底。</summary>
+        readonly Dictionary<string, CellKind> stockKinds = new Dictionary<string, CellKind>();
+
         readonly List<DraftSnapshot> history = new List<DraftSnapshot>();
 
         bool stockEnabled;
@@ -38,6 +45,15 @@ namespace ShiftGo.BitFlow.Core
 
         /// <summary>是否处于「有限手牌」模式。false = 作者模式（无限涂刷）。</summary>
         public bool StockEnabled => stockEnabled;
+
+        /// <summary>
+        /// 作者模式：锁定标记只当「给玩家的标记」，<b>不挡作者自己</b>。
+        ///
+        /// 工坊里必须打开它：那一局里作者正在做这一关，他要能搬动 / 旋转 / 改参数自己锁过的件，
+        /// 否则「把预设件标成 FIXED」这个动作会先把作者的鼠标关在门外。
+        /// 玩家局（<c>LevelSO.CreatePlayerDraft</c>）永远从 false 开始，所以锁定对玩家照样是硬的。
+        /// </summary>
+        public bool AuthorMode;
 
         /// <summary>关卡预设件数量（玩家搬不动的那些）。</summary>
         public int LockedCount => lockedCells.Count;
@@ -50,8 +66,95 @@ namespace ShiftGo.BitFlow.Core
         {
             if (string.IsNullOrEmpty(typeKey)) return;
 
+            // 不知道种类时沿用上一次登记的（多半是关卡资产那条路），实在没有就记成墙 ——
+            // 只要 TypeKey 还在，写档案时它就是权威，kind 只是个兜底。
+            SetStock(typeKey, KindOfStock(typeKey), count);
+        }
+
+        /// <summary>
+        /// 登记一摞手牌，并记住它是哪种元件。工坊的「发牌」面板走这条：
+        /// 它只认得类型资产，不认得 <see cref="CellKind"/> 之外的运行期信息。
+        /// </summary>
+        public void SetStock(string typeKey, CellKind kind, int count)
+        {
+            if (string.IsNullOrEmpty(typeKey)) return;
+
             stockEnabled = true;
-            stock[typeKey] = Math.Max(0, count);
+
+            int value = Math.Max(0, count);
+            stock[typeKey] = value;
+            granted[typeKey] = value;
+            stockKinds[typeKey] = kind;
+        }
+
+        /// <summary>把某一摞牌整摞取消（0 张 = 不给）。</summary>
+        public void ClearStock(string typeKey)
+        {
+            if (string.IsNullOrEmpty(typeKey)) return;
+
+            stock.Remove(typeKey);
+            granted.Remove(typeKey);
+            stockKinds.Remove(typeKey);
+
+            // 全撤光了就退回「不限量」的作者模式，免得玩家面对一排 0 张的卡
+            if (stock.Count == 0) stockEnabled = false;
+        }
+
+        /// <summary>撤销发牌：整张手牌表清空并退回作者模式。</summary>
+        public void ClearAllStock()
+        {
+            stock.Clear();
+            granted.Clear();
+            stockKinds.Clear();
+            stockEnabled = false;
+        }
+
+        /// <summary>
+        /// 发牌（UI 用）：和格子的改动一样压一步撤销栈。
+        /// <paramref name="count"/> ≤ 0 等于「这一摞不给」，会把整摞撤掉。
+        /// </summary>
+        public void EditStock(string typeKey, CellKind kind, int count)
+        {
+            if (string.IsNullOrEmpty(typeKey)) return;
+
+            PushHistory();
+
+            if (count <= 0) ClearStock(typeKey);
+            else SetStock(typeKey, kind, count);
+        }
+
+        /// <summary>撤回所有发牌（UI 的 NO HAND）。本来就是不限量时什么都不做，别白压一格撤销栈。</summary>
+        public void EditClearHand()
+        {
+            if (!stockEnabled && stock.Count == 0 && granted.Count == 0) return;
+
+            PushHistory();
+            ClearAllStock();
+        }
+
+        /// <summary>某一摞牌发过多少张（存档用；放下的牌不会让它变小）。</summary>
+        public int Granted(string typeKey)
+        {
+            if (string.IsNullOrEmpty(typeKey)) return 0;
+            return granted.TryGetValue(typeKey, out int value) ? value : 0;
+        }
+
+        /// <summary>某一摞牌是哪种元件；没登记过按墙处理。</summary>
+        public CellKind KindOfStock(string typeKey)
+        {
+            if (string.IsNullOrEmpty(typeKey)) return CellKind.Wall;
+            return stockKinds.TryGetValue(typeKey, out CellKind kind) ? kind : CellKind.Wall;
+        }
+
+        /// <summary>发出去的牌总共几张（工坊状态行「HAND x/y」用）。</summary>
+        public int StockTotal
+        {
+            get
+            {
+                int total = 0;
+                foreach (KeyValuePair<string, int> pair in granted) total += Math.Max(0, pair.Value);
+                return total;
+            }
         }
 
         /// <summary>
@@ -64,11 +167,31 @@ namespace ShiftGo.BitFlow.Core
         /// </summary>
         public void AddStock(string typeKey, int count)
         {
+            AddStock(typeKey, KindOfStock(typeKey), count);
+        }
+
+        /// <summary>
+        /// 同上，并且<b>记下这一摞是哪种元件</b>。
+        ///
+        /// 关卡资产（<c>LevelSO.CreatePlayerDraft</c>）必须走这条：类型资产本身没有 kind 字段，
+        /// 不传进来的话 <see cref="KindOfStock"/> 只能兜底成墙 ——
+        /// 存档里的 <c>kind</c> 就会把「非门」写成「墙」，而自检
+        /// （<see cref="LevelCheck.RunForSave"/> 的"发射器/接收器不能发牌"那条）也就漏检了。
+        /// </summary>
+        public void AddStock(string typeKey, CellKind kind, int count)
+        {
             if (string.IsNullOrEmpty(typeKey)) return;
 
             stockEnabled = true;
+            int add = Math.Max(0, count);
+
             int left = stock.TryGetValue(typeKey, out int existing) ? existing : 0;
-            stock[typeKey] = left + Math.Max(0, count);
+            stock[typeKey] = left + add;
+
+            int given = granted.TryGetValue(typeKey, out int already) ? already : 0;
+            granted[typeKey] = given + add;
+
+            stockKinds[typeKey] = kind;
         }
 
         /// <summary>某摞牌还剩几张；返回 -1 表示不限量（作者模式，或这个 Key 没有归属）。</summary>
@@ -83,11 +206,35 @@ namespace ShiftGo.BitFlow.Core
             return lockedCells.Contains(coord);
         }
 
+        /// <summary>
+        /// 这一格现在<b>挡不挡人</b>。和 <see cref="IsLocked"/> 的区别：作者模式下锁定只是个标记，
+        /// 挡住了玩家挡不住作者 —— 工坊里的每一次搬动 / 旋转 / 改参数都走这个判定。
+        /// </summary>
+        bool Blocked(GridPoint coord)
+        {
+            return !AuthorMode && lockedCells.Contains(coord);
+        }
+
         public void SetLocked(GridPoint coord, bool locked)
         {
             if (!cells.ContainsKey(coord)) return;
             if (locked) lockedCells.Add(coord);
             else lockedCells.Remove(coord);
+        }
+
+        /// <summary>
+        /// 改「玩家能不能搬这一格」，并压一步撤销栈。
+        ///
+        /// 和 <see cref="SetLocked"/> 的区别只有撤销：那个是载入关卡时批量打标记用的（不算玩家的一步），
+        /// 这个是作者在工坊里按 FIXED / FREE —— 手滑锁错了必须能 Ctrl+Z 回来。
+        /// </summary>
+        public void EditLock(GridPoint coord, bool locked)
+        {
+            if (!cells.ContainsKey(coord)) return;
+            if (lockedCells.Contains(coord) == locked) return;
+
+            PushHistory();
+            SetLocked(coord, locked);
         }
 
         /// <summary>
@@ -100,7 +247,7 @@ namespace ShiftGo.BitFlow.Core
             if (element == null || !InBounds(element.Coord)) return PlaceResult.OutOfBounds;
 
             GridPoint coord = element.Coord;
-            if (lockedCells.Contains(coord)) return PlaceResult.Locked;
+            if (Blocked(coord)) return PlaceResult.Locked;
             if (cells.ContainsKey(coord)) return PlaceResult.Occupied;
 
             string typeKey = element.TypeKey;
@@ -134,7 +281,7 @@ namespace ShiftGo.BitFlow.Core
         {
             picked = null;
 
-            if (lockedCells.Contains(coord)) return false;
+            if (Blocked(coord)) return false;
             if (!cells.TryGetValue(coord, out EditableElement element)) return false;
 
             int left = Remaining(element.TypeKey);
@@ -144,6 +291,57 @@ namespace ShiftGo.BitFlow.Core
             if (stockEnabled && !string.IsNullOrEmpty(element.TypeKey)) stock[element.TypeKey] = left + 1;
 
             picked = element;
+            return true;
+        }
+
+        /// <summary>
+        /// 搬动判定：<paramref name="from"/> 格能搬、<paramref name="to"/> 格能落。
+        ///
+        /// 规则和 <see cref="CanPlace"/> 一致，但有两条不同：
+        /// 1) 不看手牌库存 —— 搬动是把已有的件挪个位置，不是又发了一张牌；
+        /// 2) 目标就是原格时算 Ok —— 玩家抓起又原地放下，最自然的反应是"什么都没发生"，而不是一句报错。
+        ///
+        /// 只读：预览要在每一格上问一遍，绝不能顺手改数据。
+        /// </summary>
+        public PlaceResult CanMove(GridPoint from, GridPoint to)
+        {
+            if (!InBounds(to)) return PlaceResult.OutOfBounds;
+            if (Blocked(from)) return PlaceResult.Locked;
+            if (!cells.ContainsKey(from)) return PlaceResult.Occupied;
+            if (to.Equals(from)) return PlaceResult.Ok;
+            if (Blocked(to)) return PlaceResult.Locked;
+            if (cells.ContainsKey(to)) return PlaceResult.Occupied;
+            return PlaceResult.Ok;
+        }
+
+        /// <summary>
+        /// 把 <paramref name="from"/> 格的整件挪到 <paramref name="to"/> 格。
+        ///
+        /// 挪的是同一个 <see cref="EditableElement"/>：序列 / 张数 / 朝向 / 类型 Key 全都跟着走，
+        /// 玩家把门挪个位置不会把它改回默认配置（这正是"拾回再放"那条老路会丢的东西）。
+        /// 整次搬动只压一步撤销栈，而且不碰库存 —— 搬一次不该让玩家少一张牌。
+        /// </summary>
+        public bool TryMove(GridPoint from, GridPoint to)
+        {
+            if (CanMove(from, to) != PlaceResult.Ok) return false;
+            if (to.Equals(from)) return true;
+
+            EditableElement element = cells[from];
+            bool wasLocked = lockedCells.Contains(from);
+
+            PushHistory();
+            cells.Remove(from);
+            element.Coord = to;
+            cells[to] = element;
+
+            // 锁必须跟着件走。作者模式下能搬自己锁着的件，如果锁留在原格，
+            // 新位置对玩家就变成"可搬"、旧位置变成"不可放"—— 两边都错。
+            if (wasLocked)
+            {
+                lockedCells.Remove(from);
+                lockedCells.Add(to);
+            }
+
             return true;
         }
 
@@ -204,6 +402,16 @@ namespace ShiftGo.BitFlow.Core
             {
                 snapshot.Stock[pair.Key] = pair.Value;
             }
+
+            foreach (KeyValuePair<string, int> pair in granted)
+            {
+                snapshot.Granted[pair.Key] = pair.Value;
+            }
+
+            foreach (KeyValuePair<string, CellKind> pair in stockKinds)
+            {
+                snapshot.StockKinds[pair.Key] = pair.Value;
+            }
             return snapshot;
         }
 
@@ -227,6 +435,18 @@ namespace ShiftGo.BitFlow.Core
                 stock[pair.Key] = pair.Value;
             }
 
+            granted.Clear();
+            foreach (KeyValuePair<string, int> pair in snapshot.Granted)
+            {
+                granted[pair.Key] = pair.Value;
+            }
+
+            stockKinds.Clear();
+            foreach (KeyValuePair<string, CellKind> pair in snapshot.StockKinds)
+            {
+                stockKinds[pair.Key] = pair.Value;
+            }
+
             stockEnabled = snapshot.StockEnabled;
             restoring = false;
         }
@@ -237,6 +457,8 @@ namespace ShiftGo.BitFlow.Core
             public readonly Dictionary<GridPoint, EditableElement> Cells = new Dictionary<GridPoint, EditableElement>();
             public readonly HashSet<GridPoint> Locked = new HashSet<GridPoint>();
             public readonly Dictionary<string, int> Stock = new Dictionary<string, int>();
+            public readonly Dictionary<string, int> Granted = new Dictionary<string, int>();
+            public readonly Dictionary<string, CellKind> StockKinds = new Dictionary<string, CellKind>();
             public readonly bool StockEnabled;
 
             public DraftSnapshot(bool stockEnabled)

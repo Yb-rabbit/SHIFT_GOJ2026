@@ -26,6 +26,12 @@ namespace ShiftGo.BitFlow.Core
         /// <summary>发射器的发射总位数 / 接收器的期望个数。</summary>
         public int Count = 1;
 
+        /// <summary>
+        /// 接收器专用：true（默认）= 四面都能收，<see cref="PrimaryDir"/> 只作为显示朝向；
+        /// false = 严格模式，只有进料面能收。发射器/其它件忽略这个字段。
+        /// </summary>
+        public bool AcceptAnyFace = true;
+
         /// <summary>过滤器放行的取值（0 或 1）。</summary>
         public byte PassValue = 1;
 
@@ -56,6 +62,7 @@ namespace ShiftGo.BitFlow.Core
                     element.PrimaryDir = Dir.Down; // 进料面：位要朝上走进去
                     element.Sequence = "1";
                     element.Count = 1;
+                    element.AcceptAnyFace = true;  // 默认四面可收：围一圈只留一个口是最好上手的关卡
                     break;
 
                 case CellKind.Splitter:
@@ -92,6 +99,7 @@ namespace ShiftGo.BitFlow.Core
                     element.PrimaryDir = receiver.FeedFace;
                     element.Sequence = receiver.TargetSequence;
                     element.Count = receiver.TargetCount;
+                    element.AcceptAnyFace = receiver.AcceptAnyFace;
                     break;
 
                 case SplitterDefinition splitter:
@@ -122,6 +130,7 @@ namespace ShiftGo.BitFlow.Core
                 SecondaryDir = SecondaryDir,
                 Sequence = Sequence,
                 Count = Count,
+                AcceptAnyFace = AcceptAnyFace,
                 PassValue = PassValue,
                 TypeKey = TypeKey,
             };
@@ -155,6 +164,7 @@ namespace ShiftGo.BitFlow.Core
                         Id = id,
                         Coord = Coord,
                         FeedFace = PrimaryDir,
+                        AcceptAnyFace = AcceptAnyFace,
                         TargetSequence = NormalizeSequence(Sequence),
                         TargetCount = Math.Max(0, Count),
                     };
@@ -198,7 +208,8 @@ namespace ShiftGo.BitFlow.Core
                 case CellKind.Emitter:
                     return "发射器  朝" + PrimaryDir.ToChineseName() + "  序列 " + NormalizeSequence(Sequence) + " 共 " + Count + " 位";
                 case CellKind.Receiver:
-                    return "接收器  进料面" + PrimaryDir.ToChineseName() + "  需要 " + NormalizeSequence(Sequence) + " 共 " + Count + " 位";
+                    return "接收器  进料面" + PrimaryDir.ToChineseName() + (AcceptAnyFace ? "（四面可收）" : "（只认进料面）")
+                        + "  需要 " + NormalizeSequence(Sequence) + " 共 " + Count + " 位";
                 case CellKind.Splitter:
                     return "分流器  1→" + PrimaryDir.ToChineseName() + "  0→" + SecondaryDir.ToChineseName();
                 case CellKind.NotGate:
@@ -258,6 +269,14 @@ namespace ShiftGo.BitFlow.Core
             {
                 draft.Place(EditableElement.FromDefinition(element));
             }
+
+            // 关卡带手牌就一起载入：工坊改一关「有限元件」的关时，发牌数字不能丢
+            foreach (LevelSupplyEntry supply in level.Supplies)
+            {
+                if (supply == null || string.IsNullOrEmpty(supply.TypeKey)) continue;
+                draft.SetStock(supply.TypeKey, supply.Kind, supply.Count);
+            }
+
             return draft;
         }
 
@@ -307,24 +326,43 @@ namespace ShiftGo.BitFlow.Core
             return true;
         }
 
-        /// <summary>删除格子里的元件；关卡预设件拒绝删除。</summary>
+        /// <summary>删除格子里的元件；关卡预设件拒绝删除（作者模式下照删）。</summary>
         public bool Remove(GridPoint coord)
         {
-            if (lockedCells.Contains(coord)) return false;
+            if (Blocked(coord)) return false;
             if (!cells.ContainsKey(coord)) return false;
 
             PushHistory();
+            lockedCells.Remove(coord);   // 删掉之后那格的锁没有意义了，留着会挡住下一件的放置
             return cells.Remove(coord);
         }
 
-        /// <summary>把格子里的元件顺时针转 90°；空格或关卡预设件返回 false。</summary>
+        /// <summary>把格子里的元件顺时针转 90°；空格或关卡预设件返回 false（作者模式下照转）。</summary>
         public bool Rotate(GridPoint coord)
         {
-            if (lockedCells.Contains(coord)) return false;
+            if (Blocked(coord)) return false;
             if (!cells.TryGetValue(coord, out EditableElement element)) return false;
 
             PushHistory();
             element.Rotate();
+            return true;
+        }
+
+        /// <summary>
+        /// 就地改一格的参数（朝向 / 序列 / 位数 / 接收条件），并把这一步压进撤销栈。
+        ///
+        /// 为什么不把字段直接给 UI 改：没有 <c>PushHistory</c> 的改动撤不回来，
+        /// 而玩家改错一位序列时最需要的就是 Ctrl+Z。改完记得让 runner 重建一次舞台
+        /// （手牌盘的 <c>CommitDraft</c>），否则玩家看到的还是旧配置。
+        /// </summary>
+        public bool Edit(GridPoint coord, Action<EditableElement> mutate)
+        {
+            if (mutate == null) return false;
+            if (Blocked(coord)) return false;
+            if (!cells.TryGetValue(coord, out EditableElement element)) return false;
+
+            PushHistory();
+            mutate(element);
             return true;
         }
 
@@ -360,9 +398,32 @@ namespace ShiftGo.BitFlow.Core
             {
                 ElementDefinition definition = element.ToDefinition(nextId);
                 definition.TypeKey = element.TypeKey;
+
+                // 锁定标记 = 玩家搬不动。整份草稿里 lockedCells 是唯一权威，
+                // 存档时把它写回 playerEditable，读回来才还是同一把锁。
+                definition.PlayerEditable = !lockedCells.Contains(element.Coord);
+
                 level.Elements.Add(definition);
                 nextId++;
             }
+
+            // 手牌：用「发过多少张」而不是「还剩多少张」——
+            // 作者一边摆预设件一边数牌时，库存会被扣掉，存档里要的是他填的那个数字。
+            foreach (KeyValuePair<string, int> pair in granted)
+            {
+                if (string.IsNullOrEmpty(pair.Key) || pair.Value <= 0) continue;
+
+                level.Supplies.Add(new LevelSupplyEntry
+                {
+                    TypeKey = pair.Key,
+                    Kind = KindOfStock(pair.Key),
+                    Count = pair.Value,
+                });
+            }
+
+            // 有手牌就必须让玩家能动手，否则卡摆在屏幕上却放不下去
+            level.AllowBuild = level.Supplies.Count > 0;
+
             return level;
         }
 

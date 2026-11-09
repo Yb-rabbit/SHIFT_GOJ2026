@@ -22,9 +22,12 @@ namespace ShiftGo.BitFlow.View
     ///    （<see cref="LevelDocumentWriter"/> → <c>JsonUtility</c>），所以
     ///    <see cref="LevelJsonLibrary.Scan"/> / <see cref="LevelFlow.LoadJson"/> 一行都不用改就能认出它。
     ///
-    /// 为什么 DONE 要求「能自己跑通」：工坊存出来的关卡里<b>没有 supplies</b>
-    /// （<see cref="LevelDocumentWriter"/> 只写 placements），玩家进关按 PLAY 就是看这台机器跑。
-    /// 所以一份自己跑不通的布局，对玩家来说就是必输关 —— 在这里拦下来，比让他存进去再自己发现要好。
+    /// 为什么 DONE 要求「能自己跑通」：这份布局就是玩家进关后看到的那台机器。
+    /// 机器自己跑不通（发射器吐的位永远对不上接收器），对玩家来说就是必输关 —— 在这里拦下来，
+    /// 比让他存进去再自己发现要好。
+    ///
+    /// 关卡里要不要发手牌由作者决定（参数小窗的 HAND 页）：发了就是「有限元件解谜」，
+    /// 存档同时写出 <c>supplies</c> 和 <c>allowBuild</c>；不发就是纯展示用的机器。
     /// </summary>
     public sealed class BitFlowWorkshop : MonoBehaviour
     {
@@ -51,6 +54,7 @@ namespace ShiftGo.BitFlow.View
         BitFlowHud hud;
         LevelSelectPanel panel;
         LevelFlow flow;
+        BitFlowSetupPanel setup;
 
         LevelDraft draft;
         int width = 9;
@@ -95,6 +99,7 @@ namespace ShiftGo.BitFlow.View
             if (hud == null) hud = FindObjectOfType<BitFlowHud>();
             if (panel == null) panel = FindObjectOfType<LevelSelectPanel>();
             if (flow == null) flow = FindObjectOfType<LevelFlow>();
+            if (setup == null) setup = FindObjectOfType<BitFlowSetupPanel>();
         }
 
         void OnDestroy()
@@ -150,6 +155,9 @@ namespace ShiftGo.BitFlow.View
 
             draft = new LevelDraft(this.width, this.height) { DisplayName = name };
 
+            // 作者模式：锁定标记只写给玩家看，不挡作者自己（他正在做这一关）
+            draft.AuthorMode = true;
+
             open = true;
             testing = false;
             clearArmed = false;
@@ -164,6 +172,10 @@ namespace ShiftGo.BitFlow.View
                 tray.EnterWorkshop(draft, Palette());
                 tray.SetStatus(string.Empty);
             }
+
+            // 参数小窗：改序列 / 次数 / 接收条件，以及发手牌。没有它，工坊只能摆形状不能调参数。
+            setup = BitFlowSetupPanel.Ensure(tray, Palette(), draft);
+            setup.Open();
 
             if (hud != null) hud.EnterWorkshopBar(RequestSave, RequestTest, RequestClear, RequestHome);
         }
@@ -189,6 +201,8 @@ namespace ShiftGo.BitFlow.View
                 tray.DraftChanged -= OnDraftChanged;
                 tray.ExitWorkshop();
             }
+
+            if (setup != null) setup.Close();
 
             if (hud != null) hud.ExitWorkshopBar();
 
@@ -229,12 +243,14 @@ namespace ShiftGo.BitFlow.View
             LevelDefinition definition = draft.ToDefinition();
             definition.DisplayName = name;
 
-            string report = LevelCheck.Run(definition, out bool success);
-            if (!success)
+            // 存档前的必要条件自检（规则见 LevelCheck.RunForSave）：
+            // 结构齐不齐、手牌是不是摆设、空位够不够放下所有牌。
+            List<string> problems = LevelCheck.RunForSave(definition);
+            if (problems.Count > 0)
             {
-                // 详细报告是中文的（给作者看 Console 用），面板上是像素字体，只放得下 ASCII 结论
-                Debug.Log("[BitFlow] 工坊自检未通过：" + name + "\n" + report);
-                SetHint(HintFor(definition, report));
+                // 中文全文进 Console（那里的字形是完整的），面板上只放得下 ASCII 结论
+                Debug.Log("[BitFlow] 工坊自检未通过：" + name + "\n  " + string.Join("\n  ", problems));
+                SetHint(HintFor(problems));
                 return;
             }
 
@@ -290,9 +306,11 @@ namespace ShiftGo.BitFlow.View
 
             StopTest();
             draft = new LevelDraft(width, height) { DisplayName = name };
+            draft.AuthorMode = true;   // 同上：清空之后还是作者的板
 
             PushDraftToRunner();
             if (tray != null) tray.EnterWorkshop(draft, Palette());
+            if (setup != null) setup.SetDraft(draft);
             SetHint("CLEARED");
         }
 
@@ -313,6 +331,9 @@ namespace ShiftGo.BitFlow.View
             // 板子一变，「再点一次确认」的前提就不成立了（例如 CLEAR 已确认一半，玩家又摆了一件）
             clearArmed = false;
             homeArmed = false;
+
+            // 参数小窗上的读数（张数 / 匹配结论）也跟着变；撤销会改手牌，不能只在点格子时刷新
+            if (setup != null) setup.Refresh();
         }
 
         /// <summary>把草稿推给 runner：重建整台舞台并停在 TICK 00。手牌盘的 Apply 走的也是这一条。</summary>
@@ -440,25 +461,24 @@ namespace ShiftGo.BitFlow.View
         // ---------------------------------------------------------------- 自检失败说人话
 
         /// <summary>
-        /// <see cref="LevelCheck.Run"/> 的报告是中文 + emoji（给作者看 Console 用的），
-        /// 而 UI 是像素字体（<b>没有中文字形</b>，打包后全是方块），所以这里只挑一条 ASCII 结论。
+        /// 自检问题的关键词 → 面板上的一句话结论（<b>ASCII</b>）。
+        ///
+        /// 中文全文已经打进 Console 了，而 UI 是像素字体（没有中文字形，打包后全是方块），
+        /// 所以这里只挑结论。顺序 = 严重程度：先报"缺件"这种一眼能补的，
+        /// 再报"预设布局自己就通了"这种要重新想题目的。
         /// </summary>
-        static string HintFor(LevelDefinition definition, string report)
+        static string HintFor(List<string> problems)
         {
-            int receivers = 0;
-            int emitters = 0;
+            string joined = string.Join("；", problems);
 
-            foreach (ElementDefinition element in definition.Elements)
-            {
-                if (element is ReceiverDefinition) receivers++;
-                else if (element is EmitterDefinition) emitters++;
-            }
+            if (joined.Contains("没有接收器")) return "ADD A RECEIVER";
+            if (joined.Contains("没有发射器")) return "ADD AN EMITTER";
+            if (joined.Contains("手牌是摆设")) return "PRESET ALREADY SOLVES IT";
+            if (joined.Contains("手牌里有")) return "NO EMITTER / RECEIVER CARDS";
+            if (joined.Contains("空位")) return "TOO MANY CARDS FOR THE BOARD";
 
-            if (receivers == 0) return "ADD A RECEIVER";
-            if (emitters == 0) return "ADD AN EMITTER";
-
-            // 「跑到 N tick 上限还没结算，可能有个位卡住了」是唯一一种「不是算错、是断路」的失败
-            if (!string.IsNullOrEmpty(report) && report.Contains("上限")) return "STUCK - CHECK THE ROUTE";
+            // 「跑到 N tick 上限还没结算」是唯一一种「不是算错、是断路」的失败
+            if (joined.Contains("上限")) return "STUCK - CHECK THE ROUTE";
 
             return "NOT SOLVED - CHECK THE ROUTE";
         }

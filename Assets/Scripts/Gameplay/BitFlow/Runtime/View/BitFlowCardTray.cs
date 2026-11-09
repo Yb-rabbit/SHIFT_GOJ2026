@@ -25,8 +25,12 @@ namespace ShiftGo.BitFlow.View
     /// - 选中以后换成"拿在手里"（<see cref="HeldPosition"/>，149px 沉在底带）—— 挑格子时卡只会挪到鼠标下方，
     ///   绝不压在格子上，落点全部交给 <see cref="PlacementGhost"/> 的幽灵预览。
     ///
-    /// 交互（方案 A 不变）：左键 = 拿卡/放卡/拾回 ｜ 右键 = 拾回 或 放下手里的卡 ｜
+    /// 交互：左键 = 拿卡 / 放卡 ｜ 右键 = 拾回 或 放下手里的卡 ｜
     /// R = 转待放朝向或转鼠标下的件 ｜ Ctrl+Z = 撤销 ｜ ESC = 放下手里的卡。
+    ///
+    /// 工坊里左键的空闲语义不一样：手里没牌时，左键点已有元件 = <b>选中</b>并打开参数小窗
+    /// （作者要改发射序列 / 位数，不能一点就把件搬走），右键才是拾回。
+    /// 正式关保持原样：手里没牌时左键点自己的元件 = 拿起来重新摆。
     /// </summary>
     public sealed class BitFlowCardTray : MonoBehaviour
     {
@@ -176,6 +180,18 @@ namespace ShiftGo.BitFlow.View
         /// <summary>排版多久重算一次（秒）。开场机位推近、窗口拉伸都靠它自己收敛回来。</summary>
         const float LayoutRefresh = 0.25f;
 
+        // ---------------------------------------------------------------- 演算期间收走
+
+        /// <summary>演算期间把整排手牌收走 / 放回的时间常数（SmoothDamp，秒）。</summary>
+        const float HideTime = 0.12f;
+
+        /// <summary>
+        /// 收走时卡往画面下沿之外滑多远（1080 基准像素，向下）。
+        /// 420px 比最高的那张卡还多出一截（拿起来 315px，半高 158px），
+        /// 所以任何画幅、任何姿势下都确定落在画面外，不用再按分辨率单独算。
+        /// </summary>
+        const float HideSlidePx = 420f;
+
         /// <summary>一张卡 = 一摞牌。Count 显示的是「还没放下的张数」。</summary>
         sealed class CardEntry
         {
@@ -244,7 +260,37 @@ namespace ShiftGo.BitFlow.View
         /// <summary>本关手牌总数（<see cref="LevelSO.supplies"/> 里所有张数之和，含已经放下的）。状态行显示 "手牌 2/3" 用。</summary>
         int handTotal;
 
+        /// <summary>
+        /// 工坊里当前选中的格子（左键点已有元件 = 选中，参数小窗跟着它显示）。
+        /// 用 <c>GridPoint?</c> 而不是引用：撤销会把格子里的元件换成新克隆，
+        /// 存引用会指到一个已经不在板上的旧对象。
+        /// </summary>
+        GridPoint? selectedCell;
+
+        /// <summary>选中格子里的元件；没选中 / 格子空了返回 null。</summary>
+        public EditableElement SelectedElement
+        {
+            get
+            {
+                if (draft == null || !selectedCell.HasValue) return null;
+                return draft.GetAt(selectedCell.Value);
+            }
+        }
+
+        /// <summary>选中项变了（含"变成没有选中"时传 null）。参数小窗靠它刷新。</summary>
+        public event System.Action<EditableElement> CellSelected;
+
         ElementTypeSO armedType;
+
+        /// <summary>
+        /// 手里那张牌「具体是哪一件」——只有从板上拾回（右键 / 抓起再放下）时才有值。
+        ///
+        /// 有它才能保住序列 / 张数 / 放行值这些作者填过的参数：光靠 <see cref="armedType"/> 重建，
+        /// 拾回来的是一个默认配置的发射器，玩家挪一次就丢掉自己刚设好的序列。
+        /// 空 = 这张牌来自卡面（用类型资产的默认值）。
+        /// </summary>
+        EditableElement armedPayload;
+
         int armedRotation;
         string statusMessage = string.Empty;
 
@@ -265,9 +311,32 @@ namespace ShiftGo.BitFlow.View
         ElementTypeSO ghostType;
         int ghostRotation = -1;
         EditableElement ghostPreview;
+
+        /// <summary>上面那份缓存是「抓起来的原件」的副本，而不是卡面的默认件。</summary>
+        bool ghostGrab;
+
+        /// <summary>
+        /// 空格「抓娃娃机」：抓起时所在的格子。有值 = 手上正提着一件（<see cref="grabElement"/>）。
+        ///
+        /// 注意：抓起<b>不</b>把元件从草稿里摘掉 —— 摘掉的话，抓着一件去按 PLAY，
+        /// 模拟里就凭空少一件，玩家会因为一个纯操作习惯输掉关卡。
+        /// 真正改数据的只有放下那一下（<see cref="LevelDraft.TryMove"/>，一步撤销、不动库存）。
+        /// </summary>
+        GridPoint? grabCell;
+
+        /// <summary>提在手上的那一件（仍在板上，等一次落点）。</summary>
+        EditableElement grabElement;
+
         float nextLayoutTime;
         int lastScreenWidth;
         int lastScreenHeight;
+
+        /// <summary>
+        /// 演算期间手牌收走的进度：0 = 躺在待排区，1 = 已经整排滑到画面外。
+        /// 由 <see cref="UpdateHide"/> 每帧推进，<see cref="ApplyHide"/> 拿它给所有卡一起加位移。
+        /// </summary>
+        float hide;
+        float hideVelocity;
 
         /// <summary>平躺姿态：Quad 的法线朝 -Z，绕 X 转 90° 就朝上躺平，贴图上方朝 +Z（远端）。</summary>
         static readonly Quaternion FlatRotation = Quaternion.Euler(90f, 0f, 0f);
@@ -342,6 +411,8 @@ namespace ShiftGo.BitFlow.View
 
             level = next;
             armedType = null;
+            armedPayload = null;
+            ReleaseGrab();
             armedRotation = 0;
             statusMessage = string.Empty;
             hovered = null;
@@ -362,11 +433,11 @@ namespace ShiftGo.BitFlow.View
         // ---------------------------------------------------------------- 工坊模式
 
         /// <summary>
-        /// 切进工坊：草稿由外部持有（<paramref name="target"/>），卡排按 <paramref name="palette"/> 铺一排<b>无限</b>卡。
+        /// 切进工坊：草稿由外部持有（<paramref name="target"/>），卡排按 <paramref name="palette"/> 铺一排卡。
         ///
-        /// 为什么库存是无限：<see cref="LevelDraft"/> 只有在登记过手牌（<c>SetStock</c>）之后才进入有限模式，
-        /// 而工坊的草稿是 <c>new LevelDraft(w, h)</c> 造的空草稿 —— <see cref="LevelDraft.StockEnabled"/> 为 false，
-        /// <see cref="LevelDraft.Remaining"/> 恒定返回 -1（不限量）。所以这里什么都不用改，卡面显示 INF 即可。
+        /// 数量取决于草稿有没有发牌：没发（<see cref="LevelDraft.StockEnabled"/> 为 false）时
+        /// <see cref="LevelDraft.Remaining"/> 恒为 -1，卡面显示 INF、想摆多少摆多少；
+        /// 作者在参数小窗里发过牌之后，卡面就显示张数并按剩余量限制 —— 那是玩家进关时看到的样子。
         /// </summary>
         public void EnterWorkshop(LevelDraft target, IReadOnlyList<ElementTypeSO> palette)
         {
@@ -378,10 +449,13 @@ namespace ShiftGo.BitFlow.View
             level = null;
             draft = target;
             armedType = null;
+            armedPayload = null;
+            ReleaseGrab();
             armedRotation = 0;
             hovered = null;
-            handTotal = 0;
-            statusMessage = "PLACE  ·  R ROTATE  ·  CTRL+Z UNDO";
+            selectedCell = null;
+            handTotal = target.StockTotal;
+            statusMessage = "CLICK A PIECE TO EDIT IT";
 
             if (ghost != null) ghost.Clear();
             if (cardRoot != null) cardRoot.SetActive(true);
@@ -389,6 +463,7 @@ namespace ShiftGo.BitFlow.View
             RebuildCards();
             RefreshStatus();
             RefreshCards();
+            CellSelected?.Invoke(null);
         }
 
         /// <summary>退出工坊：收起卡排、清掉草稿。下一关由工坊自己负责重载。</summary>
@@ -399,13 +474,17 @@ namespace ShiftGo.BitFlow.View
             workshopMode = false;
             workshopPalette = null;
             armedType = null;
+            armedPayload = null;
+            ReleaseGrab();
             level = null;
             draft = null;
             statusMessage = string.Empty;
+            selectedCell = null;
 
             if (ghost != null) ghost.Clear();
             RebuildCards();
             RefreshStatus();
+            CellSelected?.Invoke(null);
         }
 
         /// <summary>
@@ -418,16 +497,35 @@ namespace ShiftGo.BitFlow.View
             RefreshStatus();
         }
 
+        /// <summary>
+        /// 外部改完草稿（例如参数小窗改了发射序列）之后调它：重建舞台 + 刷新读数 + 通知工坊。
+        /// 走的就是放置/拾回同一条 <see cref="Apply"/>，所以撤销栈和存档看到的永远是同一份草稿。
+        /// </summary>
+        public void CommitDraft(string message)
+        {
+            if (draft == null) return;
+            Apply(message ?? string.Empty);
+        }
+
         void Update()
         {
             if (draft == null) return;
 
+            // 演算（PLAY）期间手牌整排收走：它既点不动（点卡 = 重新摆草稿重跑模拟），
+            // 又正好挡在信号流跑过的最前排前面，留着一层牌纯属挡板。
+            bool playing = UpdateHide();
+
             // 黑幕演出 / 选关面板 / 换关的瞬间把输入挡掉。
             // 这里只返回而不 enabled = false：Start 里订阅了 LevelFlow.LevelLoaded，
             // 关掉组件会把"换关之后重建卡排"一起停掉（换一次关手牌就再也不刷新了）。
-            if (InputGate.Locked)
+            if (InputGate.Locked || playing || hide > 0f)
             {
                 if (ghost != null) ghost.Hide();
+                if (cursor != null && cursor.gameObject.activeSelf) cursor.gameObject.SetActive(false);
+
+                // 收走 / 放回的这几帧要看得见：输入虽然挡着，姿态照样得推，
+                // 否则牌会停在画面边上的半路里等着
+                if (playing || hide > 0f) UpdateCardPoses();
                 return;
             }
 
@@ -448,20 +546,103 @@ namespace ShiftGo.BitFlow.View
             HandleMouse();
         }
 
+        /// <summary>
+        /// 演算期间把整排手牌滑出画面，暂停 / 重播 / 跑完再滑回来。
+        ///
+        /// 只看 <see cref="BitFlowRunner.IsPaused"/> 这一个位：换关、重播、工坊试跑、
+        /// 结算后自动播放全都走它，所以不需要在每个入口各关一次卡排。
+        /// 单步（STEP）会先把自己置成暂停，所以单步时牌仍然留在原位 —— 那是想要的：
+        /// 一步步看的时候玩家正需要摆牌。
+        /// </summary>
+        /// <returns>这一帧是不是在演算（调用方据此挡掉鼠标输入）。</returns>
+        bool UpdateHide()
+        {
+            // Simulation == null 是"关卡还没建起来"（开场演出期间就是这样），
+            // 那会儿 paused 也还是默认的 false，不排掉的话手牌盘会误判成正在演算。
+            bool playing = runner != null && runner.Simulation != null && !runner.IsPaused && !runner.IsFinished;
+
+            // 收走的半路上手里那张必须放回去：否则它会跟着滑出画面，回来时还举在半空
+            if (playing && (armedType != null || grabCell.HasValue))
+            {
+                ReleaseGrab();
+                armedType = null;
+                armedPayload = null;
+                armedRotation = 0;
+                statusMessage = string.Empty;
+                RefreshCards();
+            }
+
+            if (playing) hovered = null;
+
+            hide = Mathf.SmoothDamp(hide, playing ? 1f : 0f, ref hideVelocity, HideTime);
+
+            // SmoothDamp 只会无限逼近目标：贴上了就钉死。
+            // 不钉死的话 hide 永远回不到 0，输入会一直卡在"牌还没回来"那一边。
+            if (playing)
+            {
+                if (hide > 0.995f)
+                {
+                    hide = 1f;
+                    hideVelocity = 0f;
+                }
+            }
+            else if (hide < 0.05f)
+            {
+                hide = 0f;
+                hideVelocity = 0f;
+            }
+
+            // 状态行写的是"HAND 2/3"，手牌收走了它就是一行噪音；
+            // 工坊例外 —— 试跑时作者正盯着那行反馈
+            if (statusText != null) statusText.enabled = workshopMode || hide < 0.5f;
+
+            return playing;
+        }
+
         void HandleHotkeys()
         {
-            if (Input.GetKeyDown(KeyCode.Escape) && armedType != null)
+            // 空格 = 抓 / 放（「抓娃娃机」）。按一下提起来，再按一下落在鼠标指着的格子上。
+            // 放在最前面：它是这个界面里最高频的操作，不该被别的键先拦走。
+            if (Input.GetKeyDown(KeyCode.Space))
             {
-                armedType = null;
-                statusMessage = "CARD RELEASED";
-                RefreshAll();
+                ToggleGrab();
                 return;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                if (grabCell.HasValue)
+                {
+                    ReleaseGrab();
+                    statusMessage = "PUT DOWN";
+                    RefreshAll();
+                    return;
+                }
+
+                if (armedType != null)
+                {
+                    armedType = null;
+                    armedPayload = null;
+                    statusMessage = "CARD RELEASED";
+                    RefreshAll();
+                    return;
+                }
             }
 
             if (Input.GetKeyDown(KeyCode.Z) &&
                 (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) ||
                  Input.GetKey(KeyCode.LeftCommand) || Input.GetKey(KeyCode.RightCommand)))
             {
+                // 手上还提着东西时撤销没有意义（草稿里那一件根本没动过），
+                // 这里让 Ctrl+Z 当"放下"用：玩家的意图都是"反悔"
+                if (grabCell.HasValue)
+                {
+                    ReleaseGrab();
+                    statusMessage = "PUT DOWN";
+                    RefreshAll();
+                    return;
+                }
+
                 if (draft.Undo()) Apply("UNDO");
                 else
                 {
@@ -472,6 +653,15 @@ namespace ShiftGo.BitFlow.View
             }
 
             if (!Input.GetKeyDown(KeyCode.R)) return;
+
+            // 提着东西时 R 不转：转的是鼠标下那格，而那一格现在只是"落点"，
+            // 真正该被转的件还在原位，转谁都像是 bug。放下之后再按 R 就正常了。
+            if (grabCell.HasValue)
+            {
+                statusMessage = "DROP IT TO ROTATE";
+                RefreshAll();
+                return;
+            }
 
             // 手里有牌时 R 转「待放朝向」，否则转鼠标下的元件
             if (armedType != null)
@@ -484,7 +674,7 @@ namespace ShiftGo.BitFlow.View
 
             if (TryPickCell(out GridPoint cell))
             {
-                if (draft.IsLocked(cell))
+                if (LockedForMe(cell))
                 {
                     statusMessage = "FIXED - NO ROTATE";
                     RefreshAll();
@@ -910,8 +1100,40 @@ namespace ShiftGo.BitFlow.View
                 entry.Root.rotation = Quaternion.Slerp(FlatRotation, liftRotation, eased);
                 entry.Plane.localScale = Vector3.Lerp(flatScale, liftScale, eased);
 
+                // 演算期间再叠一层"整排滑出画面"。放在最后：它只做位移和缩放，
+                // 不影响上面算好的落点 —— 收起半路上牌不会先拐个弯再出画
+                ApplyHide(entry);
+
                 PoseDecor(entry);
             }
+        }
+
+        /// <summary>
+        /// 把手牌往画面下沿之外推。位移量按<b>屏幕像素</b>算（<see cref="HideSlidePx"/>），
+        /// 所以不管卡此刻是躺着、被拿起来贴着镜头，还是画面是什么分辨率，
+        /// 都确定出得了画；用的还是卡当前的深度，滑出去的路上大小不变。
+        /// </summary>
+        void ApplyHide(CardEntry entry)
+        {
+            if (hide <= 0f || entry.Plane == null) return;
+
+            Vector3 position = entry.Root.position;
+
+            // 前半段轻轻起手、后半段一把抽走：hide² 让"开始收"和"收到位"都不突兀
+            float k = hide * hide;
+
+            float distance = Vector3.Dot(position - mainCamera.transform.position, mainCamera.transform.forward);
+            Vector2 screen = mainCamera.WorldToScreenPoint(position);
+            Vector3 away = CardPlanePoint(new Vector2(screen.x, -HideSlidePx * PixelScale()), Mathf.Max(0.5f, distance));
+
+            entry.Root.position = Vector3.LerpUnclamped(position, away, k);
+
+            // 顺手缩一点：看着像被抽走，而不是被硬推出画外
+            float shrink = 1f - 0.3f * k;
+            entry.Plane.localScale = new Vector3(
+                entry.Plane.localScale.x * shrink,
+                entry.Plane.localScale.y * shrink,
+                1f);
         }
 
         /// <summary>
@@ -1067,7 +1289,7 @@ namespace ShiftGo.BitFlow.View
             // 手里有牌时，格子由半透明的元件副本去标记（能放=类型色、不能放=红），
             // 这层普通高亮方块让位 —— 两层东西叠在同一格上只会互相糊掉。
             // 鼠标在卡上时也不画：这时候玩家在"看牌"，不是在选位置。
-            if (armedType != null || overUi || hovered != null || !TryPickCell(out GridPoint cell))
+            if (armedType != null || grabCell.HasValue || overUi || hovered != null || !TryPickCell(out GridPoint cell))
             {
                 if (cursor.gameObject.activeSelf) cursor.gameObject.SetActive(false);
                 return;
@@ -1086,19 +1308,46 @@ namespace ShiftGo.BitFlow.View
             if (ghost == null) return;
 
             bool overUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+            bool carrying = grabCell.HasValue;
 
-            // 手里没牌 / 在 UI 上 / 在待排区选牌 —— 都没有"要放到哪一格"这回事
-            if (draft == null || armedType == null || mainCamera == null || overUi ||
+            // 手里没牌 / 没提着东西 / 在 UI 上 / 在待排区选牌 —— 都没有"要放到哪一格"这回事
+            if (draft == null || (!carrying && armedType == null) || mainCamera == null || overUi ||
                 hovered != null || !TryPickCell(out GridPoint cell))
             {
                 ghost.Hide();
                 return;
             }
 
-            // 只在"换了格子/换了牌/转了向"时重新生成草稿：同一格上晃鼠标不该每帧产生垃圾
-            if (ghostPreview == null || ghostType != armedType || ghostRotation != armedRotation || !ghostCell.Equals(cell))
+            // 搬动：原件还在板上，预览是一份跟着鼠标走的临时副本
+            if (carrying)
             {
-                ghostPreview = armedType.CreateEditable(cell, armedRotation);
+                if (ghostPreview == null || !ghostGrab || ghostType != null || !ghostCell.Equals(cell))
+                {
+                    ghostPreview = grabElement != null ? grabElement.Clone() : null;
+                    if (ghostPreview != null) ghostPreview.Coord = cell;
+
+                    ghostGrab = true;
+                    ghostType = null;
+                    ghostRotation = -1;
+                    ghostCell = cell;
+                }
+
+                if (ghostPreview == null)
+                {
+                    ghost.Hide();
+                    return;
+                }
+
+                ghost.Show(ghostPreview, draft.CanMove(grabCell.Value, cell));
+                return;
+            }
+
+            // 手牌：只在"换了格子/换了牌/转了向"时重新生成草稿：同一格上晃鼠标不该每帧产生垃圾
+            if (ghostPreview == null || ghostGrab || ghostType != armedType || ghostRotation != armedRotation ||
+                !ghostCell.Equals(cell))
+            {
+                ghostPreview = BuildArmedElement(cell);
+                ghostGrab = false;
                 ghostType = armedType;
                 ghostRotation = armedRotation;
                 ghostCell = cell;
@@ -1126,6 +1375,7 @@ namespace ShiftGo.BitFlow.View
                 else if (Input.GetMouseButtonDown(1) && armedType != null)
                 {
                     armedType = null;
+                    armedPayload = null;
                     statusMessage = "CARD RELEASED";
                     RefreshAll();
                 }
@@ -1133,6 +1383,15 @@ namespace ShiftGo.BitFlow.View
             }
 
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
+
+            // 手上提着板上的一件时，左键点格子 = 放下（空格是同一个动作，
+            // 两种输入都通才像"抓娃娃机"：一只手能抓能放）
+            if (grabCell.HasValue)
+            {
+                if (Input.GetMouseButtonDown(0)) DropGrabbed();
+                return;
+            }
+
             if (!TryPickCell(out GridPoint cell)) return;
 
             if (Input.GetMouseButtonDown(1))
@@ -1143,8 +1402,74 @@ namespace ShiftGo.BitFlow.View
 
             if (!Input.GetMouseButtonDown(0)) return;
 
-            if (armedType != null) TryPlaceArmed(cell);
-            else PickBack(cell); // 手里没牌：左键点自己的元件 = 拿起来（方案 A：可自由搬动）
+            if (armedType != null)
+            {
+                TryPlaceArmed(cell);
+                return;
+            }
+
+            // 手里没牌：
+            // - 工坊 → 左键点已有元件 = 选中并打开参数小窗（作者要改序列/次数，不能一点就被搬走）；
+            // - 正式关 → 还是老规矩，左键点自己的元件 = 拿起来（方案 A：可自由搬动）。
+            if (workshopMode)
+            {
+                if (draft.GetAt(cell) != null) SelectCell(cell);
+                else ClearSelection();
+                return;
+            }
+
+            PickBack(cell);
+        }
+
+        /// <summary>选中一格（工坊参数编辑的入口）。空格 = 清掉选中。</summary>
+        void SelectCell(GridPoint cell)
+        {
+            if (draft == null) return;
+
+            EditableElement element = draft.GetAt(cell);
+            if (element == null)
+            {
+                ClearSelection();
+                return;
+            }
+
+            selectedCell = cell;
+            statusMessage = "SELECTED " + element.Kind + " " + cell;
+
+            // RefreshAll 末尾会重新播一次 CellSelected，参数小窗跟着刷新
+            RefreshAll();
+        }
+
+        /// <summary>取消选中。选中的格子被拾回 / 退出工坊时都要走这里，否则小窗会显示一个已经不在板上的件。</summary>
+        void ClearSelection()
+        {
+            selectedCell = null;
+            CellSelected?.Invoke(null);
+        }
+
+        /// <summary>
+        /// 把"当前选中的到底还是不是原来那个件"重新播一遍。
+        /// 撤销会把格子里的元件换成新克隆，参数小窗必须跟着换引用，否则改的是已经作废的那份。
+        /// </summary>
+        void NotifySelection()
+        {
+            if (!workshopMode) return;
+            if (!selectedCell.HasValue) return;
+
+            EditableElement element = SelectedElement;
+            if (element == null) selectedCell = null;
+            CellSelected?.Invoke(element);
+        }
+
+        /// <summary>
+        /// 这一格对<b>当前这个人</b>是不是固定的。
+        ///
+        /// 锁是「给玩家的标记」：玩家局里它硬得很（搬不动、删不掉、转不了），
+        /// 但工坊里作者正在做这一关，他必须能搬自己标成 FIXED 的件 —— 否则标完就再也动不了了。
+        /// </summary>
+        bool LockedForMe(GridPoint cell)
+        {
+            return !workshopMode && draft.IsLocked(cell);
         }
 
         bool TryPickCell(out GridPoint cell)
@@ -1167,9 +1492,125 @@ namespace ShiftGo.BitFlow.View
 
         // ---------------------------------------------------------------- 放置 / 拾回
 
+        // ---------------------------------------------------------------- 空格抓取（搬动元件）
+
+        /// <summary>空格：手上没东西就抓起鼠标下那件，有东西就把它放到鼠标下的格子。</summary>
+        void ToggleGrab()
+        {
+            if (grabCell.HasValue) DropGrabbed();
+            else TryGrab();
+        }
+
+        /// <summary>抓起鼠标下的元件。预设件 / 空格都会被挡下来，并给一句说人话的反馈。</summary>
+        void TryGrab()
+        {
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
+            if (hovered != null) return;
+
+            if (!TryPickCell(out GridPoint cell))
+            {
+                Fail("NO CELL");
+                return;
+            }
+
+            if (LockedForMe(cell))
+            {
+                Fail("FIXED - NO MOVE");
+                return;
+            }
+
+            EditableElement element = draft.GetAt(cell);
+            if (element == null)
+            {
+                Fail("EMPTY CELL");
+                return;
+            }
+
+            // 手上还捏着一张牌时先松手：两种"拿着东西"的状态同时存在，落点该听谁的说不清
+            armedType = null;
+            armedPayload = null;
+            armedRotation = 0;
+
+            grabCell = cell;
+            grabElement = element;
+
+            // 让幽灵下一帧按"搬动"重建一份副本（缓存键换了模式，旧的不能再复用）
+            ghostGrab = false;
+            ghostPreview = null;
+
+            statusMessage = "HOLDING " + element.Kind + " - SPACE TO DROP";
+            RefreshAll();
+        }
+
+        /// <summary>把手上那件放到鼠标指的格子；放不下就继续提着（挪到别的格子再按一次空格就行）。</summary>
+        void DropGrabbed()
+        {
+            if (!grabCell.HasValue || grabElement == null) return;
+
+            GridPoint from = grabCell.Value;
+
+            // 鼠标不在网格上（比如已经移到了面板 / 卡排上）：原地放下，等于取消
+            GridPoint to = TryPickCell(out GridPoint cell) ? cell : from;
+
+            PlaceResult check = draft.CanMove(from, to);
+            if (check != PlaceResult.Ok)
+            {
+                if (check == PlaceResult.Locked) Fail("FIXED CELL");
+                else if (check == PlaceResult.Occupied) Fail("OCCUPIED");
+                else Fail("OUTSIDE GRID");
+                return;
+            }
+
+            ReleaseGrab();
+
+            if (!draft.TryMove(from, to))
+            {
+                Fail("CANNOT MOVE");
+                return;
+            }
+
+            // 选中框跟着走：搬动的多半正是不久前刚选中的那一件
+            if (selectedCell.HasValue && selectedCell.Value.Equals(from)) selectedCell = to;
+
+            Apply("MOVED");
+            PlayDropInAt(to);
+        }
+
+        /// <summary>
+        /// 放弃这次搬动。草稿里那一件从来没离开过原位，所以这里什么都不用改 ——
+        /// 这也正是"抓起来"只记状态、不动数据的最大好处。
+        /// </summary>
+        void ReleaseGrab()
+        {
+            grabCell = null;
+            grabElement = null;
+        }
+
+        /// <summary>
+        /// 把「手里那张牌」变成一件具体可放的元件。
+        ///
+        /// 两条来源：从卡面拿的（按类型默认值现造）、从板上拾回的（<see cref="armedPayload"/> 的副本）。
+        /// 后者必须复制而不是直接交出去 —— 复制出来的副本归草稿所有，原对象继续跟着手里的牌走，
+        /// 玩家转一次朝向、放一次又拾回来，参数都还在。
+        /// </summary>
+        EditableElement BuildArmedElement(GridPoint cell)
+        {
+            if (armedPayload != null)
+            {
+                EditableElement element = armedPayload.Clone();
+                element.Coord = cell;
+
+                int steps = ((armedRotation % 4) + 4) % 4;
+                for (int i = 0; i < steps; i++) element.Rotate();
+                return element;
+            }
+
+            return armedType != null ? armedType.CreateEditable(cell, armedRotation) : null;
+        }
+
         void TryPlaceArmed(GridPoint cell)
         {
-            EditableElement element = armedType.CreateEditable(cell, armedRotation);
+            EditableElement element = BuildArmedElement(cell);
             if (element == null)
             {
                 Fail(LabelOf(armedType) + " CANNOT PLACE");
@@ -1182,7 +1623,15 @@ namespace ShiftGo.BitFlow.View
             {
                 case PlaceResult.Ok:
                     // 只有真的耗尽（== 0）才松开手牌；工坊不限量时 Remaining 是 -1，必须继续握着
-                    if (draft.Remaining(armedType.Key) == 0) armedType = null;
+                    if (armedType == null || draft.Remaining(armedType.Key) == 0)
+                    {
+                        armedType = null;
+                        armedPayload = null;
+                    }
+
+                    // 刚放下的那件立刻选中：作者摆完就想改参数，别逼他再点一次
+                    if (workshopMode) selectedCell = cell;
+
                     Apply("PLACED");
                     // 必须排在 Apply 之后：Apply 会重建整个舞台，旧的 ElementView 已经没了
                     PlayDropInAt(cell);
@@ -1208,7 +1657,7 @@ namespace ShiftGo.BitFlow.View
 
         void PickBack(GridPoint cell)
         {
-            if (draft.IsLocked(cell))
+            if (LockedForMe(cell))
             {
                 Fail("FIXED - NO PICKUP");
                 return;
@@ -1220,9 +1669,18 @@ namespace ShiftGo.BitFlow.View
                 return;
             }
 
-            // 拾回的牌直接拿在手里，玩家可以接着投到别处 —— 不用再去点卡面
+            // 拾回的是正选中的那一格：小窗必须收起来（那个件已经回到手里，不再在板上）
+            if (selectedCell.HasValue && selectedCell.Value.Equals(cell)) selectedCell = null;
+
+            // 拾回的牌直接拿在手里，玩家可以接着投到别处 —— 不用再去点卡面。
+            // 拾回的是"这一件本身"，不是"这种元件"，所以必须把参数一起带走：
+            // 玩家改好序列的发射器被搬一下就打回默认值，是这个界面最不该有的 bug。
             armedType = FindSupplyType(picked.TypeKey);
+            armedPayload = armedType != null ? picked : null;
             armedRotation = 0;
+
+            // 拾回也算一次"手里有东西"：之前提着的那一件作废（草稿里它没动过，放下即可）
+            ReleaseGrab();
 
             Apply(armedType != null
                 ? "PICKED UP " + LabelOf(armedType)
@@ -1275,6 +1733,14 @@ namespace ShiftGo.BitFlow.View
         {
             if (type == null || draft == null) return;
 
+            // 手上还提着板上的一件时先放下：两张不同来源的"手里东西"同时存在，
+            // 点一下格子到底该落哪个，玩家自己也猜不到。
+            if (grabCell.HasValue)
+            {
+                Fail("PUT IT DOWN FIRST");
+                return;
+            }
+
             // == 0 才是真没牌；-1 是不限量（工坊 / 作者模式），不该拦住选卡
             if (draft.Remaining(type.Key) == 0)
             {
@@ -1283,6 +1749,7 @@ namespace ShiftGo.BitFlow.View
             }
 
             armedType = armedType == type ? null : type; // 再点一次同一张卡 = 取消
+            armedPayload = null;                          // 从卡面拿的牌用类型默认值，不继承上一次拾回的那件
             armedRotation = 0;
             if (armedType != null)
             {
@@ -1318,6 +1785,7 @@ namespace ShiftGo.BitFlow.View
             RefreshStatus();
             RefreshCards();
             UpdateGhost();
+            NotifySelection();
         }
 
         void RefreshCards()
@@ -1352,10 +1820,13 @@ namespace ShiftGo.BitFlow.View
         {
             if (statusText == null) return;
 
-            // 工坊：没有手牌张数这回事，改成报「已经摆了几件」—— 那是玩家唯一关心的数字
+            // 工坊：没有手牌张数这回事，改成报「已经摆了几件」—— 那是玩家唯一关心的数字；
+            // 发了牌的话再补一个总张数，作者一眼能看出「这关到底给了几张」
             if (workshopMode)
             {
                 string parts = "PIECES " + (draft != null ? draft.Count : 0);
+                if (draft != null && draft.StockEnabled) parts += "  ·  HAND " + draft.StockTotal;
+
                 statusText.text = string.IsNullOrEmpty(statusMessage) ? parts : parts + "  /  " + statusMessage;
                 return;
             }
