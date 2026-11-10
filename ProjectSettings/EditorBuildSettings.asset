@@ -8,10 +8,10 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Test_3_BitFlowPlayer.unity
     guid: db820777e9d52b0419c2f9d41c0f784f
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Test_2_BitFlow.unity
     guid: 23389a97e9fc4e9479f0c631d9903831
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Test_1_PushBox.unity
     guid: f7271d08c02f81543aaeaa16ee2172b1
   m_configObjects: {}
