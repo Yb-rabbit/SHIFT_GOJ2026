@@ -609,24 +609,23 @@ namespace ShiftGo.BitFlow.View
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if ((grabCell.HasValue || armedType != null) &&
+                Input.GetKeyDown(KeyCode.Escape) && EscapeInput.Consume())
             {
                 if (grabCell.HasValue)
                 {
                     ReleaseGrab();
                     statusMessage = "PUT DOWN";
                     RefreshAll();
-                    return;
                 }
-
-                if (armedType != null)
+                else
                 {
                     armedType = null;
                     armedPayload = null;
                     statusMessage = "CARD RELEASED";
                     RefreshAll();
-                    return;
                 }
+                return;
             }
 
             if (Input.GetKeyDown(KeyCode.Z) &&

@@ -8,7 +8,7 @@ using ShiftGo.BitFlow.Data;
 namespace ShiftGo.BitFlow.View
 {
     /// <summary>
-    /// 工坊的「参数小窗」：屏幕左边一块常驻面板，两个页签。
+    /// 工坊的「参数小窗」：屏幕左边一块常驻面板，三个页签。
     ///
     /// <b>CELL</b>：改选中那一件的参数 —— 朝向、发射序列每一位、发射总位数、接收条件（进料面 / 四面可收），
     /// 并且实时算给你看「这台机器到底会吐什么」（<c>EMITS 1 0 0 1</c>）以及接收器和发射器<b>对不对得上</b>
@@ -56,6 +56,7 @@ namespace ShiftGo.BitFlow.View
         {
             Cell = 0,
             Hand = 1,
+            Name = 2,
         }
 
         BitFlowCardTray tray;
@@ -68,6 +69,17 @@ namespace ShiftGo.BitFlow.View
         EditableElement selected;
         Tab tab = Tab.Cell;
         bool open;
+
+        /// <summary>NAME 页的输入框 / 错误行。整块面板每次刷新都会重建，引用只在当帧有效。</summary>
+        InputField nameField;
+        Text nameErrorText;
+        string nameError;
+
+        /// <summary>防止 onValueChanged 里改 text 又触发一次回调。</summary>
+        bool cleaningName;
+
+        /// <summary>NAME 页聚焦时占用全局输入锁：输入空格 / R / Ctrl+Z 不能同时去抓手牌。</summary>
+        bool nameGateHeld;
 
         /// <summary>当前行顶部（相对面板顶边，向下为负）。<see cref="BeginRow"/> 边走边减。</summary>
         float cursor;
@@ -110,6 +122,7 @@ namespace ShiftGo.BitFlow.View
         {
             draft = target;
             selected = null;
+            nameError = null;
             if (open) Refresh();
         }
 
@@ -117,7 +130,10 @@ namespace ShiftGo.BitFlow.View
         {
             if (canvasObject == null) BuildUi();
 
+            ReleaseNameGate();   // 防御：上一次若停在 NAME 页，重新开面板时先还锁
             open = true;
+            tab = Tab.Cell;
+            nameError = null;
             canvasObject.SetActive(true);
 
             // 进来先把托盘里已经选中的那件显示出来（刚放下的件会自动成为选中项）
@@ -129,6 +145,8 @@ namespace ShiftGo.BitFlow.View
         {
             open = false;
             selected = null;
+            nameError = null;
+            ReleaseNameGate();
 
             if (canvasObject != null) canvasObject.SetActive(false);
         }
@@ -136,6 +154,7 @@ namespace ShiftGo.BitFlow.View
         void OnDestroy()
         {
             if (tray != null) tray.CellSelected -= OnCellSelected;
+            ReleaseNameGate();
         }
 
         void OnCellSelected(EditableElement element)
@@ -205,26 +224,47 @@ namespace ShiftGo.BitFlow.View
             cursor = -Padding;
 
             RectTransform header = BeginRow(28f, 6f);
-            AddLabel(header, tab == Tab.Cell ? "PIECE PARAMS" : "PLAYER HAND", 0f, InnerWidth - 40f,
+            AddLabel(header, tab == Tab.Cell ? "PIECE PARAMS" : tab == Tab.Hand ? "PLAYER HAND" : "LEVEL NAME", 0f, InnerWidth - 40f,
                 TextAnchor.MiddleLeft, TextColor, PixelFont.Body);
             AddButton(header, "X", InnerWidth - 34f, 34f, Close, IdleColor, PixelFont.Body);
 
             RectTransform tabs = BeginRow(34f, 10f);
-            AddButton(tabs, "CELL", 0f, 170f, () => SwitchTab(Tab.Cell),
+            AddButton(tabs, "CELL", 0f, 112f, () => SwitchTab(Tab.Cell),
                 tab == Tab.Cell ? ActiveColor : IdleColor, PixelFont.Body);
-            AddButton(tabs, "HAND", 180f, 170f, () => SwitchTab(Tab.Hand),
+            AddButton(tabs, "HAND", 120f, 112f, () => SwitchTab(Tab.Hand),
                 tab == Tab.Hand ? ActiveColor : IdleColor, PixelFont.Body);
+            AddButton(tabs, "NAME", 240f, 112f, () => SwitchTab(Tab.Name),
+                tab == Tab.Name ? ActiveColor : IdleColor, PixelFont.Body);
 
             if (tab == Tab.Cell) BuildCellTab();
-            else BuildHandTab();
+            else if (tab == Tab.Hand) BuildHandTab();
+            else BuildNameTab();
 
             panelRect.sizeDelta = new Vector2(PanelWidth, -cursor + Padding);
         }
 
         void SwitchTab(Tab next)
         {
+            if (tab == Tab.Name && next != Tab.Name) ReleaseNameGate();
+
             tab = next;
+            nameError = null;
+
+            if (open && tab == Tab.Name && !nameGateHeld)
+            {
+                InputGate.Acquire();
+                nameGateHeld = true;
+            }
+
             Refresh();
+        }
+
+        void ReleaseNameGate()
+        {
+            if (!nameGateHeld) return;
+
+            nameGateHeld = false;
+            InputGate.Release();
         }
 
         // ---------------------------------------------------------------- 版式小工具
@@ -283,6 +323,52 @@ namespace ShiftGo.BitFlow.View
             SetRect(text.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
 
             return button;
+        }
+
+        /// <summary>
+        /// 单行文本输入。工程里只有旧版 <see cref="InputField"/>（没有 TMP），
+        /// 所以输入框也走同一套像素字体；文字颜色 / 字号和面板其它读数一致。
+        /// </summary>
+        InputField AddInputField(RectTransform row, string initial, float x, float width, Action<string> onChanged)
+        {
+            GameObject go = new GameObject("Input", typeof(RectTransform), typeof(Image), typeof(InputField));
+            go.transform.SetParent(row, false);
+
+            SetRect(go.GetComponent<RectTransform>(), new Vector2(0f, 0f), new Vector2(0f, 1f),
+                new Vector2(0f, 0.5f), new Vector2(width, 0f), new Vector2(x, 0f));
+
+            Image background = go.GetComponent<Image>();
+            background.color = IdleColor;
+
+            GameObject textObject = new GameObject("Text", typeof(RectTransform), typeof(Text));
+            textObject.transform.SetParent(go.transform, false);
+            SetRect(textObject.GetComponent<RectTransform>(), Vector2.zero, Vector2.one,
+                new Vector2(0f, 0.5f), new Vector2(-16f, -6f), new Vector2(8f, 0f));
+
+            Text text = textObject.GetComponent<Text>();
+            text.font = PixelFont.Get();
+            text.fontSize = PixelFont.Body;
+            text.alignment = TextAnchor.MiddleLeft;
+            text.color = TextColor;
+            text.supportRichText = false;
+            text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            text.verticalOverflow = VerticalWrapMode.Truncate;
+            text.raycastTarget = false;
+
+            InputField input = go.GetComponent<InputField>();
+            input.targetGraphic = background;
+            input.textComponent = text;
+            input.lineType = InputField.LineType.SingleLine;
+            input.contentType = InputField.ContentType.Standard;
+            input.characterLimit = 20;
+            input.caretWidth = 2;
+            input.customCaretColor = true;
+            input.caretColor = TextColor;
+            input.selectionColor = new Color(ActiveColor.r, ActiveColor.g, ActiveColor.b, 0.55f);
+            input.text = initial ?? string.Empty;
+            if (onChanged != null) input.onValueChanged.AddListener(value => onChanged(value));
+
+            return input;
         }
 
         static void SetRect(RectTransform rect, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot,
@@ -457,6 +543,95 @@ namespace ShiftGo.BitFlow.View
 
             RectTransform fixRow = BeginRow(34f, 8f);
             AddButton(fixRow, "MATCH EMITTER", 0f, InnerWidth, MatchEmitter, IdleColor, PixelFont.Small);
+        }
+
+        // ---------------------------------------------------------------- NAME 页
+
+        /// <summary>
+        /// 关卡名。DONE 写进 JSON 的 <c>displayName</c>，选关列表、通关记录、
+        /// 工坊保存后的回话都用它。输入期间占住 <see cref="InputGate"/>，
+        /// 否则空格 / R / Ctrl+Z 会同时被手牌盘吃掉。
+        /// </summary>
+        void BuildNameTab()
+        {
+            nameErrorText = null;
+            string current = draft != null ? draft.DisplayName : string.Empty;
+
+            RectTransform info = BeginRow(30f, 6f);
+            BitFlowWorkshop workshop = FindObjectOfType<BitFlowWorkshop>();
+            bool editing = workshop != null && workshop.IsEditingExisting;
+            AddLabel(info, editing ? "EDITING AN EXISTING LEVEL  ·  DONE SAVES IN PLACE" : "NEW LEVEL  ·  DONE SAVES A NEW FILE",
+                0f, InnerWidth, TextAnchor.MiddleLeft, MutedColor, PixelFont.Small);
+
+            RectTransform nameRow = BeginRow(38f, 8f);
+            AddLabel(nameRow, "NAME", 0f, 54f, TextAnchor.MiddleLeft, MutedColor, PixelFont.Small);
+            nameField = AddInputField(nameRow, current, 54f, InnerWidth - 54f, OnNameChanged);
+
+            RectTransform hint = BeginRow(38f, 8f);
+            AddLabel(hint, "A-Z  0-9  -  _  SPACE  ·  MAX 20 CHARS", 0f, InnerWidth,
+                TextAnchor.MiddleLeft, MutedColor, PixelFont.Small);
+
+            if (!string.IsNullOrEmpty(nameError))
+            {
+                RectTransform errorRow = BeginRow(28f, 8f);
+                nameErrorText = AddLabel(errorRow, nameError, 0f, InnerWidth,
+                    TextAnchor.MiddleLeft, BadColor, PixelFont.Small);
+            }
+
+            RectTransform actions = BeginRow(36f, 10f);
+            AddButton(actions, "APPLY", 0f, 172f, ApplyName, ActiveColor, PixelFont.Small);
+            AddButton(actions, "BACK TO CELL", 184f, 176f, () => SwitchTab(Tab.Cell), IdleColor, PixelFont.Small);
+
+            if (nameField != null)
+            {
+                nameField.Select();
+                nameField.ActivateInputField();
+            }
+        }
+
+        void OnNameChanged(string raw)
+        {
+            if (cleaningName || nameField == null) return;
+
+            string cleaned = BitFlowWorkshop.SanitizeTypedDisplayName(raw);
+            if (string.Equals(cleaned, raw, StringComparison.Ordinal))
+            {
+                if (!string.IsNullOrEmpty(nameError))
+                {
+                    nameError = null;
+                    if (nameErrorText != null) nameErrorText.text = string.Empty;
+                }
+                return;
+            }
+
+            cleaningName = true;
+            nameField.text = cleaned;
+            nameField.caretPosition = cleaned.Length;
+            cleaningName = false;
+        }
+
+        void ApplyName()
+        {
+            if (draft == null || nameField == null) return;
+
+            string raw = nameField.text;
+            BitFlowWorkshop workshop = FindObjectOfType<BitFlowWorkshop>();
+            if (workshop == null)
+            {
+                nameError = "WORKSHOP NOT FOUND";
+                Refresh();
+                return;
+            }
+
+            if (!workshop.TryRenameDraft(raw, out string error))
+            {
+                nameError = error;
+                Refresh();
+                return;
+            }
+
+            nameError = null;
+            SwitchTab(Tab.Cell);
         }
 
         // ---------------------------------------------------------------- HAND 页

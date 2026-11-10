@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEngine;
 using ShiftGo.BitFlow.Core;
 using ShiftGo.BitFlow.Data;
+using ShiftGo.BitFlow.View;
 
 namespace ShiftGo.BitFlow.Tests
 {
@@ -308,7 +309,8 @@ namespace ShiftGo.BitFlow.Tests
         {
             string external = WriteExternalJson("Outside.json", LevelJsonSerializer.ToJson(LoadAssetOrFail()));
 
-            Assert.IsTrue(LevelJsonLibrary.TryImportFile(external, out string imported, out string error),
+            Assert.AreEqual(ImportOutcome.Imported,
+                LevelJsonLibrary.TryImportFile(external, false, out string imported, out string error),
                 "外部 json 应该能导进来：" + error);
 
             Assert.IsNotNull(imported);
@@ -336,7 +338,8 @@ namespace ShiftGo.BitFlow.Tests
         {
             string external = WriteExternalJson("Broken.json", "这不是关卡，只是一段文字");
 
-            Assert.IsFalse(LevelJsonLibrary.TryImportFile(external, out string imported, out string error),
+            Assert.AreEqual(ImportOutcome.Invalid,
+                LevelJsonLibrary.TryImportFile(external, false, out string imported, out string error),
                 "读不通的东西不该被导进来");
             Assert.IsNull(imported);
             Assert.IsNotEmpty(error, "失败要说清原因（面板只报一句，细节在 Console）");
@@ -345,17 +348,130 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         [Test]
-        public void TryImportFile_RepeatedImportOverwritesInsteadOfPilingUp()
+        public void TryImportFile_RejectsReservedFileName_SoTheListNeverLies()
+        {
+            // 下划线开头 = 模板/草稿，Scan 不会列出它。导入必须明确拒绝，
+            // 而不是复制进目录后回一句「成功」、列表里却永远找不到。
+            string folder = Path.Combine(Path.GetTempPath(), "ShiftGoLevelImportTests");
+            if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+
+            string underscore = Path.Combine(folder, "_Hidden.json");
+            File.WriteAllText(underscore, LevelJsonSerializer.ToJson(LoadAssetOrFail()));
+            externalFiles.Add(underscore);
+
+            Assert.AreEqual(ImportOutcome.Invalid,
+                LevelJsonLibrary.TryImportFile(underscore, false, out string hiddenPath, out string hiddenError),
+                "下划线开头的文件不该被导入");
+            Assert.IsNull(hiddenPath);
+            StringAssert.Contains("下划线", hiddenError);
+            Assert.IsFalse(File.Exists(Path.Combine(LevelJsonLibrary.Folder, "_Hidden.json")),
+                "被拒绝的文件一个字节都不该落盘");
+
+            string catalog = Path.Combine(folder, "catalog.json");
+            File.WriteAllText(catalog, LevelJsonSerializer.ToJson(LoadAssetOrFail()));
+            externalFiles.Add(catalog);
+
+            Assert.AreEqual(ImportOutcome.Invalid,
+                LevelJsonLibrary.TryImportFile(catalog, false, out string catalogPath, out string catalogError),
+                "catalog.json 是目录索引，不该被当成关卡导入");
+            Assert.IsNull(catalogPath);
+            StringAssert.Contains("catalog.json", catalogError);
+        }
+
+        [Test]
+        public void TryImportFile_RepeatedImportIsUnchangedInsteadOfPilingUp()
         {
             string external = WriteExternalJson("Repeat.json", LevelJsonSerializer.ToJson(LoadAssetOrFail()));
 
-            Assert.IsTrue(LevelJsonLibrary.TryImportFile(external, out string first, out string firstError), firstError);
+            Assert.AreEqual(ImportOutcome.Imported,
+                LevelJsonLibrary.TryImportFile(external, false, out string first, out string firstError), firstError);
             writtenFiles.Add(first);
 
-            Assert.IsTrue(LevelJsonLibrary.TryImportFile(external, out string second, out string secondError), secondError);
+            Assert.AreEqual(ImportOutcome.Unchanged,
+                LevelJsonLibrary.TryImportFile(external, false, out string second, out string secondError), secondError);
 
-            Assert.AreEqual(first, second, "同一份文件重复导入应该覆盖它自己，而不是长出 _02");
+            Assert.AreEqual(first, second, "同一份文件重复导入应该指向同一个文件，而不是长出 _02");
             Assert.IsFalse(File.Exists(Path.Combine(LevelJsonLibrary.Folder, "Repeat_02.json")));
+        }
+
+        [Test]
+        public void TryImportFile_SameNameDifferentContent_IsNameTakenAndKeepsOriginal()
+        {
+            const string fileName = FilePrefix + "Collision.json";
+            string destination = Path.Combine(LevelJsonLibrary.Folder, fileName);
+
+            LevelJsonLibrary.EnsureFolder();
+            const string original = "{\"schemaVersion\": 2, \"displayName\": \"ORIGINAL\"}";
+            File.WriteAllText(destination, original);
+            writtenFiles.Add(destination);
+
+            // 同名文件在目录外，内容与已有关卡不同
+            string externalFolder = Path.Combine(Path.GetTempPath(), "ShiftGoLevelImportTests");
+            if (!Directory.Exists(externalFolder)) Directory.CreateDirectory(externalFolder);
+
+            string external = Path.Combine(externalFolder, fileName);
+            File.WriteAllText(external, LevelJsonSerializer.ToJson(LoadAssetOrFail()));
+            externalFiles.Add(external);
+
+            try
+            {
+                Assert.AreEqual(ImportOutcome.NameTaken,
+                    LevelJsonLibrary.TryImportFile(external, false, out string refused, out string error),
+                    "同名不同内容必须拒绝，不能悄悄覆盖");
+                Assert.AreEqual(destination, refused);
+                Assert.IsNotEmpty(error);
+                Assert.AreEqual(original, File.ReadAllText(destination),
+                    "拒绝之后原文件的字节必须一点没变");
+            }
+            finally
+            {
+                if (File.Exists(destination)) File.Delete(destination);
+            }
+
+            // 显式 overwrite=true 才允许替换
+            try
+            {
+                Assert.AreEqual(ImportOutcome.Imported,
+                    LevelJsonLibrary.TryImportFile(external, true, out string overwritten, out string overwriteError),
+                    overwriteError);
+                writtenFiles.Add(overwritten);
+                Assert.AreEqual(File.ReadAllText(external), File.ReadAllText(overwritten));
+            }
+            finally
+            {
+                if (File.Exists(destination)) File.Delete(destination);
+            }
+        }
+
+        [Test]
+        public void ImportFromDropFolders_DoesNotOverwriteDifferentContentWithSameName()
+        {
+            const string fileName = FilePrefix + "InboxCollision.json";
+            LevelJsonLibrary.EnsureFolder();
+
+            string destination = Path.Combine(LevelJsonLibrary.Folder, fileName);
+            string inbox = Path.Combine(LevelJsonLibrary.IncomingFolder, fileName);
+            const string original = "{\"schemaVersion\": 2, \"displayName\": \"ORIGINAL\"}";
+
+            File.WriteAllText(destination, original);
+            File.WriteAllText(inbox, LevelJsonSerializer.ToJson(LoadAssetOrFail()));
+            writtenFiles.Add(destination);
+
+            try
+            {
+                int imported = LevelJsonLibrary.ImportFromDropFolders(out List<string> problems, out _);
+
+                Assert.AreEqual(0, imported, "同名不同内容不该被算作导入成功");
+                Assert.AreEqual(original, File.ReadAllText(destination),
+                    "IMPORT · FROM INBOX 不能悄悄覆盖已有同名关卡");
+                Assert.IsTrue(problems.Exists(problem => problem.Contains(fileName)),
+                    "拒绝覆盖要在 problems 里点名文件：" + string.Join("；", problems));
+            }
+            finally
+            {
+                if (File.Exists(inbox)) File.Delete(inbox);
+                if (File.Exists(destination)) File.Delete(destination);
+            }
         }
 
         [Test]
@@ -385,6 +501,19 @@ namespace ShiftGo.BitFlow.Tests
                 if (File.Exists(inbox)) File.Delete(inbox);
                 if (File.Exists(destination)) File.Delete(destination);
             }
+        }
+
+        [Test]
+        public void WorkshopNameRules_AreAsciiSafeAndFilesystemFriendly()
+        {
+            Assert.AreEqual("MY PUZZLE 01", BitFlowWorkshop.SanitizeDisplayName("  my   puzzle  /01 中文  "),
+                "只保留 ASCII、折叠空格、去首尾；非法字符被丢掉");
+            Assert.AreEqual("MY_PUZZLE_01.json", BitFlowWorkshop.FileNameOf("my puzzle 01"),
+                "文件名把空格换成下划线，且只由清理后的名字生成");
+            Assert.AreEqual("12345678901234567890", BitFlowWorkshop.SanitizeDisplayName("1234567890123456789012345"),
+                "超过 20 字符要截断");
+            Assert.AreEqual(string.Empty, BitFlowWorkshop.SanitizeDisplayName("中文名"),
+                "全是非法字符时返回空串，由调用方报 NAME REQUIRED");
         }
 
         // ------------------------------------------------------------------ 小工具

@@ -110,11 +110,14 @@ namespace ShiftGo.BitFlow.View
         {
             if (!ready) return;
 
+            // 暂停 / 选关 / 黑幕期间不接管热键：否则暂停时按 B 还能在背后切建造模式。
+            if (InputGate.Locked) return;
+
             if (Input.GetKeyDown(KeyCode.B))
             {
                 ToggleEditing();
             }
-            else if (editing && Input.GetKeyDown(KeyCode.Escape))
+            else if (editing && Input.GetKeyDown(KeyCode.Escape) && EscapeInput.Consume())
             {
                 SetEditing(false);
             }

@@ -32,6 +32,32 @@ namespace ShiftGo.BitFlow.Data
     }
 
     /// <summary>
+    /// 导入一份外部 JSON 的结果。UI 必须按这里分情况说话：
+    /// <see cref="NameTaken"/> 绝不能悄悄覆盖同名关卡，<see cref="Unchanged"/>
+    /// 也不该被报成「又导入了一关」。
+    /// </summary>
+    public enum ImportOutcome
+    {
+        /// <summary>复制进正式目录了。</summary>
+        Imported,
+
+        /// <summary>源文件本来就在正式目录里，列表里已经有它。</summary>
+        AlreadyInLibrary,
+
+        /// <summary>正式目录已有同名且内容完全相同的文件，无需写入。</summary>
+        Unchanged,
+
+        /// <summary>正式目录已有同名但内容不同，调用方没有授权覆盖。</summary>
+        NameTaken,
+
+        /// <summary>文件不是能跑的关卡（含保留文件名 / 非 .json）。</summary>
+        Invalid,
+
+        /// <summary>读写失败，细节看 <c>error</c> 与 Console。</summary>
+        Failed,
+    }
+
+    /// <summary>
     /// 运行时关卡 JSON 的落盘目录与读取入口 —— <b>打包后也有</b>。
     ///
     /// 目录固定为 <c>Application.persistentDataPath/LevelJson</c>，不放 Assets：
@@ -152,10 +178,12 @@ namespace ShiftGo.BitFlow.Data
                     + "这里放的就是「选关面板 → MY LEVELS」里列出来的关卡。\r\n"
                     + "每个 .json 就是一关，文件名不重要，关卡名写在文件里的 displayName。\r\n\r\n"
                     + "怎么加关（任选一条）：\r\n"
-                    + "  1. 游戏里：选关面板 → FILES → IMPORT · FROM FILE（挑一个 json）\r\n"
-                    + "  2. 游戏里：把 json 放进本目录下的 incoming\\ ，再点 IMPORT · FROM INBOX\r\n"
-                    + "  3. 直接复制进本目录，然后点 REFRESH（或重开面板）\r\n\r\n"
-                    + "怎么删关：选关面板 → MY LEVELS 里那一行右边的 X → 3 秒内再点一次 SURE。\r\n\r\n"
+                    + "  1. 游戏里：选关面板 → FILES → IMPORT → FROM FILE（挑一个 json）\r\n"
+                    + "  2. 游戏里：把 json 放进本目录下的 incoming\\ ，再点 IMPORT → FROM INBOX\r\n"
+                    + "  3. 直接复制进本目录，然后点 FILES → REFRESH（或重开面板）\r\n\r\n"
+                    + "怎么删关：选关面板 → MY LEVELS 里那一行右边的 ... → DELETE → 3 秒内再点 DELETE。\r\n"
+                    + "怎么改关：同一行 ... → EDIT，在工坊里按 NAME 改名，DONE 写回原文件。\r\n"
+                    + "同名但内容不同的 json 不会被悄悄覆盖；请先改文件名再导入。\r\n\r\n"
                     + "以 _ 开头的文件（_template.json 之类）是模板/草稿，不会被当成关卡。\r\n"
                     + "incoming\\ 里是待导入的批次，导入成功后正式目录会多一份同名副本，\r\n"
                     + "收件箱里那份可以自己删掉。\r\n\r\n"
@@ -222,14 +250,32 @@ namespace ShiftGo.BitFlow.Data
         }
 
         /// <summary>
+        /// 文件名是不是「不能作为关卡出现」的保留名：
+        /// - 下划线开头是模板 / 草稿，<see cref="Scan"/> 会跳过；
+        /// - <c>catalog.json</c> 是目录索引，不是关卡。
+        ///
+        /// 导入时必须先拦下来，否则会「提示导入成功、列表里却找不到」。
+        /// </summary>
+        static bool IsReservedLevelFileName(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return true;
+            if (fileName.StartsWith("_", StringComparison.Ordinal)) return true;
+            return string.Equals(fileName, "catalog.json", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
         /// 把一个外部 <c>.json</c> 导进正式关卡目录（<b>先验货、再落盘</b>）。
         ///
         /// 为什么复制而不移动：源文件可能在玩家的下载目录里，也可能被别的关卡引用着；
         /// 复制是幂等的、可后悔的。字节原样搬运（不重新序列化），作者写的缩进和字段顺序都留着。
         ///
         /// 已在正式目录里的文件视为「已经导入过」：直接返回它的路径，不再造一份 <c>_02</c> 副本。
+        /// 正式目录里已有同名文件时：内容相同返回 <see cref="ImportOutcome.Unchanged"/>；
+        /// 内容不同且 <paramref name="overwrite"/> 为 false 返回 <see cref="ImportOutcome.NameTaken"/>，
+        /// <b>一个字节都不写</b>。只有调用方明确传 true 才覆盖。
+        /// 下划线开头 / <c>catalog.json</c> 这类不会出现在列表里的文件名会被明确拒绝。
         /// </summary>
-        public static bool TryImportFile(string sourcePath, out string path, out string error)
+        public static ImportOutcome TryImportFile(string sourcePath, bool overwrite, out string path, out string error)
         {
             path = null;
             error = null;
@@ -237,13 +283,28 @@ namespace ShiftGo.BitFlow.Data
             if (string.IsNullOrEmpty(sourcePath))
             {
                 error = "没有文件";
-                return false;
+                return ImportOutcome.Invalid;
             }
 
             if (!File.Exists(sourcePath))
             {
                 error = "文件不在了：" + sourcePath;
-                return false;
+                return ImportOutcome.Invalid;
+            }
+
+            string sourceName = System.IO.Path.GetFileName(sourcePath);
+            if (!sourceName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                error = "只导入 .json 文件";
+                return ImportOutcome.Invalid;
+            }
+
+            if (IsReservedLevelFileName(sourceName))
+            {
+                error = sourceName.StartsWith("_", StringComparison.Ordinal)
+                    ? "文件名不能以下划线开头（这类文件不会显示在选关列表里）"
+                    : "catalog.json 是目录索引，不是关卡";
+                return ImportOutcome.Invalid;
             }
 
             string json;
@@ -254,27 +315,56 @@ namespace ShiftGo.BitFlow.Data
             catch (Exception exception)
             {
                 error = "读不了文件：" + exception.Message;
-                return false;
+                return ImportOutcome.Failed;
             }
 
             // 读不通的东西一个字节都不落盘：否则列表里会多一关，点进去是黑的
             if (!TryParseJson(json, out LevelSO probe, out List<string> problems))
             {
                 error = "不是能跑的关卡：" + string.Join("；", problems);
-                return false;
+                return ImportOutcome.Invalid;
             }
             DestroyLevel(probe);
 
             if (IsInsideLibrary(sourcePath))
             {
                 path = System.IO.Path.GetFullPath(sourcePath);
-                return true;
+                return ImportOutcome.AlreadyInLibrary;
             }
 
             EnsureFolder();
 
             // 目标名 = 源文件名：重复导入同一份文件就是覆盖它自己，不会在列表里长出 _02、_03
             string destination = System.IO.Path.Combine(Folder, System.IO.Path.GetFileName(sourcePath));
+
+            if (File.Exists(destination))
+            {
+                string existing;
+                try
+                {
+                    existing = File.ReadAllText(destination);
+                }
+                catch (Exception exception)
+                {
+                    error = "读不了目标文件：" + exception.Message;
+                    return ImportOutcome.Failed;
+                }
+
+                // 内容一模一样 = 这份文件早就导过了。不写盘，也不把它算成一次新导入。
+                if (string.Equals(existing, json, StringComparison.Ordinal))
+                {
+                    path = destination;
+                    return ImportOutcome.Unchanged;
+                }
+
+                if (!overwrite)
+                {
+                    path = destination;
+                    error = "正式目录里已有同名但内容不同的关卡：" + System.IO.Path.GetFileName(destination);
+                    return ImportOutcome.NameTaken;
+                }
+            }
+
             try
             {
                 File.WriteAllText(destination, json);
@@ -282,22 +372,30 @@ namespace ShiftGo.BitFlow.Data
             catch (Exception exception)
             {
                 error = "写不进关卡目录：" + exception.Message;
-                return false;
+                return ImportOutcome.Failed;
             }
 
             path = destination;
-            return true;
+            return ImportOutcome.Imported;
         }
 
         /// <summary>
-        /// 把 <see cref="DropFolders"/> 里所有能读通的 json 导进正式目录，返回导入个数。
+        /// 把 <see cref="DropFolders"/> 里所有能读通的 json 导进正式目录，返回<b>新写入</b>的个数。
         ///
-        /// 同名以「先出现的目录」为准（收件箱优先），所以同一批文件反复点这个按钮只会覆盖自己，
-        /// 不会在列表里堆出一串 <c>_02</c> / <c>_03</c>。
+        /// 同名以「先出现的目录」为准（收件箱优先），并且<b>绝不覆盖</b>正式目录里已有且内容不同的文件：
+        /// 那种情况记进 <paramref name="problems"/>，让玩家自己改名后再导入。
+        /// 内容完全相同的重复文件算 <paramref name="unchanged"/>，不反复重写。
         /// </summary>
         public static int ImportFromDropFolders(out List<string> problems)
         {
+            return ImportFromDropFolders(out problems, out _);
+        }
+
+        /// <summary>同 <see cref="ImportFromDropFolders(out List{string})"/>，顺带报出「已经是最新」的个数。</summary>
+        public static int ImportFromDropFolders(out List<string> problems, out int unchanged)
+        {
             problems = new List<string>();
+            unchanged = 0;
             int imported = 0;
 
             HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -320,16 +418,21 @@ namespace ShiftGo.BitFlow.Data
                 foreach (string file in files)
                 {
                     string name = System.IO.Path.GetFileName(file);
-                    if (name.StartsWith("_", StringComparison.Ordinal)) continue;          // 模板 / 草稿
-                    if (string.Equals(name, "catalog.json", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (IsReservedLevelFileName(name)) continue;   // 模板 / 草稿 / 目录索引
 
                     // 已经在正式目录里的文件不算「导入」：它就是列表里那一关
                     if (!seen.Add(name) || IsInsideLibrary(file)) continue;
 
-                    if (TryImportFile(file, out string path, out string error))
+                    ImportOutcome outcome = TryImportFile(file, false, out string path, out string error);
+
+                    if (outcome == ImportOutcome.Imported)
                     {
                         imported++;
                         Debug.Log("[BitFlow] 已导入关卡 JSON：" + file + " → " + path);
+                    }
+                    else if (outcome == ImportOutcome.Unchanged || outcome == ImportOutcome.AlreadyInLibrary)
+                    {
+                        unchanged++;
                     }
                     else
                     {
@@ -483,8 +586,8 @@ namespace ShiftGo.BitFlow.Data
             LevelTypeRegistryResolver resolver = new LevelTypeRegistryResolver(registry);
             foreach (string file in files)
             {
-                // 下划线开头的是模板 / 草稿，不该出现在选关列表里
-                if (System.IO.Path.GetFileName(file).StartsWith("_", StringComparison.Ordinal)) continue;
+                // 下划线开头的是模板 / 草稿，catalog.json 是目录索引，都不该出现在选关列表里
+                if (IsReservedLevelFileName(System.IO.Path.GetFileName(file))) continue;
 
                 if (!TryRead(file, resolver, out LevelSO level, out List<string> fileProblems))
                 {

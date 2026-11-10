@@ -57,6 +57,12 @@ namespace ShiftGo.BitFlow.View
         BitFlowSetupPanel setup;
 
         LevelDraft draft;
+
+        /// <summary>
+        /// 正在编辑的已有 JSON 路径；新建关卡时为 null。
+        /// DONE 写回这里，而不是按名字另存一份。
+        /// </summary>
+        string editingPath;
         int width = 9;
         int height = 8;
 
@@ -69,6 +75,7 @@ namespace ShiftGo.BitFlow.View
 
         public bool IsOpen => open;
         public LevelDraft Draft => draft;
+        public bool IsEditingExisting => !string.IsNullOrEmpty(editingPath);
 
         /// <summary>
         /// 取工坊（没有就现建一个）。场景里不一定挂了这个组件 —— 老场景是
@@ -134,7 +141,8 @@ namespace ShiftGo.BitFlow.View
 
         /// <summary>
         /// 开一张 <paramref name="width"/>×<paramref name="height"/> 的空板。
-        /// 名字此时就定下来（MY LEVEL 01），存盘时会再算一次以防期间别处多了文件。
+        /// 名字先按「下一个空闲编号」填入 MY LEVEL 01，作者可在参数小窗的 NAME 页改；
+        /// DONE 用这个名字落盘（不再重算，免得把作者输入的名字悄悄换掉）。
         /// </summary>
         public void Open(int width, int height)
         {
@@ -153,7 +161,57 @@ namespace ShiftGo.BitFlow.View
                 return;
             }
 
-            draft = new LevelDraft(this.width, this.height) { DisplayName = name };
+            LevelDraft created = new LevelDraft(this.width, this.height) { DisplayName = name };
+            Begin(created, null);
+        }
+
+        /// <summary>
+        /// 打开一份已经存在的 JSON 关卡继续编辑。
+        ///
+        /// 和 <see cref="Open(int, int)"/> 的区别只有两点：草稿从文件读出来，以及记住
+        /// <c>editingPath</c>。DONE 时写回这一份，不会在列表里多出一关 <c>_02</c>。
+        ///
+        /// 只接受正式关卡目录里的文件：收件箱 / 下载目录里的 json 应该先 IMPORT，
+        /// 否则「编辑」会写到一个面板列表之外的地方，玩家改完却找不到。
+        /// </summary>
+        public bool OpenExisting(string path)
+        {
+            if (open) return false;
+
+            Resolve();
+
+            if (!LevelJsonLibrary.IsInsideLibrary(path))
+            {
+                Debug.LogWarning("[BitFlow] 工坊只能编辑正式关卡目录里的 JSON：" + path);
+                return false;
+            }
+
+            if (!LevelJsonLibrary.TryLoad(path, out LevelSO level, out List<string> problems))
+            {
+                Debug.LogWarning("[BitFlow] 工坊打不开关卡 JSON：" + path + " → " + string.Join("；", problems));
+                return false;
+            }
+
+            LevelDefinition definition = level.ToDefinition();
+            LevelJsonLibrary.DestroyLevel(level);
+
+            LevelDraft loaded = LevelDraft.FromDefinition(definition);
+            loaded.AuthorMode = true;
+
+            Begin(loaded, path);
+            return true;
+        }
+
+        /// <summary>
+        /// 两条入口（新建 / 编辑已有）共用的开场：接卡排、接参数小窗、换底部动作条。
+        /// <paramref name="existingPath"/> 为 null 表示这是新关卡。
+        /// </summary>
+        void Begin(LevelDraft target, string existingPath)
+        {
+            draft = target;
+            editingPath = existingPath;
+            width = draft.Width;
+            height = draft.Height;
 
             // 作者模式：锁定标记只写给玩家看，不挡作者自己（他正在做这一关）
             draft.AuthorMode = true;
@@ -195,6 +253,7 @@ namespace ShiftGo.BitFlow.View
             clearArmed = false;
             homeArmed = false;
             draft = null;
+            editingPath = null;
 
             if (tray != null)
             {
@@ -232,9 +291,18 @@ namespace ShiftGo.BitFlow.View
                 return;
             }
 
-            // 名字每次重算：工坊开着的这段时间里，别处可能又存了一关
-            string name = NextFreeName();
-            if (name == null)
+            // 名字以 NAME 页里作者填的为准；不再每次重算 NextFreeName，
+            // 否则输入框里改的名字会在按 DONE 的一瞬间被悄悄换掉。
+            string name = SanitizeDisplayName(draft.DisplayName);
+            if (string.IsNullOrEmpty(name))
+            {
+                SetHint("NAME REQUIRED  -  OPEN NAME TAB");
+                return;
+            }
+
+            // 新建关卡仍受 MaxLevels 限制；编辑已有文件不占新槽位。
+            // 这里只借 NextFreeName 判「还有没有空号」，不会拿它改写作者填的名字。
+            if (editingPath == null && NextFreeName() == null)
             {
                 SetHint("SAVE SLOTS FULL");
                 return;
@@ -251,6 +319,19 @@ namespace ShiftGo.BitFlow.View
                 // 中文全文进 Console（那里的字形是完整的），面板上只放得下 ASCII 结论
                 Debug.Log("[BitFlow] 工坊自检未通过：" + name + "\n  " + string.Join("\n  ", problems));
                 SetHint(HintFor(problems));
+                return;
+            }
+
+            if (editingPath != null)
+            {
+                if (!TryWriteAt(editingPath, definition, out string editError))
+                {
+                    SetHint(editError);
+                    return;
+                }
+
+                Debug.Log("[BitFlow] 工坊更新关卡：" + name + " → " + editingPath);
+                Close();
                 return;
             }
 
@@ -421,11 +502,142 @@ namespace ShiftGo.BitFlow.View
         /// <summary>"MY LEVEL 07" → "MY_LEVEL_07.json"（文件名里不留空格，方便玩家手打路径）。</summary>
         public static string FileNameOf(string displayName)
         {
-            return (displayName ?? string.Empty).Replace(' ', '_') + ".json";
+            string safe = SanitizeDisplayName(displayName);
+            if (string.IsNullOrEmpty(safe)) safe = "CUSTOM LEVEL";
+            return safe.Replace(' ', '_') + ".json";
         }
 
         /// <summary>
-        /// 写进选关目录。格式和作者手写的 JSON 完全一致（同一个 <see cref="LevelDocumentWriter"/>），
+        /// 关卡名输入的统一规则：只留 ASCII 的 <c>A-Z 0-9 - _</c> 与空格，自动大写、折叠连续空格、
+        /// 最长 20 字符。像素字体只有 ASCII 字形，中文名存进去在面板上会是一排方块；
+        /// 文件名也只由这份结果生成，所以这里同时挡掉路径分隔符与平台非法字符。
+        /// </summary>
+        public static string SanitizeDisplayName(string raw)
+        {
+            return SanitizeName(raw, true);
+        }
+
+        /// <summary>输入框逐字清理：同样只留 ASCII / 大写 / 20 字，但不折叠空格（光标不跳来跳去）。</summary>
+        public static string SanitizeTypedDisplayName(string raw)
+        {
+            return SanitizeName(raw, false);
+        }
+
+        static string SanitizeName(string raw, bool finish)
+        {
+            if (string.IsNullOrEmpty(raw)) return string.Empty;
+
+            System.Text.StringBuilder builder = new System.Text.StringBuilder(raw.Length);
+            bool lastWasSpace = false;
+
+            foreach (char source in raw)
+            {
+                char c = char.ToUpperInvariant(source);
+
+                bool allowed = (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == ' ';
+                if (!allowed) continue;
+
+                if (c == ' ')
+                {
+                    // 输入过程中保留玩家刚敲下的空格；提交 / 生成文件名时折叠并去掉首尾
+                    if (finish && (lastWasSpace || builder.Length == 0)) continue;
+                    lastWasSpace = true;
+                }
+                else
+                {
+                    lastWasSpace = false;
+                }
+
+                builder.Append(c);
+                if (builder.Length >= 20) break;
+            }
+
+            string result = builder.ToString();
+            return finish ? result.Trim() : result;
+        }
+
+        /// <summary>
+        /// 校验并改掉草稿名。重名检查覆盖三类地方：
+        /// 内置目录（<see cref="SaveStore"/> 按 displayName 记通关）、正式目录里的 JSON、
+        /// 以及文件名本身 —— 任何一处撞上都不让存，免得两关在列表里看着一模一样。
+        /// </summary>
+        public bool TryRenameDraft(string raw, out string error)
+        {
+            error = null;
+
+            if (!open || draft == null)
+            {
+                error = "WORKSHOP IS CLOSED";
+                return false;
+            }
+
+            string name = SanitizeDisplayName(raw);
+            if (string.IsNullOrEmpty(name))
+            {
+                error = "NAME REQUIRED";
+                return false;
+            }
+
+            if (string.Equals(name, draft.DisplayName, StringComparison.OrdinalIgnoreCase))
+            {
+                draft.DisplayName = name;   // 规范化（大小写 / 连续空格）也算一次修改
+                return true;
+            }
+
+            if (NameTaken(name))
+            {
+                error = "NAME TAKEN  -  PICK ANOTHER";
+                return false;
+            }
+
+            draft.DisplayName = name;
+            if (setup != null) setup.Refresh();
+            return true;
+        }
+
+        bool NameTaken(string candidate)
+        {
+            string candidatePath = Path.Combine(LevelJsonLibrary.Folder, FileNameOf(candidate));
+
+            // 自己正在编辑的那份文件不算重名：作者可以只改 displayName，不必改文件名。
+            if (!SamePath(candidatePath, editingPath) && File.Exists(candidatePath)) return true;
+
+            if (flow != null && flow.Catalog != null)
+            {
+                for (int i = 0; i < flow.Catalog.Count; i++)
+                {
+                    LevelSO level = flow.Catalog.Get(i);
+                    if (level == null || string.IsNullOrEmpty(level.displayName)) continue;
+                    if (string.Equals(level.displayName, candidate, StringComparison.OrdinalIgnoreCase)) return true;
+                }
+            }
+
+            List<LevelJsonEntry> entries = LevelJsonLibrary.Scan(out List<string> problems);
+            foreach (string problem in problems) Debug.LogWarning("[BitFlow] 关卡 JSON：" + problem);
+
+            foreach (LevelJsonEntry entry in entries)
+            {
+                if (SamePath(entry.Path, editingPath)) continue;
+                if (string.Equals(entry.DisplayName, candidate, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+
+            return false;
+        }
+
+        static bool SamePath(string a, string b)
+        {
+            if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+
+            try
+            {
+                return string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         /// 所以 <see cref="LevelJsonLibrary.Scan"/> 直接就能读，不存在「工坊存档要另写一套解析」的事。
         /// </summary>
         static bool TryWrite(LevelDefinition definition, string displayName, out string error)
@@ -436,19 +648,14 @@ namespace ShiftGo.BitFlow.View
             {
                 LevelJsonLibrary.EnsureFolder();
 
-                List<string> problems = new List<string>();
-                LevelDocument document = LevelDocumentWriter.FromDefinition(definition, problems);
-
-                foreach (string problem in problems)
+                string path = Path.Combine(LevelJsonLibrary.Folder, FileNameOf(displayName));
+                if (File.Exists(path))
                 {
-                    Debug.LogWarning("[BitFlow] 工坊写关卡时跳过：" + problem);
+                    error = "NAME TAKEN  -  PICK ANOTHER";
+                    return false;
                 }
 
-                // wallRows 为 null 时 JsonUtility 会写成 "wallRows": null，
-                // 读回来照样走「没有墙层」那条分支，不用特意补一个空数组。
-                string path = Path.Combine(LevelJsonLibrary.Folder, FileNameOf(displayName));
-                File.WriteAllText(path, JsonUtility.ToJson(document, true));
-                return true;
+                return WriteDocument(definition, path, out error);
             }
             catch (Exception exception)
             {
@@ -456,6 +663,48 @@ namespace ShiftGo.BitFlow.View
                 error = "SAVE FAILED - SEE LOG";
                 return false;
             }
+        }
+
+        /// <summary>编辑已有 JSON 时写回原路径。只允许正式关卡目录，避免把文件写到列表之外。</summary>
+        static bool TryWriteAt(string path, LevelDefinition definition, out string error)
+        {
+            error = null;
+
+            if (!LevelJsonLibrary.IsInsideLibrary(path))
+            {
+                error = "NOT A MY LEVELS FILE";
+                return false;
+            }
+
+            try
+            {
+                LevelJsonLibrary.EnsureFolder();
+                return WriteDocument(definition, path, out error);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("[BitFlow] 工坊保存失败：" + exception.Message);
+                error = "SAVE FAILED - SEE LOG";
+                return false;
+            }
+        }
+
+        static bool WriteDocument(LevelDefinition definition, string path, out string error)
+        {
+            error = null;
+
+            List<string> problems = new List<string>();
+            LevelDocument document = LevelDocumentWriter.FromDefinition(definition, problems);
+
+            foreach (string problem in problems)
+            {
+                Debug.LogWarning("[BitFlow] 工坊写关卡时跳过：" + problem);
+            }
+
+            // wallRows 为 null 时 JsonUtility 会写成 "wallRows": null，
+            // 读回来照样走「没有墙层」那条分支，不用特意补一个空数组。
+            File.WriteAllText(path, JsonUtility.ToJson(document, true));
+            return true;
         }
 
         // ---------------------------------------------------------------- 自检失败说人话

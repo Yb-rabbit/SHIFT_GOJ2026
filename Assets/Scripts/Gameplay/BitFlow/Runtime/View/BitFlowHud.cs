@@ -147,6 +147,7 @@ namespace ShiftGo.BitFlow.View
 
             EnsureEventSystem();
             BuildUi();
+            PausePanel.Ensure();
 
             if (runner != null)
             {

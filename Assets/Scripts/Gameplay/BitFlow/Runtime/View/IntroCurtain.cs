@@ -350,6 +350,13 @@ namespace ShiftGo.BitFlow.View
                 return "WELCOME  -  PRESS PLAY, THEN PICK A LEVEL";
             }
 
+            // 玩家自己存 / 导入的关卡：不是内置演示关，别再叫它 DEMO。
+            // 这里只写「自定义关卡」，具体的组队/解题提示交给关卡本身的布局。
+            if (flow != null && flow.IsJsonLevel)
+            {
+                return "CUSTOM LEVEL  -  PRESS PLAY TO WATCH";
+            }
+
             return "DEMO  -  PRESS PLAY TO WATCH";
         }
 

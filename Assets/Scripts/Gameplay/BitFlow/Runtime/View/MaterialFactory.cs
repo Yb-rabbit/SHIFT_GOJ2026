@@ -13,13 +13,22 @@ namespace ShiftGo.BitFlow.View
         static Shader litShader;
         static readonly Dictionary<string, Material> cache = new Dictionary<string, Material>();
 
+        /// <summary>
+        /// 打包时不再把 URP/Lit、URP/Unlit 整个塞进 Always Included Shaders（那会把所有变体打进包，
+        /// 光这两支就让 Data 多出两百多 MB）。改成 Resources 里放引用材质：
+        /// 只保留这些材质真正用到的变体，同时保证 Shader 不会被剥离。
+        /// </summary>
+        const string LitReferencePath = "BitFlow/Materials/URP_Lit_Ref";
+        const string UnlitReferencePath = "BitFlow/Materials/URP_Unlit_Opaque_Ref";
+
         public static Shader LitShader
         {
             get
             {
                 if (litShader != null) return litShader;
 
-                litShader = Shader.Find("Universal Render Pipeline/Lit");
+                litShader = ReferencedShader(LitReferencePath);
+                if (litShader == null) litShader = Shader.Find("Universal Render Pipeline/Lit");
                 if (litShader == null) litShader = Shader.Find("Standard");
                 if (litShader == null) litShader = Shader.Find("Sprites/Default");
                 if (litShader == null)
@@ -44,12 +53,19 @@ namespace ShiftGo.BitFlow.View
             {
                 if (unlitShader != null) return unlitShader;
 
-                unlitShader = Shader.Find("Universal Render Pipeline/Unlit");
+                unlitShader = ReferencedShader(UnlitReferencePath);
+                if (unlitShader == null) unlitShader = Shader.Find("Universal Render Pipeline/Unlit");
                 if (unlitShader == null) unlitShader = Shader.Find("Unlit/Texture");
                 if (unlitShader == null) unlitShader = Shader.Find("Sprites/Default");
                 if (unlitShader == null) unlitShader = LitShader;
                 return unlitShader;
             }
+        }
+
+        static Shader ReferencedShader(string resourcePath)
+        {
+            Material reference = Resources.Load<Material>(resourcePath);
+            return reference != null ? reference.shader : null;
         }
 
         /// <summary>

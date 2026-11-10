@@ -31,14 +31,24 @@ namespace ShiftGo.BitFlow.View
         /// <summary>危险动作（删关）的确认色：红得够明显，又不至于像报错。</summary>
         static readonly Color DangerColor = new Color(0.62f, 0.16f, 0.18f, 1f);
 
-        const float RowHeight = 56f;
-        const float RowGap = 10f;
-        const float CaptionHeight = 26f;
-        const float HintHeight = 22f;
-        const float ActionHeight = 34f;
+        /// <summary>行尾「...」按钮与展开态。</summary>
+        static readonly Color RowActionColor = new Color(0.16f, 0.22f, 0.28f, 0.95f);
+        static readonly Color ActiveRowActionColor = new Color(0.16f, 0.44f, 0.56f, 0.98f);
 
-        /// <summary>列表区高度 = 面板 620 - 标题占的 96 - 底部（结果行 48 + CLOSE 占的 76）。</summary>
-        const float ListHeight = 396f;
+        const float PanelWidth = 620f;
+        const float PanelHeight = 540f;
+
+        /// <summary>面板内容的可用宽度（左右各留 30px）。所有行/标题/按钮都用它，别各写各的。</summary>
+        const float ContentWidth = 560f;
+
+        const float RowHeight = 44f;
+        const float RowGap = 8f;
+        const float CaptionHeight = 24f;
+        const float HintHeight = 20f;
+        const float ActionHeight = 32f;
+
+        /// <summary>列表区高度 = 面板 540 - 标题占的 88 - 底部（结果行 + CLOSE 占的 132）。</summary>
+        const float ListHeight = 320f;
 
         LevelFlow flow;
         IntroCurtain curtain;
@@ -60,8 +70,17 @@ namespace ShiftGo.BitFlow.View
         /// <summary>列表当前显示的是关卡列表，还是「新建关卡选尺寸」那一屏。</summary>
         bool sizePickMode;
 
+        /// <summary>列表当前显示的是不是 IMPORT 的第二屏。</summary>
+        bool importMode;
+
         /// <summary>列表当前显示的是不是「把当前关卡的 JSON 原文摊开看」那一屏。</summary>
         bool jsonViewMode;
+
+        /// <summary>JSON 原文屏要看的文件；null = 退回看 flow.Current。</summary>
+        LevelJsonEntry jsonViewEntry;
+
+        /// <summary>哪一行的「...」抽屉是打开的（认路径，不认按钮对象）。</summary>
+        string rowActionPath;
 
         /// <summary>
         /// DELETE 的两段式确认（和工坊的 CLEAR / HOME 同一套路）：第一次只记状态，
@@ -125,7 +144,9 @@ namespace ShiftGo.BitFlow.View
             }
 
             // 面板里只处理 ESC / L 关闭。其余按键全部交给 InputGate 挡掉的那套逻辑。
-            if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.L)) Close();
+            // Esc 先过单帧仲裁：选关面板开着时按 Esc 只关面板，不再顺带打开暂停面板。
+            bool escape = Input.GetKeyDown(KeyCode.Escape);
+            if ((escape && EscapeInput.Consume()) || Input.GetKeyDown(KeyCode.L)) Close();
         }
 
         /// <summary>工坊开着时不接管 L（工坊有自己的 DONE / HOME，是唯一一处改动草稿的地方）。</summary>
@@ -147,7 +168,10 @@ namespace ShiftGo.BitFlow.View
 
             open = true;
             sizePickMode = false;
+            importMode = false;
             jsonViewMode = false;
+            jsonViewEntry = null;
+            rowActionPath = null;
             scrollToTop = true;          // 每次开面板都从"内置关卡"那一段开始读
             InputGate.Acquire();
             canvasObject.SetActive(true);
@@ -191,6 +215,13 @@ namespace ShiftGo.BitFlow.View
 
             // 「新建关卡」是同一块列表的第二屏：点 + NEW LEVEL 进来挑尺寸，点 BACK 回关卡列表。
             // 不另开一层面板 —— 尺寸只有四档，多一层 Canvas 反而要多处理一次输入锁的引用计数。
+            if (importMode)
+            {
+                RebuildImportPick();
+                SetScroll(1f);
+                return;
+            }
+
             if (sizePickMode)
             {
                 RebuildSizePick();
@@ -279,19 +310,13 @@ namespace ShiftGo.BitFlow.View
 
             // 自己的关卡放哪、刷新一下看到新文件 —— 少了这两个按钮，玩家得自己去翻
             // AppData/LocalLow 里的隐藏目录，等于没有这个功能。
-            // 导入/导出也归这一组：都是「关卡文件进出这个目录」的事，排在存档列表下面，
-            // 不该把 + NEW LEVEL 和已有的关卡挤到屏幕外。
+            // 只留三个入口：导入、打开共享目录、刷新；导出 / 查看 / 删除都挪到每一行的「...」里，
+            // 这里不再一屏摆九个同权重按钮。
             if (flow != null)
             {
                 CreateCaption("FILES", ref y);
-                CreateAction("IMPORT  ·  FROM FILE", ImportFromFile, ref y);
-                CreateAction("IMPORT  ·  FROM INBOX", ImportFromInbox, ref y);
-                CreateAction("IMPORT  ·  FROM CLIPBOARD", ImportFromClipboard, ref y);
-                CreateAction("EXPORT  ·  CURRENT LEVEL", ExportCurrent, ref y);
-                CreateAction("VIEW JSON  ·  CURRENT LEVEL", BeginJsonView, ref y);
-                CreateAction("DELETE  ·  CURRENT LEVEL", DeleteCurrentJson, ref y);
+                CreateAction("IMPORT", BeginImportPick, ref y);
                 CreateAction("SHARE FOLDER", OpenJsonFolder, ref y);
-                CreateAction("COPY FOLDER PATH", CopyFolderPath, ref y);
                 CreateAction("REFRESH", RefreshList, ref y);
             }
 
@@ -352,21 +377,65 @@ namespace ShiftGo.BitFlow.View
         void BeginSizePick()
         {
             sizePickMode = true;
+            importMode = false;
             jsonViewMode = false;
+            jsonViewEntry = null;
+            rowActionPath = null;
+            Rebuild();
+        }
+
+        /// <summary>
+        /// IMPORT 的第二屏。三种来源放在同一屏里对比，玩家不用先猜「文件从哪来」；
+        /// 复制目录路径也留在这里，方便把路径贴进资源管理器。
+        /// </summary>
+        void RebuildImportPick()
+        {
+            emptyText.gameObject.SetActive(false);
+            listRoot.gameObject.SetActive(true);
+
+            float y = 0f;
+            CreateCaption("IMPORT LEVEL JSON", ref y);
+
+            CreateAction("FROM FILE  ·  PICK A .JSON", ImportFromFile, ref y);
+            CreateAction("FROM INBOX  ·  BATCH IMPORT", ImportFromInbox, ref y);
+            CreateAction("FROM CLIPBOARD", ImportFromClipboard, ref y);
+
+            CreateCaption("FOLDER", ref y);
+            CreateAction("COPY FOLDER PATH", CopyFolderPath, ref y);
+            CreateHint("SAME NAME + DIFFERENT CONTENT IS NEVER OVERWRITTEN", ref y);
+
+            CreateAction("BACK", BackToLevels, ref y);
+
+            listRoot.sizeDelta = new Vector2(listRoot.sizeDelta.x, Mathf.Max(0f, -y));
+        }
+
+        void BeginImportPick()
+        {
+            importMode = true;
+            sizePickMode = false;
+            jsonViewMode = false;
+            jsonViewEntry = null;
+            rowActionPath = null;
             Rebuild();
         }
 
         void BackToLevels()
         {
             sizePickMode = false;
+            importMode = false;
             jsonViewMode = false;
+            jsonViewEntry = null;
+            rowActionPath = null;
             Rebuild();
         }
 
         void RefreshList()
         {
             sizePickMode = false;
+            importMode = false;
             jsonViewMode = false;
+            jsonViewEntry = null;
+            rowActionPath = null;
             Rebuild();
         }
 
@@ -390,15 +459,37 @@ namespace ShiftGo.BitFlow.View
                 return;
             }
 
-            if (!LevelJsonLibrary.TryImportFile(picked, out string path, out string error))
-            {
-                Debug.LogWarning("[BitFlow] 导入关卡 JSON 失败：" + picked + " → " + error);
-                Flash("NOT A LEVEL  ·  SEE CONSOLE");
-                return;
-            }
+            ImportOutcome outcome = LevelJsonLibrary.TryImportFile(picked, false, out string path, out string error);
 
-            Debug.Log("[BitFlow] 已导入关卡 JSON：" + picked + " → " + path);
-            Flash("IMPORTED  " + System.IO.Path.GetFileNameWithoutExtension(path));
+            switch (outcome)
+            {
+                case ImportOutcome.Imported:
+                    Debug.Log("[BitFlow] 已导入关卡 JSON：" + picked + " → " + path);
+                    FinishImport("IMPORTED  " + System.IO.Path.GetFileNameWithoutExtension(path));
+                    return;
+
+                case ImportOutcome.AlreadyInLibrary:
+                case ImportOutcome.Unchanged:
+                    FinishImport("ALREADY IN MY LEVELS  ·  " + System.IO.Path.GetFileNameWithoutExtension(path));
+                    return;
+
+                case ImportOutcome.NameTaken:
+                    Debug.LogWarning("[BitFlow] 导入关卡 JSON 重名，未覆盖：" + picked + " → " + error);
+                    Flash("NAME TAKEN  ·  RENAME THE FILE FIRST");
+                    return;
+
+                default:
+                    Debug.LogWarning("[BitFlow] 导入关卡 JSON 失败：" + picked + " → " + error);
+                    Flash("NOT A LEVEL  ·  SEE CONSOLE");
+                    return;
+            }
+        }
+
+        /// <summary>导入成功后回到关卡列表并显示结果行。</summary>
+        void FinishImport(string message)
+        {
+            importMode = false;
+            Flash(message);
         }
 
         /// <summary>
@@ -407,17 +498,23 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         void ImportFromInbox()
         {
-            int imported = LevelJsonLibrary.ImportFromDropFolders(out List<string> problems);
+            int imported = LevelJsonLibrary.ImportFromDropFolders(out List<string> problems, out int unchanged);
 
             foreach (string problem in problems) Debug.LogWarning("[BitFlow] 关卡 JSON 导入：" + problem);
 
             if (imported > 0)
             {
-                Flash("IMPORTED  " + imported + "  LEVEL(S)");
+                FinishImport("IMPORTED  " + imported + "  LEVEL(S)");
                 return;
             }
 
-            // 导入 0 个有两种结局：目录里本来就没有东西 / 有东西但读不通。这两种要分开说
+            if (unchanged > 0)
+            {
+                FinishImport("ALREADY UP TO DATE");
+                return;
+            }
+
+            // 导入 0 个有三种结局：目录里本来就没有东西 / 有东西但读不通 / 同名不让覆盖。
             Flash(problems.Count > 0 ? "FILE ERROR  ·  SEE CONSOLE" : "INBOX IS EMPTY");
         }
 
@@ -467,7 +564,7 @@ namespace ShiftGo.BitFlow.View
             }
 
             Debug.Log("[BitFlow] 已导入关卡：" + path);
-            Flash("IMPORTED  " + System.IO.Path.GetFileNameWithoutExtension(path));
+            FinishImport("IMPORTED  " + System.IO.Path.GetFileNameWithoutExtension(path));
         }
 
         /// <summary>
@@ -576,12 +673,13 @@ namespace ShiftGo.BitFlow.View
             {
                 rowDeleteArmedPath = path;
                 rowDeleteArmedAt = Time.unscaledTime;
-                Rebuild();          // 让那一行立刻显示成 SURE（别的行自动取消）
-                SetStatus("PRESS SURE TO DELETE  ·  " + System.IO.Path.GetFileNameWithoutExtension(path));
+                Rebuild();          // 让那一行立刻显示成 PRESS AGAIN（别的行自动取消）
+                SetStatus("PRESS DELETE AGAIN TO CONFIRM  ·  " + System.IO.Path.GetFileNameWithoutExtension(path));
                 return;
             }
 
             rowDeleteArmedPath = null;
+            rowActionPath = null;
 
             if (!LevelJsonLibrary.TryDelete(path, out string error))
             {
@@ -624,16 +722,19 @@ namespace ShiftGo.BitFlow.View
 
         // ---------------------------------------------------------------- JSON 原文屏
 
-        /// <summary>原文屏里每行最多几个字符。16 号像素字体每字符 10px，54×10 = 540 &lt; 面板 600。</summary>
-        const int JsonLineChars = 54;
+        /// <summary>原文屏里每行最多几个字符。16 号像素字体每字符 10px，48×10 = 480 &lt; 内容宽 560。</summary>
+        const int JsonLineChars = 48;
 
         /// <summary>原文屏行高的兜底估算（字体没就绪时用），真实高度取自 <c>Text.preferredHeight</c>。</summary>
         const float JsonLineHeight = PixelFont.Small + 4f;
 
-        void BeginJsonView()
+        void BeginJsonView(LevelJsonEntry entry)
         {
             sizePickMode = false;
+            importMode = false;
             jsonViewMode = true;
+            jsonViewEntry = entry;
+            rowActionPath = null;
             Rebuild();
         }
 
@@ -648,9 +749,27 @@ namespace ShiftGo.BitFlow.View
 
             float y = 0f;
 
-            LevelSO level = flow != null ? flow.Current : null;
-            string json = level != null ? LevelJsonSerializer.ToJson(level) : string.Empty;
-            string name = level != null && !string.IsNullOrEmpty(level.displayName) ? level.displayName : "UNTITLED";
+            string json = string.Empty;
+            string name = "UNTITLED";
+
+            if (jsonViewEntry != null)
+            {
+                name = jsonViewEntry.DisplayName;
+                try
+                {
+                    if (System.IO.File.Exists(jsonViewEntry.Path)) json = System.IO.File.ReadAllText(jsonViewEntry.Path);
+                }
+                catch (System.Exception exception)
+                {
+                    Debug.LogWarning("[BitFlow] 读不了关卡 JSON：" + jsonViewEntry.Path + " → " + exception.Message);
+                }
+            }
+            else
+            {
+                LevelSO level = flow != null ? flow.Current : null;
+                json = level != null ? LevelJsonSerializer.ToJson(level) : string.Empty;
+                name = level != null && !string.IsNullOrEmpty(level.displayName) ? level.displayName : "UNTITLED";
+            }
 
             CreateCaption("VIEW JSON  ·  " + name, ref y);
 
@@ -681,7 +800,7 @@ namespace ShiftGo.BitFlow.View
             if (height <= 0f) height = lineCount * JsonLineHeight;   // 字体没就绪时的兜底估算
 
             SetRect(body.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(600f, height), new Vector2(0f, y));
+                new Vector2(ContentWidth, height), new Vector2(0f, y));
             y -= height + RowGap;   // 末尾留一行空隙，滚到底时最后一行不贴着裁切边
 
             listRoot.sizeDelta = new Vector2(listRoot.sizeDelta.x, Mathf.Max(0f, -y));
@@ -750,7 +869,7 @@ namespace ShiftGo.BitFlow.View
 
             RectTransform rowRect = rowObject.GetComponent<RectTransform>();
             SetRect(rowRect, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(600f, RowHeight), new Vector2(0f, y));
+                new Vector2(ContentWidth, RowHeight), new Vector2(0f, y));
             y -= RowHeight + RowGap;
 
             Image background = rowObject.GetComponent<Image>();
@@ -773,57 +892,90 @@ namespace ShiftGo.BitFlow.View
             if (string.IsNullOrEmpty(subtitle))
             {
                 SetRect(title.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                    new Vector2(430f, RowHeight - 8f), new Vector2(22f, 0f));
+                    new Vector2(entry != null ? 360f : 440f, RowHeight - 6f), new Vector2(18f, 0f));
             }
             else
             {
                 // 两行：上面是关卡名，下面是「从哪个文件读来的」，作者一眼知道该改哪份
                 SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
-                    new Vector2(430f, 24f), new Vector2(22f, -8f));
+                    new Vector2(360f, 20f), new Vector2(18f, -4f));
 
                 Text detail = CreateText("Detail", rowRect, subtitle, PixelFont.Small,
                     TextAnchor.MiddleLeft, MutedColor);
                 SetRect(detail.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
-                    new Vector2(430f, 18f), new Vector2(22f, -32f));
+                    new Vector2(360f, 18f), new Vector2(18f, -25f));
             }
 
-            // 打勾用 OK 两个字母：像素字体没有 ✓ 字形（打包后会变方块）
-            // JSON 行右端要多一颗 X，所以这两种装饰整体左移，别和删除按钮叠在一起
-            float clearedX = entry != null ? -76f : -22f;
-            float nowX = entry != null ? -118f : -60f;
-
+            // 打勾用 OK 两个字母：像素字体没有 ✓ 字形（打包后会变方块）。
             if (SaveStore.IsCleared(displayName))
             {
                 Text cleared = CreateText("Cleared", rowRect, "OK", PixelFont.Small, TextAnchor.MiddleCenter, ClearedColor);
                 SetRect(cleared.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
-                    new Vector2(40f, RowHeight - 8f), new Vector2(clearedX, 0f));
+                    new Vector2(40f, RowHeight - 6f), new Vector2(entry != null ? -92f : -52f, 0f));
             }
 
-            if (isCurrent)
-            {
-                Text now = CreateText("Now", rowRect, "NOW  ", PixelFont.Small, TextAnchor.MiddleRight, MutedColor);
-                SetRect(now.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
-                    new Vector2(80f, RowHeight - 8f), new Vector2(nowX, 0f));
-            }
-
-            // 每一行自己的删除键：删关这件事必须在「看得见那一关的地方」发生。
-            // 底部那条 DELETE · CURRENT LEVEL 要求先把关载进来，玩家几乎不可能想到。
             if (entry != null)
             {
                 string path = entry.Path;
-                bool armed = IsRowDeleteArmed(path);
 
-                Button remove = CreateButton("Delete", rowRect, armed ? "SURE" : "X",
-                    new Vector2(48f, RowHeight - 14f), new Vector2(-24f, 0f), () => RequestRowDelete(path));
+                // 每行只留一个「...」：编辑器类动作（编辑 / 看 JSON / 删除）放进抽屉，
+                // 不再让每一行都挂一颗高风险的 X。
+                bool expanded = rowActionPath == path;
+                Button more = CreateButton("More", rowRect, expanded ? "^" : "...",
+                    new Vector2(48f, RowHeight - 10f), Vector2.zero,
+                    () => ToggleRowActions(path));
+                SetRect(more.GetComponent<RectTransform>(), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
+                    new Vector2(1f, 0.5f), new Vector2(48f, RowHeight - 10f), new Vector2(-16f, 0f));
 
-                RectTransform removeRect = remove.GetComponent<RectTransform>();
-                SetRect(removeRect, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
-                    new Vector2(48f, RowHeight - 14f), new Vector2(-24f, 0f));
+                more.GetComponent<Image>().color = expanded
+                    ? ActiveRowActionColor
+                    : RowActionColor;
 
-                remove.GetComponent<Image>().color = armed
-                    ? DangerColor
-                    : new Color(0.16f, 0.10f, 0.12f, 0.95f);
+                if (expanded) BuildRowActions(entry, ref y);
             }
+        }
+
+        /// <summary>展开 / 收起某一行下面的动作抽屉。认路径，Rebuild 后照样对得上。</summary>
+        void ToggleRowActions(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+
+            rowActionPath = rowActionPath == path ? null : path;
+            Rebuild();
+        }
+
+        /// <summary>
+        /// JSON 行的动作抽屉：编辑 / 查看原文 / 删除。
+        /// 删关仍走两段式确认，第一次点只把按钮改成 PRESS AGAIN。
+        /// </summary>
+        void BuildRowActions(LevelJsonEntry entry, ref float y)
+        {
+            string path = entry.Path;
+
+            CreateAction("EDIT  ·  OPEN IN WORKSHOP", () => BeginEditExisting(entry), ref y, 28f);
+            CreateAction("VIEW JSON", () => BeginJsonView(entry), ref y, 28f);
+
+            bool armed = IsRowDeleteArmed(path);
+            CreateAction(armed ? "DELETE  ·  PRESS AGAIN" : "DELETE  ·  JSON FILE",
+                () => RequestRowDelete(path), ref y, 28f);
+        }
+
+        /// <summary>
+        /// 编辑已有 JSON：先让工坊成功接管，再关面板。
+        /// 顺序反过来会先放掉输入锁，中间那一帧玩家还能点到即将拆掉的列表。
+        /// </summary>
+        void BeginEditExisting(LevelJsonEntry entry)
+        {
+            if (entry == null) return;
+
+            BitFlowWorkshop workshop = BitFlowWorkshop.Ensure();
+            if (!workshop.OpenExisting(entry.Path))
+            {
+                Flash("CANNOT EDIT  ·  SEE CONSOLE");
+                return;
+            }
+
+            Close();
         }
 
         /// <summary>分区小标题（不可点）。</summary>
@@ -831,7 +983,7 @@ namespace ShiftGo.BitFlow.View
         {
             Text caption = CreateText("Caption", listRoot, content, PixelFont.Small, TextAnchor.MiddleLeft, MutedColor);
             SetRect(caption.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(600f, CaptionHeight), new Vector2(0f, y));
+                new Vector2(ContentWidth, CaptionHeight), new Vector2(0f, y));
             y -= CaptionHeight;
         }
 
@@ -840,19 +992,27 @@ namespace ShiftGo.BitFlow.View
         {
             Text hint = CreateText("Hint", listRoot, content, PixelFont.Small, TextAnchor.MiddleLeft, MutedColor);
             SetRect(hint.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(600f, HintHeight), new Vector2(0f, y));
+                new Vector2(ContentWidth, HintHeight), new Vector2(0f, y));
             y -= HintHeight;
         }
 
         /// <summary>可点的一行动作（打开目录 / 刷新列表）。标签只用 ASCII：像素字体没有中文字形。</summary>
         void CreateAction(string label, UnityAction onClick, ref float y)
         {
+            CreateAction(label, onClick, ref y, 0f);
+        }
+
+        /// <summary>带左缩进的版本：给行内动作抽屉用，视觉上挂在所属关卡下面。</summary>
+        void CreateAction(string label, UnityAction onClick, ref float y, float leftInset)
+        {
             GameObject rowObject = new GameObject("Action", typeof(RectTransform), typeof(Image), typeof(Button));
             rowObject.transform.SetParent(listRoot, false);
 
+            float width = Mathf.Max(80f, ContentWidth - leftInset);
+
             RectTransform rowRect = rowObject.GetComponent<RectTransform>();
             SetRect(rowRect, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(600f, ActionHeight), new Vector2(0f, y));
+                new Vector2(width, ActionHeight), new Vector2(leftInset * 0.5f, y));
             y -= ActionHeight + RowGap;
 
             Image background = rowObject.GetComponent<Image>();
@@ -977,14 +1137,14 @@ namespace ShiftGo.BitFlow.View
 
             RectTransform panelRect = panelObject.GetComponent<RectTransform>();
             SetRect(panelRect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(700f, 620f), Vector2.zero);
+                new Vector2(PanelWidth, PanelHeight), Vector2.zero);
 
             Image panelImage = panelObject.GetComponent<Image>();
             panelImage.color = PanelColor;
 
             Text title = CreateText("Title", panelRect, "SELECT LEVEL", 32, TextAnchor.MiddleCenter, TitleColor);
             SetRect(title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(600f, 44f), new Vector2(0f, -46f));
+                new Vector2(ContentWidth, 40f), new Vector2(0f, -38f));
 
             // 列表区裁剪 + 竖向滚动：玩家最多能存 30 关，一行 56+10，不裁剪就会画到面板外面 ——
             // 而且溢出面板但仍在屏幕内的按钮照样能点到，看起来像「面板外面也有关卡」。
@@ -994,13 +1154,13 @@ namespace ShiftGo.BitFlow.View
 
             RectTransform clipRect = clipObject.GetComponent<RectTransform>();
             SetRect(clipRect, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(600f, ListHeight), new Vector2(0f, -96f));
+                new Vector2(ContentWidth, ListHeight), new Vector2(0f, -88f));
 
             GameObject listObject = new GameObject("List", typeof(RectTransform));
             listObject.transform.SetParent(clipRect, false);
             listRoot = listObject.GetComponent<RectTransform>();
             SetRect(listRoot, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(600f, 0f), Vector2.zero);
+                new Vector2(ContentWidth, 0f), Vector2.zero);
 
             ScrollRect scroll = clipObject.GetComponent<ScrollRect>();
             scroll.viewport = clipRect;
@@ -1021,18 +1181,18 @@ namespace ShiftGo.BitFlow.View
             emptyText = CreateText("Empty", panelRect, "NO LEVELS", PixelFont.Body,
                 TextAnchor.MiddleCenter, MutedColor);
             SetRect(emptyText.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(600f, 40f), Vector2.zero);
+                new Vector2(ContentWidth, 40f), Vector2.zero);
 
             // 结果行固定贴在列表下沿和 CLOSE 之间的空档里：不进滚动区，滚到哪儿都看得见。
             statusText = CreateText("Status", panelRect, string.Empty, PixelFont.Small,
                 TextAnchor.MiddleCenter, TitleColor);
             SetRect(statusText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                new Vector2(600f, HintHeight), new Vector2(0f, 100f));
+                new Vector2(ContentWidth, HintHeight), new Vector2(0f, 78f));
             statusText.gameObject.SetActive(false);
 
-            Button close = CreateButton("Close", panelRect, "CLOSE", new Vector2(160f, 44f), new Vector2(0f, 30f), Close);
-            SetRect(close.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                new Vector2(160f, 44f), new Vector2(0f, 32f));
+            Button close = CreateButton("Close", panelRect, "CLOSE", new Vector2(150f, 40f), new Vector2(0f, 26f), Close);
+            SetRect(close.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f), new Vector2(150f, 40f), new Vector2(0f, 26f));
         }
 
         Text CreateText(string name, Transform parent, string content, int fontSize, TextAnchor anchor, Color color)

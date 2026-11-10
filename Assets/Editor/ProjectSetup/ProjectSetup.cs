@@ -44,12 +44,23 @@ namespace ShiftGo.EditorTools
             ApplyPipelineToQualityLevels(pipeline);
             EnsurePostProcessData();
             EnsureGlobalVolumeProfile();
-            EnsureAlwaysIncludedShaders();
+            EnsureShaderFootprint();
             UpgradeStandardMaterials();
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log("[ProjectSetup] 完成：URP 已启用（" + UrpAssetPath + "）");
+        }
+
+        /// <summary>
+        /// 只做「把 URP/Lit、URP/Unlit 从 Always Included Shaders 移除」这一件事。
+        /// 单独留一个菜单，方便在编辑器已经打开、GraphicsSettings 还缓存在内存里时手动落一次盘。
+        /// </summary>
+        [MenuItem("SHIFT GO/Setup/5. 精简 URP Always Included Shaders", priority = 4)]
+        public static void TrimAlwaysIncludedShaders()
+        {
+            EnsureShaderFootprint();
+            Debug.Log("[ProjectSetup] Always Included Shaders 精简完成");
         }
 
         [MenuItem("SHIFT GO/Setup/仅重新绑定 URP 管线", priority = 20)]
@@ -246,16 +257,17 @@ namespace ShiftGo.EditorTools
         }
 
         /// <summary>
-        /// 把 URP 的 Lit / Unlit 加进 Always Included Shaders：
-        /// 运行时材质是 Shader.Find 动态建的，不加这一条打包后会被 strip 掉，画面全黑。
+        /// 不要把 URP/Lit、URP/Unlit 放进 Always Included Shaders：那会把两支 Shader
+        /// 的全部变体打进 Data（实测多出两百多 MB）。运行时需要的变体由
+        /// Assets/Resources/BitFlow/Materials 下的引用材质保留，这里负责把它们从旧工程设置里摘掉。
         /// </summary>
-        static void EnsureAlwaysIncludedShaders()
+        static void EnsureShaderFootprint()
         {
             UnityEngine.Object graphicsSettings =
                 AssetDatabase.LoadAssetAtPath<UnityEngine.Object>("ProjectSettings/GraphicsSettings.asset");
             if (graphicsSettings == null)
             {
-                Debug.LogWarning("[ProjectSetup] 读不到 GraphicsSettings.asset，跳过 Always Included Shaders");
+                Debug.LogWarning("[ProjectSetup] 读不到 GraphicsSettings.asset，跳过 Shader 精简");
                 return;
             }
 
@@ -263,26 +275,34 @@ namespace ShiftGo.EditorTools
             SerializedProperty list = serialized.FindProperty("m_AlwaysIncludedShaders");
             if (list == null) return;
 
-            AddShaderIfMissing(list, "Universal Render Pipeline/Lit");
-            AddShaderIfMissing(list, "Universal Render Pipeline/Unlit");
+            // 不要往 Always Included 里塞 URP/Lit、URP/Unlit：
+            // 那会把两个 Shader 的全部变体打进 Data（实测让包体多出两百多 MB）。
+            // 运行时要用的变体由 Assets/Resources/BitFlow/Materials 下的引用材质保留。
+            RemoveShaderIfPresent(list, "Universal Render Pipeline/Lit");
+            RemoveShaderIfPresent(list, "Universal Render Pipeline/Unlit");
 
             serialized.ApplyModifiedProperties();
             AssetDatabase.SaveAssets();
-            Debug.Log("[ProjectSetup] 已确保 URP/Lit、URP/Unlit 在 Always Included Shaders 中");
+
+            // 没有 Always Included 之后，必须保证 Resources 里确实有一份引用材质，
+            // 否则 Shader 会被剥离、运行时画面变洋红。
+            BitFlowMaterialRefs.EnsureAll();
+
+            Debug.Log("[ProjectSetup] 已把 URP/Lit、URP/Unlit 从 Always Included Shaders 移除（改用 Resources 引用材质）");
         }
 
-        static void AddShaderIfMissing(SerializedProperty list, string shaderName)
+        static void RemoveShaderIfPresent(SerializedProperty list, string shaderName)
         {
             Shader shader = Shader.Find(shaderName);
             if (shader == null) return;
 
-            for (int i = 0; i < list.arraySize; i++)
+            for (int i = list.arraySize - 1; i >= 0; i--)
             {
-                if (list.GetArrayElementAtIndex(i).objectReferenceValue == shader) return;
+                if (list.GetArrayElementAtIndex(i).objectReferenceValue == shader)
+                {
+                    list.DeleteArrayElementAtIndex(i);
+                }
             }
-
-            list.InsertArrayElementAtIndex(list.arraySize);
-            list.GetArrayElementAtIndex(list.arraySize - 1).objectReferenceValue = shader;
         }
 
         /// <summary>把 Assets 下仍是 Built-in Standard 的材质升到 URP/Lit（颜色/金属度/光滑度/自发光都会搬过去）。</summary>
