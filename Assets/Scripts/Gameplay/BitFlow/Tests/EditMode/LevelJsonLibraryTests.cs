@@ -511,15 +511,19 @@ namespace ShiftGo.BitFlow.Tests
             string inbox = Path.Combine(LevelJsonLibrary.IncomingFolder, fileName);
             const string original = "{\"schemaVersion\": 2, \"displayName\": \"ORIGINAL\"}";
 
+            HashSet<string> libraryBefore = SnapshotLibraryFiles();
             File.WriteAllText(destination, original);
             File.WriteAllText(inbox, LevelJsonSerializer.ToJson(LoadAssetOrFail()));
             writtenFiles.Add(destination);
 
             try
             {
-                int imported = LevelJsonLibrary.ImportFromDropFolders(out List<string> problems, out _);
+                // 不能断言“总导入数为 0”：ImportFromDropFolders 也会扫描真实分享目录，
+                // 玩家自己放在 LevelJson/share 里的文件会被正常导入，数量不是这个测试能控制的。
+                // 本测试只关心同名碰撞：目标文件不能被覆盖，问题列表要点名它。
+                LevelJsonLibrary.ImportFromDropFolders(out List<string> problems, out _);
+                TrackNewLibraryFiles(libraryBefore);
 
-                Assert.AreEqual(0, imported, "同名不同内容不该被算作导入成功");
                 Assert.AreEqual(original, File.ReadAllText(destination),
                     "IMPORT · FROM INBOX 不能悄悄覆盖已有同名关卡");
                 Assert.IsTrue(problems.Exists(problem => problem.Contains(fileName)),
@@ -543,9 +547,11 @@ namespace ShiftGo.BitFlow.Tests
             File.WriteAllText(inbox, LevelJsonSerializer.ToJson(LoadAssetOrFail()));
 
             string destination = Path.Combine(LevelJsonLibrary.Folder, FilePrefix + "Inbox.json");
+            HashSet<string> libraryBefore = SnapshotLibraryFiles();
             try
             {
                 int imported = LevelJsonLibrary.ImportFromDropFolders(out List<string> problems);
+                TrackNewLibraryFiles(libraryBefore);
 
                 Assert.GreaterOrEqual(imported, 1, "收件箱里的关卡要能被导入：" + string.Join("；", problems));
                 Assert.IsTrue(File.Exists(destination), "导入之后正式目录要有一份：" + destination);
@@ -589,6 +595,25 @@ namespace ShiftGo.BitFlow.Tests
             LevelSO level = AssetDatabase.LoadAssetAtPath<LevelSO>(LevelAssetPath);
             Assert.IsNotNull(level, "缺少关卡资产：" + LevelAssetPath);
             return level;
+        }
+
+        /// <summary>
+        /// 导入会扫描真实分享目录，可能顺带把玩家自己的文件复制进关卡目录。
+        /// 测试开始前拍一张快照，结束后只把「这次新出现的文件」交给 TearDown 删除，
+        /// 既不会把测试的副作用留在存档目录，也不会碰玩家原来就有的关卡。
+        /// </summary>
+        HashSet<string> SnapshotLibraryFiles()
+        {
+            LevelJsonLibrary.EnsureFolder();
+            return new HashSet<string>(Directory.GetFiles(LevelJsonLibrary.Folder));
+        }
+
+        void TrackNewLibraryFiles(HashSet<string> before)
+        {
+            foreach (string file in Directory.GetFiles(LevelJsonLibrary.Folder))
+            {
+                if (!before.Contains(file)) writtenFiles.Add(file);
+            }
         }
 
         /// <summary>写到运行时关卡目录里，登记进待删清单（TearDown 负责删）。</summary>

@@ -10,8 +10,8 @@ namespace ShiftGo.BitFlow.View
     /// 换字体要改五处，漏一处就会出现「一个面板字体不一样」。
     ///
     /// 换的是 <b>BoutiqueBitmap9x9 1.9</b>（<c>Assets/Arts/Resources/Text/</c>），一套 9×9 像素字体：
-    /// 16 号时每字符前进 10px，32 号时 20px。全项目的字号请只用 <see cref="Small"/> /
-    /// <see cref="Body"/> / <see cref="Large"/> 三个档位 —— 位图字体在非整数倍字号上会糊。
+    /// 实测字符前进量 16 号 10px、20 号 12px、32 号 19px。全项目的字号请只用 <see cref="Small"/> /
+    /// <see cref="Body"/> / <see cref="Large"/> 三个档位 —— 像素字体在随手挑的字号上会糊。
     ///
     /// 两个必须记住的限制：
     /// 1. <b>它没有中文字形</b>。中文会 fallback 到系统字体，编辑器里看起来正常、打包后全是方块。
@@ -27,13 +27,14 @@ namespace ShiftGo.BitFlow.View
         /// <summary>小字档：面板标题、状态行、图例。16 号 = 每字符 10px。</summary>
         public const int Small = 16;
 
-        /// <summary>正文档：按钮、行文本、提示框。20 号 = 每字符 12.5px。</summary>
+        /// <summary>正文档：按钮、行文本、提示框。20 号 = 每字符 12px。</summary>
         public const int Body = 20;
 
-        /// <summary>大字档：关名、结算标题。32 号 = 每字符 20px。</summary>
+        /// <summary>大字档：关名、结算标题。32 号 = 每字符 19px。</summary>
         public const int Large = 32;
 
         static Font cached;
+        static bool pointFilterInstalled;
 
         /// <summary>
         /// 取字体。第一次调用时从 Resources 加载并缓存，之后直接返回同一个实例 ——
@@ -45,7 +46,12 @@ namespace ShiftGo.BitFlow.View
             if (cached != null) return cached;
 
             cached = Resources.Load<Font>(ResourcePath);
-            if (cached != null) return cached;
+            if (cached != null)
+            {
+                InstallPointFilter();
+                ApplyPointFilter(cached);
+                return cached;
+            }
 
             // 字体被挪走 / 改名时不能让整块 UI 直接崩成看不见的字：
             // 退回系统字体（编辑器里正常，打包后中文与符号会缺，但至少能看到文字）。
@@ -55,6 +61,34 @@ namespace ShiftGo.BitFlow.View
             cached = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             if (cached == null) cached = Resources.GetBuiltinResource<Font>("Arial.ttf");
             return cached;
+        }
+
+        /// <summary>
+        /// 像素字体的图集必须用 Point 采样。Unity 动态字体默认给图集 Bilinear，
+        /// 字号不是字体的整数倍时，字形边缘会被插值成灰边 —— 看起来就是「有点糊」。
+        /// 这里只对 Resources 里的像素字体生效，系统回退字体仍保持平滑采样。
+        /// </summary>
+        static void InstallPointFilter()
+        {
+            if (pointFilterInstalled) return;
+
+            pointFilterInstalled = true;
+            Font.textureRebuilt += OnFontTextureRebuilt;
+        }
+
+        /// <summary>动态字体会按需重建图集，重建后重新钉一次 Point，否则会被重置回 Bilinear。</summary>
+        static void OnFontTextureRebuilt(Font font)
+        {
+            if (font == cached) ApplyPointFilter(font);
+        }
+
+        static void ApplyPointFilter(Font font)
+        {
+            if (font == null || font.material == null) return;
+
+            Texture texture = font.material.mainTexture;
+            if (texture != null && texture.filterMode != FilterMode.Point)
+                texture.filterMode = FilterMode.Point;
         }
     }
 }

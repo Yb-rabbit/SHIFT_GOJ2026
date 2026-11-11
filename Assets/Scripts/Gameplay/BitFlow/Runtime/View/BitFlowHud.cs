@@ -974,7 +974,17 @@ namespace ShiftGo.BitFlow.View
             // 所以"重试一次就成功"和"一次成功"在存档里长得一样。
             if (result.IsSuccess)
             {
-                SaveStore.MarkCleared(runner != null ? runner.LevelTitle : result.DisplayName);
+                // JSON 关必须按文件路径记：它可能和内置关重名（从内置关导出的副本），
+                // 按 runner.LevelTitle 记会让副本继承内置关的勾。
+                if (flow != null && flow.IsJsonLevel)
+                {
+                    SaveStore.MarkJsonCleared(flow.CurrentJsonPath);
+                }
+                else
+                {
+                    SaveStore.MarkCleared(runner != null ? runner.LevelTitle : result.DisplayName);
+                }
+
                 if (levelSelect != null) levelSelect.Refresh();
             }
 

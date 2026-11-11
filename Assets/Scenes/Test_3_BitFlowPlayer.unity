@@ -307,7 +307,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   script: {fileID: 0}
   fadeInDuration: 0.7
-  tailHold: 1.2
+  tailHold: 1.8
   disconnectDuration: 0.9
   playOnStart: 1
 --- !u!4 &185858584

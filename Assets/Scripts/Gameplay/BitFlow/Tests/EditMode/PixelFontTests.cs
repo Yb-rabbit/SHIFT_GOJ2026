@@ -36,6 +36,17 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         [Test]
+        public void PixelFont_UsesPointFilter_SoGlyphEdgesStayCrisp()
+        {
+            Font font = PixelFont.Get();
+            if (font == null || font.material == null || font.material.mainTexture == null)
+                Assert.Ignore("字体图集尚未生成");
+
+            Assert.AreEqual(FilterMode.Point, font.material.mainTexture.filterMode,
+                "像素字体图集必须用 Point 采样；Bilinear 会把边缘插值成灰边，看起来发糊");
+        }
+
+        [Test]
         public void PixelFont_HasEveryGlyphTheUiReliesOn()
         {
             Font font = PixelFont.Get();

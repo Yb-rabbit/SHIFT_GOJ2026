@@ -436,7 +436,7 @@ namespace ShiftGo.BitFlow.View
         /// 切进工坊：草稿由外部持有（<paramref name="target"/>），卡排按 <paramref name="palette"/> 铺一排卡。
         ///
         /// 数量取决于草稿有没有发牌：没发（<see cref="LevelDraft.StockEnabled"/> 为 false）时
-        /// <see cref="LevelDraft.Remaining"/> 恒为 -1，卡面显示 INF、想摆多少摆多少；
+        /// <see cref="LevelDraft.Remaining"/> 恒为 -1，卡面不显示张数、想摆多少摆多少；
         /// 作者在参数小窗里发过牌之后，卡面就显示张数并按剩余量限制 —— 那是玩家进关时看到的样子。
         /// </summary>
         public void EnterWorkshop(LevelDraft target, IReadOnlyList<ElementTypeSO> palette)
@@ -1795,7 +1795,7 @@ namespace ShiftGo.BitFlow.View
 
                 int left = draft != null ? draft.Remaining(entry.Key) : 0;
 
-                // -1 = 不限量（工坊模式 / 作者模式）：显示 INF，而且**不能压暗** ——
+                // -1 = 不限量（工坊模式 / 作者模式）：卡面留空，而且**不能压暗** ——
                 // 压暗是"这摞用完了"的语义，无限量永远用不完。
                 bool unlimited = left < 0;
                 bool selected = armedType == entry.Type;
@@ -1809,7 +1809,7 @@ namespace ShiftGo.BitFlow.View
 
                 if (entry.Count != null)
                 {
-                    entry.Count.text = unlimited ? "INF" : "x" + Mathf.Max(0, left);
+                    entry.Count.text = unlimited ? string.Empty : "x" + Mathf.Max(0, left);
                     entry.Count.color = empty ? CountTextEmptyColor : (entry.HasArt ? CountTextColor : TextColor);
                 }
             }

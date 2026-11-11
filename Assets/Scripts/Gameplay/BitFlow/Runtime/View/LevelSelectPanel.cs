@@ -90,6 +90,13 @@ namespace ShiftGo.BitFlow.View
         string rowDeleteArmedPath;
         float rowDeleteArmedAt;
 
+        /// <summary>
+        /// RESET PROGRESS 的两段式确认。清勾本身不可逆，但这个动作的代价比删文件小 ——
+        /// 玩家只要愿意重打就能把勾挣回来，所以仍然用「再点一次」而不是弹窗。
+        /// </summary>
+        bool progressResetArmed;
+        float progressResetArmedAt;
+
         /// <summary>「再点一次确认」的有效时长。</summary>
         const float ConfirmSeconds = 3f;
 
@@ -164,6 +171,7 @@ namespace ShiftGo.BitFlow.View
             sizePickMode = false;
             importMode = false;
             rowActionPath = null;
+            progressResetArmed = false;  // 重开面板不继承上一次的「再点一次」状态
             scrollToTop = true;          // 每次开面板都从"内置关卡"那一段开始读
             InputGate.Acquire();
             canvasObject.SetActive(true);
@@ -175,6 +183,7 @@ namespace ShiftGo.BitFlow.View
             if (!open) return;
 
             open = false;
+            progressResetArmed = false;
             canvasObject.SetActive(false);
             InputGate.Release();
         }
@@ -302,6 +311,7 @@ namespace ShiftGo.BitFlow.View
                 CreateAction("IMPORT", BeginImportPick, ref y);
                 CreateAction("SHARE FOLDER", OpenJsonFolder, ref y);
                 CreateAction("REFRESH", RefreshList, ref y);
+                CreateAction(ProgressResetLabel(), RequestResetProgress, ref y);
             }
 
             // 刚按完的动作结果贴在按钮正下方：和手指/鼠标最后停留的位置一致
@@ -413,6 +423,42 @@ namespace ShiftGo.BitFlow.View
             importMode = false;
             rowActionPath = null;
             Rebuild();
+        }
+
+        // ---------------------------------------------------------------- 清通关记录
+
+        /// <summary>
+        /// RESET PROGRESS 的按钮文案：第一次点只是「举手」，3 秒内再点才真清。
+        /// 两段式而不是弹窗：清掉的只是勾，关卡文件和解锁记录都还在。
+        /// </summary>
+        string ProgressResetLabel()
+        {
+            bool armed = progressResetArmed
+                && Time.unscaledTime - progressResetArmedAt <= ConfirmSeconds;
+
+            return armed ? "PRESS AGAIN" : "RESET PROGRESS";
+        }
+
+        /// <summary>
+        /// 清空所有关卡的通关勾（内置关 + MY LEVELS），发布版也能用。
+        ///
+        /// 为什么必须有这个入口：打包后玩家只认 <c>save.json</c>，没有编辑器的
+        /// <c>save_editor.json</c> 隔离；默认作者关卡一旦打勾，玩家没有任何地方能重来。
+        /// 这里只清勾，不动 <c>SaveStore.Data.seenElements</c>（教学提示不必重看）。
+        /// </summary>
+        void RequestResetProgress()
+        {
+            if (!progressResetArmed || Time.unscaledTime - progressResetArmedAt > ConfirmSeconds)
+            {
+                progressResetArmed = true;
+                progressResetArmedAt = Time.unscaledTime;
+                Flash("PRESS AGAIN TO CLEAR PROGRESS");
+                return;
+            }
+
+            progressResetArmed = false;
+            SaveStore.ClearClearedLevels();
+            Flash("PROGRESS CLEARED");
         }
 
         // ---------------------------------------------------------------- 文件进出
@@ -633,6 +679,9 @@ namespace ShiftGo.BitFlow.View
 
             Debug.Log("[BitFlow] 已删除关卡 JSON：" + path);
             if (flow != null) flow.NotifyJsonDeleted(path);
+            // 文件删了，但路径键不能留：同名同路径重新导入是一份新关卡，
+            // 不能继承上一份的通关勾。
+            SaveStore.ClearJsonCleared(path);
             Flash("DELETED  " + System.IO.Path.GetFileNameWithoutExtension(path));
         }
 
@@ -674,6 +723,9 @@ namespace ShiftGo.BitFlow.View
 
             Debug.Log("[BitFlow] 已删除关卡 JSON：" + path);
             if (flow != null) flow.NotifyJsonDeleted(path);
+            // 同 DeleteCurrentJson：删文件同时清掉这个路径的通关记录，
+            // 之后重新导入同一路径不会白捡一个 OK。
+            SaveStore.ClearJsonCleared(path);
             Flash("DELETED  " + System.IO.Path.GetFileNameWithoutExtension(path));
         }
 
@@ -765,7 +817,13 @@ namespace ShiftGo.BitFlow.View
             }
 
             // 打勾用 OK 两个字母：像素字体没有 ✓ 字形（打包后会变方块）。
-            if (SaveStore.IsCleared(displayName))
+            // 内置关按显示名记（资产没有文件路径）；JSON 关按文件路径记 ——
+            // 两份 JSON 可以同名，按名字记会让副本白捡另一关的勾。
+            bool isCleared = entry != null
+                ? SaveStore.IsJsonCleared(entry.Path)
+                : SaveStore.IsCleared(displayName);
+
+            if (isCleared)
             {
                 Text cleared = CreateText("Cleared", rowRect, "OK", PixelFont.Small, TextAnchor.MiddleCenter, ClearedColor);
                 SetRect(cleared.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),

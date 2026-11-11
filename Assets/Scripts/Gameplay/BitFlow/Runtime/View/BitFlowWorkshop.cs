@@ -331,6 +331,9 @@ namespace ShiftGo.BitFlow.View
                 }
 
                 Debug.Log("[BitFlow] 工坊更新关卡：" + name + " → " + editingPath);
+                // 题目改过了，旧的通关勾不再成立；否则选关面板会一直显示 OK，
+                // 玩家改完一关却看不出自己还没验证过新版本。
+                SaveStore.ClearJsonCleared(editingPath);
                 Close();
                 return;
             }

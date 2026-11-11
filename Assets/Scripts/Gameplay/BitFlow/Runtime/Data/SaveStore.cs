@@ -15,8 +15,17 @@ namespace ShiftGo.BitFlow.Data
         /// <summary>已经见过的元件类型 Key（<see cref="ElementTypeSO.Key"/>），黑幕里"首次出现"靠它判定。</summary>
         public List<string> seenElements = new List<string>();
 
-        /// <summary>已通关的关卡名（<see cref="LevelSO.displayName"/>），选关面板打勾用。</summary>
+        /// <summary>已通关的内置关卡名（<see cref="LevelSO.displayName"/>），选关面板打勾用。</summary>
         public List<string> clearedLevels = new List<string>();
+
+        /// <summary>
+        /// 已通关的运行时 JSON 关卡，按<b>文件绝对路径</b>记（见 <see cref="SaveStore.JsonLevelKey"/>）。
+        ///
+        /// 不能和 <see cref="clearedLevels"/> 混用：JSON 是玩家自己复制的文件，显示名可以
+        /// 和内置关一模一样（例如从「00  BIT FLOW」导出的副本仍叫这个名），按名字记会让
+        /// 没玩过的副本直接继承内置关的 OK。路径才是这份文件的身份。
+        /// </summary>
+        public List<string> clearedJsonLevels = new List<string>();
     }
 
     /// <summary>
@@ -114,6 +123,86 @@ namespace ShiftGo.BitFlow.Data
         }
 
         /// <summary>
+        /// JSON 关卡的存档键：把路径变成「同一条路径只有一种写法」。
+        ///
+        /// <see cref="Path.GetFullPath"/> 抹平相对路径和当前工作目录的差异，
+        /// 斜杠统一成 <c>/</c>，再去掉结尾的分隔符。大小写不在这里折叠，
+        /// 比较时用 <see cref="StringComparison.OrdinalIgnoreCase"/> —— Windows 路径不区分大小写，
+        /// 而 Unix 上真的存在只差大小写的两个文件（虽然关在同一个目录里的概率极低）。
+        /// </summary>
+        public static string JsonLevelKey(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return null;
+
+            string full = path;
+            try
+            {
+                full = Path.GetFullPath(path);
+            }
+            catch (Exception)
+            {
+                // 无效路径保留原样：至少不会把玩家已有的勾清掉
+            }
+
+            return full.Replace('\\', '/').TrimEnd('/');
+        }
+
+        /// <summary>这个 JSON 文件是否已经通关（按路径，不按显示名）。</summary>
+        public static bool IsJsonCleared(string path)
+        {
+            string key = JsonLevelKey(path);
+            if (key == null) return false;
+
+            foreach (string cleared in Data.clearedJsonLevels)
+            {
+                if (SameKey(cleared, key)) return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>标记一个 JSON 文件已通关。</summary>
+        public static void MarkJsonCleared(string path)
+        {
+            string key = JsonLevelKey(path);
+            if (key == null || IsJsonCleared(key)) return;
+
+            Data.clearedJsonLevels.Add(key);
+            Save();
+        }
+
+        /// <summary>
+        /// 清掉一个 JSON 文件的通关勾。工坊改完关卡内容后调用：
+        /// 题目已经变了，旧的通关记录不能继续算数。
+        /// </summary>
+        public static void ClearJsonCleared(string path)
+        {
+            string key = JsonLevelKey(path);
+            if (key == null) return;
+
+            int removed = Data.clearedJsonLevels.RemoveAll(cleared => SameKey(cleared, key));
+            if (removed > 0) Save();
+        }
+
+        /// <summary>
+        /// 清空所有通关勾（内置关 + JSON 关），<b>保留</b>已见元件记录。
+        /// 选关面板的 RESET PROGRESS 走这里 —— 玩家想重新打一遍，但不该被迫重看开场教学。
+        /// </summary>
+        public static void ClearClearedLevels()
+        {
+            if (Data.clearedLevels.Count == 0 && Data.clearedJsonLevels.Count == 0) return;
+
+            Data.clearedLevels.Clear();
+            Data.clearedJsonLevels.Clear();
+            Save();
+        }
+
+        static bool SameKey(string left, string right)
+        {
+            return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
         /// 清空进度：元件"首次出现"和通关打勾一起清，内存与磁盘同时归零。
         /// 直接删文件而不是写一份空档 —— 空档和"没存过档"之后要分两种情况维护，没必要。
         /// 编辑器里清的是 <see cref="EditorFileName"/>；它碰不到打包后的 <see cref="FileName"/>。
@@ -145,6 +234,7 @@ namespace ShiftGo.BitFlow.Data
                 // 老存档缺字段时这里会是 null，必须补回来，否则第一次读取就 NullReference
                 if (loaded.seenElements == null) loaded.seenElements = new List<string>();
                 if (loaded.clearedLevels == null) loaded.clearedLevels = new List<string>();
+                if (loaded.clearedJsonLevels == null) loaded.clearedJsonLevels = new List<string>();
                 return loaded;
             }
             catch (Exception exception)
