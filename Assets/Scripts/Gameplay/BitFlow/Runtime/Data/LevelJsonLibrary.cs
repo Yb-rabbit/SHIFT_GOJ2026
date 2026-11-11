@@ -196,6 +196,13 @@ namespace ShiftGo.BitFlow.Data
         }
 
         /// <summary>
+        /// 目录说明的首行版本戳。文案改了就改这里：已有 README（包括旧版、带本机绝对路径的）
+        /// 会在下次 <see cref="EnsureFolder"/> / <see cref="EnsureShareFolder"/> 时被重写，
+        /// 免得发出去的包里那份旧说明永远留在玩家机器上。
+        /// </summary>
+        public const string ReadmeStamp = "SHIFT GO README v2";
+
+        /// <summary>
         /// 目录说明文件名。以 <c>README</c> 开头、不是 <c>.json</c>，所以绝不会被
         /// <see cref="Scan"/> 当成关卡读。
         /// </summary>
@@ -348,62 +355,88 @@ namespace ShiftGo.BitFlow.Data
 
         // ------------------------------------------------------------------ 外部 JSON 导入
 
-        /// <summary>往关卡目录里放一份说明（只在缺失时写，不覆盖玩家改过的版本）。</summary>
+        /// <summary>
+        /// 往关卡目录里放一份说明。只在「缺失 / 版本戳不对」时写 ——
+        /// 玩家自己改过的同版本说明不会被覆盖，旧版（可能带绝对路径）会被自动纠正。
+        /// </summary>
         static void WriteReadmeIfMissing(string folder)
         {
-            try
-            {
-                string path = System.IO.Path.Combine(folder, ReadmeName);
-                if (File.Exists(path)) return;
-
-                File.WriteAllText(path,
-                    "SHIFT GO — 关卡 JSON 目录\r\n"
-                    + "========================================\r\n\r\n"
-                    + "这里放的就是「选关面板 → MY LEVELS」里列出来的关卡。\r\n"
-                    + "每个 .json 就是一关，文件名不重要，关卡名写在文件里的 displayName。\r\n\r\n"
-                    + "怎么加关（任选一条）：\r\n"
-                    + "  1. 游戏里：选关面板 → FILES → IMPORT → FROM FILE（挑一个 json）\r\n"
-                    + "  2. 游戏里：把 json 放进 SHARE FOLDER，再点 IMPORT → FROM SHARE FOLDER\r\n"
-                    + "  3. 直接复制进本目录，然后点 FILES → REFRESH（或重开面板）\r\n\r\n"
-                    + "怎么删关：选关面板 → MY LEVELS 里那一行右边的 ... → DELETE → 3 秒内再点 DELETE。\r\n"
-                    + "怎么改关：同一行 ... → EDIT，在工坊里按 NAME 改名，DONE 写回原文件。\r\n"
-                    + "怎么分享：同一行 ... → SHARE · SAVE COPY，副本会写进玩家可见的 SHARE FOLDER。\r\n"
-                    + "同名但内容不同的 json 不会被悄悄覆盖；请先改文件名再导入。\r\n\r\n"
-                    + "以 _ 开头的文件（_template.json 之类）是模板/草稿，不会被当成关卡。\r\n\r\n"
-                    + "路径：\r\n  " + folder + "\r\n");
-            }
-            catch (Exception exception)
-            {
-                // 写说明失败不影响读写关卡：这是纯帮助文本
-                Debug.LogWarning("[BitFlow] 写不了关卡目录说明：" + exception.Message);
-            }
+            WriteReadmeIfOutdated(folder,
+                ReadmeStamp + " · 关卡 JSON 目录\r\n"
+                + "========================================\r\n\r\n"
+                + "这里放的就是「选关面板 → MY LEVELS」里列出来的关卡。\r\n"
+                + "每个 .json 就是一关，文件名不重要，关卡名写在文件里的 displayName。\r\n\r\n"
+                + "怎么加关（任选一条）：\r\n"
+                + "  1. 游戏里：选关面板 → FILES → IMPORT → FROM FILE（挑一个 json）\r\n"
+                + "  2. 游戏里：把 json 放进 SHARE FOLDER，再点 IMPORT → FROM SHARE FOLDER\r\n"
+                + "  3. 直接复制进本目录，然后点 FILES → REFRESH（或重开面板）\r\n\r\n"
+                + "怎么删关：选关面板 → MY LEVELS 里那一行右边的 ... → DELETE → 3 秒内再点 DELETE。\r\n"
+                + "怎么改关：同一行 ... → EDIT，在工坊里按 NAME 改名，DONE 写回原文件。\r\n"
+                + "怎么分享：同一行 ... → SHARE · SAVE COPY，副本会写进玩家可见的 SHARE FOLDER。\r\n"
+                + "同名但内容不同的 json 不会被悄悄覆盖；请先改文件名再导入。\r\n\r\n"
+                + "以 _ 开头的文件（_template.json 之类）是模板/草稿，不会被当成关卡。\r\n"
+                + "本文件所在的目录就是游戏的运行时关卡目录；不同电脑上的路径不一样，这里不写死。\r\n");
         }
 
         /// <summary>
         /// 给分享目录放一份说明。分享目录里的文件<b>不会自动</b>出现在 MY LEVELS ——
         /// 必须先走 IMPORT，所以说明里要把这条写死，免得玩家以为丢进去就能玩。
+        /// 说明里<b>不写绝对路径</b>：这份文件会被随关卡一起转发，写死路径等于把发布者的机器目录带给别人。
         /// </summary>
         static void WriteShareReadmeIfMissing(string folder)
+        {
+            WriteReadmeIfOutdated(folder,
+                ReadmeStamp + " · 关卡分享 / 导入目录\r\n"
+                + "========================================\r\n\r\n"
+                + "这个目录是给玩家之间传关卡用的：\r\n"
+                + "  1. 别人发来的 .json 放进这里；\r\n"
+                + "  2. 游戏里：选关面板 → IMPORT → FROM SHARE FOLDER · BATCH IMPORT；\r\n"
+                + "  3. 你自己的关卡：MY LEVELS 那一行 ... → SHARE · SAVE COPY 也会存到这里。\r\n\r\n"
+                + "注意：这里的文件不会自动出现在 MY LEVELS，导入成功后才会进游戏自己的关卡库。\r\n"
+                + "导出 / 分享只是把文件复制到这里，不会覆盖已有的同名文件。\r\n\r\n"
+                + "本文件所在的目录就是分享目录（游戏里 SHARE FOLDER 打开的就是它）；\r\n"
+                + "不同电脑上的路径不一样，所以说明里不写死路径。\r\n");
+        }
+
+        /// <summary>
+        /// 只有「文件不存在 / 首行版本戳对不上」时才写说明。
+        /// 这样玩家自己改过的同版本说明会被保留，而旧版说明
+        /// （包括早期版本写死开发者本机路径的那些）会在下一次启动时自动纠正。
+        /// </summary>
+        static void WriteReadmeIfOutdated(string folder, string content)
         {
             try
             {
                 string path = System.IO.Path.Combine(folder, ReadmeName);
-                if (File.Exists(path)) return;
+                if (IsCurrentReadme(path)) return;
 
-                File.WriteAllText(path,
-                    "SHIFT GO — 关卡分享 / 导入目录\r\n"
-                    + "========================================\r\n\r\n"
-                    + "这个目录是给玩家之间传关卡用的：\r\n"
-                    + "  1. 别人发来的 .json 放进这里；\r\n"
-                    + "  2. 游戏里：选关面板 → IMPORT → FROM SHARE FOLDER · BATCH IMPORT；\r\n"
-                    + "  3. 你自己的关卡：MY LEVELS 那一行 ... → SHARE · SAVE COPY 也会存到这里。\r\n\r\n"
-                    + "注意：这里的文件不会自动出现在 MY LEVELS，导入成功后才会进游戏自己的关卡库。\r\n"
-                    + "导出 / 分享只是把文件复制到这里，不会覆盖已有的同名文件。\r\n\r\n"
-                    + "路径：\r\n  " + folder + "\r\n");
+                File.WriteAllText(path, content);
             }
             catch (Exception exception)
             {
-                Debug.LogWarning("[BitFlow] 写不了分享目录说明：" + exception.Message);
+                // 写说明失败不影响读写关卡：这是纯帮助文本
+                Debug.LogWarning("[BitFlow] 写不了目录说明：" + exception.Message);
+            }
+        }
+
+        /// <summary>说明文件存在且首行就是当前版本的戳。</summary>
+        static bool IsCurrentReadme(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return false;
+
+                using (StreamReader reader = new StreamReader(path))
+                {
+                    string firstLine = reader.ReadLine();
+                    return firstLine != null
+                        && firstLine.StartsWith(ReadmeStamp, StringComparison.Ordinal);
+                }
+            }
+            catch (Exception)
+            {
+                // 读不了就当它是旧的：下次写入会尝试修好
+                return false;
             }
         }
 

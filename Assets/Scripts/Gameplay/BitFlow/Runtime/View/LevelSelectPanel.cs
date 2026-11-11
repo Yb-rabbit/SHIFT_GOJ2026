@@ -472,11 +472,11 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         void ImportFromFile()
         {
+            // 分享目录只是对话框的「落脚点」，建不出来也不该挡住这条最常用的导入路：
+            // FilePicker 会在目录不存在时退回「我的文档」。
             if (!LevelJsonLibrary.EnsureShareFolder(out string folderError))
             {
-                Debug.LogWarning("[BitFlow] 分享目录不可用：" + folderError);
-                Flash("SHARE FOLDER UNAVAILABLE  ·  SEE CONSOLE");
-                return;
+                Debug.LogWarning("[BitFlow] 分享目录不可用，文件对话框改用我的文档作为起点：" + folderError);
             }
 
             string picked = FilePicker.PickJson("IMPORT LEVEL JSON", LevelJsonLibrary.ShareFolder);

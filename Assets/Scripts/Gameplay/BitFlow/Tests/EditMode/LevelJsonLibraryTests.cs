@@ -271,6 +271,80 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         /// <summary>
+        /// 分享目录的 README 会被跟着关卡一起转发，所以绝不能写死本机的绝对路径
+        /// （旧版把 <c>D:\...</c> 写在「路径：」那一行，等于把开发机目录带给别人）。
+        /// </summary>
+        [Test]
+        public void EnsureShareFolder_ReadmeContainsNoAbsolutePath()
+        {
+            Assert.IsTrue(LevelJsonLibrary.EnsureShareFolder(out string folderError),
+                "分享目录应该能建出来：" + folderError);
+
+            string folder = LevelJsonLibrary.ShareFolder;
+            string readme = Path.Combine(folder, LevelJsonLibrary.ReadmeName);
+            string backup = File.Exists(readme) ? File.ReadAllText(readme) : null;
+
+            try
+            {
+                // 删掉再 Ensure：强制走「重新生成」那条路，而不是读到上一次留下的文件
+                if (File.Exists(readme)) File.Delete(readme);
+
+                Assert.IsTrue(LevelJsonLibrary.EnsureShareFolder(out string error),
+                    "分享目录应该能建出来：" + error);
+
+                readme = Path.Combine(LevelJsonLibrary.ShareFolder, LevelJsonLibrary.ReadmeName);
+                Assert.IsTrue(File.Exists(readme), "分享目录里应该自动生成说明：" + readme);
+
+                string text = File.ReadAllText(readme);
+                StringAssert.StartsWith(LevelJsonLibrary.ReadmeStamp, text, "说明首行必须是版本戳");
+                Assert.IsFalse(text.Contains(LevelJsonLibrary.ShareFolder),
+                    "说明不能写死本机绝对路径：" + LevelJsonLibrary.ShareFolder);
+                Assert.IsFalse(text.Contains("路径："), "说明里不该再有「路径：」那一行");
+                Assert.IsFalse(text.Contains(":\\"), "说明里出现了 Windows 绝对路径");
+            }
+            finally
+            {
+                if (backup != null) File.WriteAllText(readme, backup);
+                else if (File.Exists(readme)) File.Delete(readme);
+            }
+        }
+
+        /// <summary>
+        /// 已经发出去的旧说明（带绝对路径、首行没有版本戳）必须在下次启动时被自动改写 ——
+        /// 旧实现「文件存在就跳过」，等于让泄漏永久留在玩家机器上。
+        /// </summary>
+        [Test]
+        public void EnsureShareFolder_RewritesOutdatedReadme()
+        {
+            Assert.IsTrue(LevelJsonLibrary.EnsureShareFolder(out string folderError),
+                "分享目录应该能建出来：" + folderError);
+
+            string readme = Path.Combine(LevelJsonLibrary.ShareFolder, LevelJsonLibrary.ReadmeName);
+            string backup = File.Exists(readme) ? File.ReadAllText(readme) : null;
+
+            try
+            {
+                const string legacy =
+                    "SHIFT GO — 关卡分享 / 导入目录\r\n"
+                    + "========================================\r\n\r\n"
+                    + "路径：\r\n  Z:\\SomeoneElse\\SHIFT_GO2026\\LevelJson\\share\r\n";
+                File.WriteAllText(readme, legacy);
+
+                Assert.IsTrue(LevelJsonLibrary.EnsureShareFolder(out string error),
+                    "已有旧说明时 Ensure 也不该失败：" + error);
+
+                string text = File.ReadAllText(readme);
+                StringAssert.StartsWith(LevelJsonLibrary.ReadmeStamp, text, "旧版说明必须被重写成当前版本");
+                Assert.IsFalse(text.Contains("Z:\\SomeoneElse"), "旧版说明里的绝对路径必须被清掉");
+            }
+            finally
+            {
+                if (backup != null) File.WriteAllText(readme, backup);
+                else if (File.Exists(readme)) File.Delete(readme);
+            }
+        }
+
+        /// <summary>
         /// 剪贴板导入用的判定：<see cref="LevelJsonLibrary.TryParseJson"/> 不落盘，
         /// 但必须和「从文件读」得出同一关 —— 两边共用 <c>Parse</c>，这条测试钉住这一点。
         /// </summary>

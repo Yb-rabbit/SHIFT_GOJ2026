@@ -91,3 +91,11 @@ Assets/
 
 `File > Build Settings` 选择 **Windows / x86_64**，加入 `Scenes/Test_2_BitFlow.unity` 后 Build 即可。
 
+发布前提醒：
+
+- 工程根目录的 `LevelJson/` 是协作中转站（导出样例、待导入、诊断报告），**不要**跟 exe 一起压缩发布；
+  运行时会在玩家自己的 `persistentDataPath` 和 exe 旁边另建目录。
+- 打包前可以先跑 `SHIFT GO/BitFlow/关卡 JSON/发布前自检：本机分享目录`：
+  它会把本机的 `LevelJson/share/README.txt` 刷新到当前版本（旧版说明里写死过开发机的绝对路径），
+  并列出目录里还剩哪些文件。
+

@@ -22,7 +22,7 @@ LevelJson/
 | 角色 | 落点 |
 |---|---|
 | 运行时关卡目录 | `Application.persistentDataPath/LevelJson/*.json`（内部存储，玩家不需要手动翻） |
-| 玩家分享 / 导入目录 | 程序旁边 `LevelJson/share/`（独立版 = exe 同级；编辑器 = 工程根目录）；不可写时退到 `文档/SHIFT GO/Levels` |
+| 玩家分享 / 导入目录 | 程序旁边 `LevelJson/share/`（独立版 = exe 同级；编辑器 = 工程根目录）；不可写时退到 `文档/SHIFT GO/Levels`。目录说明 `README.txt` 首行带版本戳、**不写绝对路径**，旧版说明会在下次启动时自动改写 |
 | 类型注册表 | `Assets/Resources/BitFlow/LevelTypeRegistry.asset`（进包，运行时 `Resources.Load`） |
 
 - 选关面板（游戏里按 `L` 打开）的 `MY LEVELS` 分区列出运行时关卡目录里的关卡；`_` 开头的草稿不列出，读不通的文件只在 Console 报原因

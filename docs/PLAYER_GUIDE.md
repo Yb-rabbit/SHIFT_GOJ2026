@@ -131,7 +131,7 @@ Unity 编辑器:   <工程根目录>\LevelJson\share\
 | 名字 | 是什么 |
 |---|---|
 | `*.json` | 分享 / 待导入的关卡文件。一个文件 = 一关，文件名不重要（关名写在文件里的 `displayName`） |
-| `README.txt` | 这份目录的说明（第一次打开分享目录时自动生成） |
+| `README.txt` | 这份目录的说明（第一次打开分享目录时自动生成）。只写相对描述、**不含本机路径**，可以随关卡一起转发；旧版说明会在下次启动时自动改写 |
 
 这里的文件**不会自动出现在 MY LEVELS**：先通过 `IMPORT` 导入，才会进游戏自己的关卡库。
 游戏内部另有一份正式关卡目录（在系统的 `persistentDataPath` 下），那是运行时存储，玩家不需要手动去翻。
@@ -185,7 +185,7 @@ Unity 编辑器:   <工程根目录>\LevelJson\share\
 |---|---|
 | 按 `L` 没反应 | 开场演出 / 换关黑幕期间会被挡，等一下再按；Console 有 `没找到 LevelFlow` 说明场景缺组件 |
 | 手牌点不动、放不下 | 这关不该有 BUILD MODE。旧版工坊存档可能带着 `allowBuild: true`，现在进关会对手牌关强制摘掉，重进这关即可 |
-| 点了 `IMPORT · FROM FILE` 没弹窗 | 只有 Windows 支持系统对话框；其它平台把文件丢进 `SHARE FOLDER`，用 `IMPORT · FROM SHARE FOLDER` |
+| 点了 `IMPORT · FROM FILE` 没弹窗 | 只有 Windows 支持系统对话框；其它平台把文件丢进 `SHARE FOLDER`，用 `IMPORT · FROM SHARE FOLDER`。Windows 上如果 Console 里出现 `打不开文件对话框（CommDlgExtendedError=...）`，那说明系统拒绝了这次调用（例如被安全软件拦截），同样先走分享目录 |
 | 导入后列表里没有 | 看那行状态：`NOT A LEVEL`（JSON 读不通，原因在 Console）或 `SHARE FOLDER IS EMPTY`（分享目录里没有可导入的文件） |
 | `IMPORT · FROM SHARE FOLDER` 导不进 | 文件要放在**分享目录**里（点 `SHARE FOLDER` 打开的就是它）；分享目录里的文件要先导入，不会自动出现在列表 |
 | 行内 `...` 的删除点了没反应 | 第一次点只是「举手」（变成 `PRESS AGAIN`），3 秒内再点一次才真删 |

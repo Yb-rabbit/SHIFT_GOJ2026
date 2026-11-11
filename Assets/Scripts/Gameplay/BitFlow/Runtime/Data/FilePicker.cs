@@ -52,6 +52,13 @@ namespace ShiftGo.BitFlow.Data
                 startFolder = LevelJsonLibrary.ShareFolder;
             }
 
+            // 分享目录也可能建不出来（装在 Program Files、文档目录被重定向等）：
+            // 这时退回「我的文档」，至少让对话框有地方落脚，而不是整条 IMPORT 路都不可用。
+            if (string.IsNullOrEmpty(startFolder) || !Directory.Exists(startFolder))
+            {
+                startFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            }
+
 #if UNITY_EDITOR
             string picked = UnityEditor.EditorUtility.OpenFilePanel(title, startFolder, "json");
             return string.IsNullOrEmpty(picked) ? null : picked;
@@ -76,6 +83,10 @@ namespace ShiftGo.BitFlow.Data
         /// <summary>
         /// Win32 <c>OPENFILENAMEW</c>。字段顺序 / 宽度必须和头文件逐字对齐 ——
         /// 结构体错一个字段，native 那边就会往错误的位置写，表现是「点了没反应」或者直接崩。
+        ///
+        /// <b>lpstrFile / lpstrFileTitle 必须是指针（<see cref="IntPtr"/>），不能是定长 <c>char[]</c>。</b>
+        /// 用 <c>ByValArray</c> 会把上千个字符内联进结构体：<c>lStructSize</c> 变成 1408（正确值 152 / x64），
+        /// <c>GetOpenFileNameW</c> 直接以 <c>CDERR_STRUCTSIZE</c> 失败，玩家看到的就是「点了没反应」。
         /// </summary>
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         struct OpenFileName
@@ -83,14 +94,21 @@ namespace ShiftGo.BitFlow.Data
             public int structSize;
             public IntPtr owner;
             public IntPtr instance;
-            [MarshalAs(UnmanagedType.LPWStr)] public string filter;
-            [MarshalAs(UnmanagedType.LPWStr)] public string customFilter;
+
+            /// <summary>lpstrFilter：双 <c>'\0'</c> 结尾的过滤器表，见 <see cref="AllocDoubleNullString"/>。</summary>
+            public IntPtr filter;
+            public IntPtr customFilter;
             public int maxCustomFilter;
             public int filterIndex;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = PathBufferChars)] public char[] file;
+
+            /// <summary>lpstrFile：指向调用方分配的路径缓冲区（见 <see cref="PickWindows"/>）。</summary>
+            public IntPtr file;
             public int maxFile;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)] public char[] fileTitle;
+
+            /// <summary>lpstrFileTitle：这里不需要短文件名，传 <see cref="IntPtr.Zero"/>、maxFileTitle = 0。</summary>
+            public IntPtr fileTitle;
             public int maxFileTitle;
+
             [MarshalAs(UnmanagedType.LPWStr)] public string initialDir;
             [MarshalAs(UnmanagedType.LPWStr)] public string titleText;
             public int flags;
@@ -108,57 +126,100 @@ namespace ShiftGo.BitFlow.Data
         [DllImport("comdlg32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         static extern bool GetOpenFileNameW(ref OpenFileName openFileName);
 
+        /// <summary>系统对话框失败时给原因；返回 0 表示玩家主动取消。</summary>
+        [DllImport("comdlg32.dll")]
+        static extern int CommDlgExtendedError();
+
         [DllImport("user32.dll")]
         static extern IntPtr GetActiveWindow();
 
         /// <summary>
-        /// 弹系统打开对话框。用 <c>char[]</c> 收路径而不是 <c>string</c>：
-        /// <c>string</c> 字段在 struct 里只保证「送进去」，native 写回来的内容拿不到；
-        /// 定长 <c>char[]</c> 才会被 marshal 回托管侧。
+        /// 弹系统打开对话框。路径缓冲区用 <see cref="Marshal.AllocHGlobal"/> 自己分配：
+        /// 结构体里只放指针，布局才和原生 <c>OPENFILENAMEW</c> 一致；
+        /// 系统写回来的内容在调用后从缓冲区读成字符串，最后在 <c>finally</c> 里释放。
         /// </summary>
         static string PickWindows(string title, string startFolder)
         {
             OpenFileName dialog = new OpenFileName();
-            dialog.structSize = Marshal.SizeOf(typeof(OpenFileName));
-            dialog.owner = GetActiveWindow();
-
-            // 过滤串用 '\0' 分段、两个 '\0' 结尾。LPWStr 会按字符串长度整段拷进去，内嵌 '\0' 不会丢
-            dialog.filter = "Level JSON (*.json)\0*.json\0All files (*.*)\0*.*\0\0";
-            dialog.file = new char[PathBufferChars];
-            dialog.maxFile = PathBufferChars;
-            dialog.fileTitle = new char[256];
-            dialog.maxFileTitle = 256;
-            dialog.initialDir = startFolder;
-            dialog.titleText = title;
-            dialog.defaultExtension = "json";
-
-            // NoChangeDir：选完不把进程的当前目录改到玩家刚才翻到的文件夹
-            dialog.flags = OfnFileMustExist | OfnPathMustExist | OfnNoChangeDir;
+            IntPtr filter = IntPtr.Zero;
+            IntPtr fileBuffer = IntPtr.Zero;
 
             try
             {
-                if (!GetOpenFileNameW(ref dialog)) return null;   // 取消 / 关掉窗口
+                dialog.structSize = Marshal.SizeOf(typeof(OpenFileName));
+                dialog.owner = GetActiveWindow();
+
+                // 过滤器表：显示名 '\0' 通配符 '\0' …… 两个 '\0' 收尾。
+                // 手工分配缓冲区，内嵌 '\0' 才不会被任何脚本后端截断。
+                filter = AllocDoubleNullString("Level JSON (*.json)\0*.json\0All files (*.*)\0*.*\0");
+                dialog.filter = filter;
+
+                // 路径缓冲区：系统会往这里写玩家选中的路径（UTF-16）
+                fileBuffer = Marshal.AllocHGlobal(PathBufferChars * sizeof(char));
+                dialog.file = fileBuffer;
+                dialog.maxFile = PathBufferChars;
+
+                // 不需要短文件名：lpstrFileTitle 传 NULL 是文档允许的写法
+                dialog.fileTitle = IntPtr.Zero;
+                dialog.maxFileTitle = 0;
+
+                dialog.initialDir = startFolder;
+                dialog.titleText = title;
+                dialog.defaultExtension = "json";
+
+                // NoChangeDir：选完不把进程的当前目录改到玩家刚才翻到的文件夹
+                dialog.flags = OfnFileMustExist | OfnPathMustExist | OfnNoChangeDir;
+
+                // 系统只在玩家真的选了文件时才写缓冲区，必须先清零，否则会读到垃圾
+                ZeroBuffer(fileBuffer, PathBufferChars);
+
+                if (!GetOpenFileNameW(ref dialog))
+                {
+                    int code = CommDlgExtendedError();
+                    if (code == 0) return null;   // 玩家点了取消 / 关掉窗口，不需要吵
+
+                    UnityEngine.Debug.LogWarning(
+                        "[BitFlow] 打不开文件对话框（CommDlgExtendedError=0x" + code.ToString("X4")
+                        + "），请改用 IMPORT · FROM SHARE FOLDER。");
+                    return null;
+                }
+
+                return Marshal.PtrToStringUni(fileBuffer);
             }
             catch (Exception exception)
             {
-                // 缺 DLL / 系统太老：静默退回，玩家还能走分享目录
+                // 缺 DLL / 系统太老：退回分享目录那条路，但要把原因写进 Console
                 UnityEngine.Debug.LogWarning("[BitFlow] 打不开文件对话框，请改用 IMPORT · FROM SHARE FOLDER：" + exception.Message);
                 return null;
             }
-
-            return BufferToString(dialog.file);
+            finally
+            {
+                if (filter != IntPtr.Zero) Marshal.FreeHGlobal(filter);
+                if (fileBuffer != IntPtr.Zero) Marshal.FreeHGlobal(fileBuffer);
+            }
         }
 
-        /// <summary>定长字符缓冲区 → 字符串（截到第一个 '\0'）。</summary>
-        static string BufferToString(char[] buffer)
+        /// <summary>
+        /// 分配一段以 <c>'\0'</c> 结尾的 UTF-16 非托管字符串，<b>保留内嵌的 <c>'\0'</c></b>
+        /// （<c>OPENFILENAME</c> 的过滤器表正是靠内嵌 <c>'\0'</c> 分隔每一项）。
+        /// 调用方负责 <see cref="Marshal.FreeHGlobal"/>。
+        /// </summary>
+        static IntPtr AllocDoubleNullString(string value)
         {
-            if (buffer == null) return null;
+            char[] chars = value.ToCharArray();
+            int bytes = (chars.Length + 1) * sizeof(char);
 
-            int length = Array.IndexOf(buffer, '\0');
-            if (length < 0) length = buffer.Length;
-            if (length <= 0) return null;
+            IntPtr pointer = Marshal.AllocHGlobal(bytes);
+            Marshal.Copy(chars, 0, pointer, chars.Length);
+            Marshal.WriteInt16(pointer, chars.Length * sizeof(char), 0);
+            return pointer;
+        }
 
-            return new string(buffer, 0, length);
+        /// <summary>把一段非托管缓冲区清零（<see cref="Marshal.AllocHGlobal(int)"/> 不保证是 0）。</summary>
+        static void ZeroBuffer(IntPtr buffer, int charCount)
+        {
+            int bytes = charCount * sizeof(char);
+            Marshal.Copy(new byte[bytes], 0, buffer, bytes);
         }
 
 #endif
