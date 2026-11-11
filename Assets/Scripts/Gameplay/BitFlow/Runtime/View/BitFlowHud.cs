@@ -892,12 +892,11 @@ namespace ShiftGo.BitFlow.View
             if (mainCamera == null) mainCamera = Camera.main;
             if (mainCamera == null) return;
 
-            // 结算面板亮着的时候不弹提示：提示是先建的兄弟节点，会浮在结算上面。
-            // 这一条和 ShowResult 里的 SetAsLastSibling 是同一条规则的两种写法 —— 结算最高。
-            if (resultPanel != null && resultPanel.activeSelf)
+            // 结算面板亮着，或者任何一层输入锁（暂停 / 选关 / 工坊 / 开场黑幕）生效时都不弹提示。
+            // HUD 的 Canvas 在底层，提示又是先建的兄弟节点，只判断结算面板会让它从半透明幕布里透出来。
+            if ((resultPanel != null && resultPanel.activeSelf) || InputGate.Locked)
             {
-                if (tooltipPanel.activeSelf) tooltipPanel.SetActive(false);
-                hoveredElement = null;
+                HideTooltip();
                 return;
             }
 
@@ -910,8 +909,7 @@ namespace ShiftGo.BitFlow.View
 
             if (hovered == null || string.IsNullOrEmpty(hovered.Description))
             {
-                if (tooltipPanel.activeSelf) tooltipPanel.SetActive(false);
-                hoveredElement = null;
+                HideTooltip();
                 return;
             }
 
@@ -928,6 +926,13 @@ namespace ShiftGo.BitFlow.View
             float x = Mathf.Min(mouse.x + 20f, Screen.width - rect.sizeDelta.x - 8f);
             float y = Mathf.Min(mouse.y + 20f, Screen.height - rect.sizeDelta.y - 8f);
             rect.position = new Vector3(x, y, 0f);
+        }
+
+        /// <summary>关掉提示并忘掉悬停对象：下一帧重新射线，避免旧提示在锁解除后闪一下。</summary>
+        void HideTooltip()
+        {
+            if (tooltipPanel != null && tooltipPanel.activeSelf) tooltipPanel.SetActive(false);
+            hoveredElement = null;
         }
 
         void OnTickCompleted(TickReport report, BitFlowSimulation simulation)

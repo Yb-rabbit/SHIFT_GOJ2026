@@ -76,17 +76,41 @@ namespace ShiftGo.BitFlow.Data
         public static string Folder => System.IO.Path.Combine(Application.persistentDataPath, FolderName);
 
         /// <summary>
-        /// 「收件箱」目录名：玩家 / 作者把待导入的 json 丢进 <see cref="IncomingFolder"/>，
-        /// 面板上一按 <c>IMPORT · FROM INBOX</c> 就搬进正式目录。
-        ///
-        /// 为什么不直接读正式目录：正式目录里躺着的是「已经在列表里的关卡」，
-        /// 玩家往那儿丢文件再点导出的按钮，会得到一份重名副本（<c>MY_LEVEL_01_02.json</c>）。
-        /// 收件箱是单向的：进去 → 验货 → 搬到正式目录，语义不含糊。
+        /// 旧版「收件箱」目录名。仍保留在批量导入的扫描列表里，兼容以前把 json 丢进
+        /// <see cref="IncomingFolder"/> 的玩家；新流程请用 <see cref="ShareFolder"/>。
         /// </summary>
         public const string IncomingFolderName = "incoming";
 
         /// <summary>收件箱目录的绝对路径（可能还不存在）。</summary>
         public static string IncomingFolder => System.IO.Path.Combine(Folder, IncomingFolderName);
+
+        /// <summary>
+        /// 玩家可见的分享 / 导入目录名。放在程序旁边的 <c>LevelJson/share</c>，
+        /// 而不是 <see cref="Folder"/> 那个 Windows 默认隐藏的 AppData 目录。
+        /// </summary>
+        public const string ShareFolderName = "share";
+
+        static string shareFolder;
+
+        /// <summary>
+        /// 玩家可见的分享目录（可能还没建）。优先程序旁边的 <c>LevelJson/share</c>；
+        /// 程序目录不可写时，<see cref="EnsureShareFolder"/> 会改用「文档/SHIFT GO/Levels」。
+        /// </summary>
+        public static string ShareFolder
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(shareFolder)) return shareFolder;
+
+                string program = ProgramFolder;
+                if (!string.IsNullOrEmpty(program))
+                {
+                    return System.IO.Path.Combine(program, FolderName, ShareFolderName);
+                }
+
+                return System.IO.Path.Combine(Folder, ShareFolderName);
+            }
+        }
 
         /// <summary>建目录（已存在就是空操作）。收件箱与说明文件一起备好。</summary>
         public static void EnsureFolder()
@@ -98,6 +122,77 @@ namespace ShiftGo.BitFlow.Data
             if (!Directory.Exists(incoming)) Directory.CreateDirectory(incoming);
 
             WriteReadmeIfMissing(folder);
+        }
+
+        /// <summary>
+        /// 建「玩家看得见」的分享目录，并把实际落点缓存进 <see cref="ShareFolder"/>。
+        /// 程序目录通常是可写的；装在 Program Files 之类只读位置时退到文档目录。
+        /// </summary>
+        public static bool EnsureShareFolder(out string error)
+        {
+            error = null;
+
+            string preferred = ShareFolder;
+            if (TryEnsureShareDirectory(preferred, out error))
+            {
+                shareFolder = preferred;
+                WriteShareReadmeIfMissing(preferred);
+                return true;
+            }
+
+            try
+            {
+                string documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                if (!string.IsNullOrEmpty(documents))
+                {
+                    string fallback = System.IO.Path.Combine(documents, "SHIFT GO", "Levels");
+                    if (TryEnsureShareDirectory(fallback, out string fallbackError))
+                    {
+                        shareFolder = fallback;
+                        WriteShareReadmeIfMissing(fallback);
+                        error = null;
+                        return true;
+                    }
+
+                    if (!string.IsNullOrEmpty(fallbackError)) error = fallbackError;
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("[BitFlow] 找不到文档目录：" + exception.Message);
+            }
+
+            string last = System.IO.Path.Combine(Folder, ShareFolderName);
+            if (TryEnsureShareDirectory(last, out string lastError))
+            {
+                shareFolder = last;
+                WriteShareReadmeIfMissing(last);
+                error = null;
+                return true;
+            }
+
+            if (!string.IsNullOrEmpty(lastError)) error = lastError;
+            return false;
+        }
+
+        static bool TryEnsureShareDirectory(string folder, out string error)
+        {
+            error = null;
+            try
+            {
+                if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+
+                // 目录存在 ≠ 可写（Program Files 下的空目录就是典型）：真写一个探针再删掉。
+                string probe = System.IO.Path.Combine(folder, ".write_probe");
+                File.WriteAllText(probe, "SHIFT GO");
+                File.Delete(probe);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                error = "分享目录不可写：" + exception.Message;
+                return false;
+            }
         }
 
         /// <summary>
@@ -162,6 +257,95 @@ namespace ShiftGo.BitFlow.Data
             return false;
         }
 
+        /// <summary>
+        /// 把一段 JSON 写进<b>玩家看得见</b>的分享目录（<c>PREFIX_NN.json</c>，不覆盖已有文件）。
+        /// 用途只有一个：让玩家把自己的关卡文件发给别人，而不是在面板里展示原文。
+        /// </summary>
+        public static bool TryWriteShare(string prefix, string json, out string path, out string error)
+        {
+            path = null;
+            error = null;
+
+            if (json == null)
+            {
+                error = "没有内容";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(prefix)) prefix = "SHARED_";
+
+            if (!EnsureShareFolder(out error)) return false;
+
+            string folder = ShareFolder;
+            for (int n = 1; n <= MaxAutoNames; n++)
+            {
+                string candidate = System.IO.Path.Combine(folder, prefix + n.ToString("00") + ".json");
+
+                if (File.Exists(candidate))
+                {
+                    try
+                    {
+                        // 同一份内容已经在分享目录里 = 已经分享过，不再堆一份副本
+                        if (string.Equals(File.ReadAllText(candidate), json, StringComparison.Ordinal))
+                        {
+                            path = candidate;
+                            return true;
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // 读不了已有文件就当它不同，继续找下一个号
+                    }
+
+                    continue;
+                }
+
+                try
+                {
+                    File.WriteAllText(candidate, json);
+                }
+                catch (Exception exception)
+                {
+                    error = "写不进分享目录：" + exception.Message;
+                    return false;
+                }
+
+                path = candidate;
+                return true;
+            }
+
+            error = "分享文件名用完了（" + prefix + "01 ~ " + prefix + MaxAutoNames + "）";
+            return false;
+        }
+
+        /// <summary>把关卡库里的一个 JSON 文件复制到分享目录（<c>SHARE · SAVE COPY</c>）。</summary>
+        public static bool TryCopyToShare(string sourcePath, out string path, out string error)
+        {
+            path = null;
+            error = null;
+
+            if (string.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
+            {
+                error = "文件不在了：" + sourcePath;
+                return false;
+            }
+
+            string json;
+            try
+            {
+                json = File.ReadAllText(sourcePath);
+            }
+            catch (Exception exception)
+            {
+                error = "读不了文件：" + exception.Message;
+                return false;
+            }
+
+            string prefix = System.IO.Path.GetFileNameWithoutExtension(sourcePath);
+            if (string.IsNullOrEmpty(prefix)) prefix = "SHARED";
+            return TryWriteShare(prefix + "_", json, out path, out error);
+        }
+
         // ------------------------------------------------------------------ 外部 JSON 导入
 
         /// <summary>往关卡目录里放一份说明（只在缺失时写，不覆盖玩家改过的版本）。</summary>
@@ -179,14 +363,13 @@ namespace ShiftGo.BitFlow.Data
                     + "每个 .json 就是一关，文件名不重要，关卡名写在文件里的 displayName。\r\n\r\n"
                     + "怎么加关（任选一条）：\r\n"
                     + "  1. 游戏里：选关面板 → FILES → IMPORT → FROM FILE（挑一个 json）\r\n"
-                    + "  2. 游戏里：把 json 放进本目录下的 incoming\\ ，再点 IMPORT → FROM INBOX\r\n"
+                    + "  2. 游戏里：把 json 放进 SHARE FOLDER，再点 IMPORT → FROM SHARE FOLDER\r\n"
                     + "  3. 直接复制进本目录，然后点 FILES → REFRESH（或重开面板）\r\n\r\n"
                     + "怎么删关：选关面板 → MY LEVELS 里那一行右边的 ... → DELETE → 3 秒内再点 DELETE。\r\n"
                     + "怎么改关：同一行 ... → EDIT，在工坊里按 NAME 改名，DONE 写回原文件。\r\n"
+                    + "怎么分享：同一行 ... → SHARE · SAVE COPY，副本会写进玩家可见的 SHARE FOLDER。\r\n"
                     + "同名但内容不同的 json 不会被悄悄覆盖；请先改文件名再导入。\r\n\r\n"
-                    + "以 _ 开头的文件（_template.json 之类）是模板/草稿，不会被当成关卡。\r\n"
-                    + "incoming\\ 里是待导入的批次，导入成功后正式目录会多一份同名副本，\r\n"
-                    + "收件箱里那份可以自己删掉。\r\n\r\n"
+                    + "以 _ 开头的文件（_template.json 之类）是模板/草稿，不会被当成关卡。\r\n\r\n"
                     + "路径：\r\n  " + folder + "\r\n");
             }
             catch (Exception exception)
@@ -195,6 +378,35 @@ namespace ShiftGo.BitFlow.Data
                 Debug.LogWarning("[BitFlow] 写不了关卡目录说明：" + exception.Message);
             }
         }
+
+        /// <summary>
+        /// 给分享目录放一份说明。分享目录里的文件<b>不会自动</b>出现在 MY LEVELS ——
+        /// 必须先走 IMPORT，所以说明里要把这条写死，免得玩家以为丢进去就能玩。
+        /// </summary>
+        static void WriteShareReadmeIfMissing(string folder)
+        {
+            try
+            {
+                string path = System.IO.Path.Combine(folder, ReadmeName);
+                if (File.Exists(path)) return;
+
+                File.WriteAllText(path,
+                    "SHIFT GO — 关卡分享 / 导入目录\r\n"
+                    + "========================================\r\n\r\n"
+                    + "这个目录是给玩家之间传关卡用的：\r\n"
+                    + "  1. 别人发来的 .json 放进这里；\r\n"
+                    + "  2. 游戏里：选关面板 → IMPORT → FROM SHARE FOLDER · BATCH IMPORT；\r\n"
+                    + "  3. 你自己的关卡：MY LEVELS 那一行 ... → SHARE · SAVE COPY 也会存到这里。\r\n\r\n"
+                    + "注意：这里的文件不会自动出现在 MY LEVELS，导入成功后才会进游戏自己的关卡库。\r\n"
+                    + "导出 / 分享只是把文件复制到这里，不会覆盖已有的同名文件。\r\n\r\n"
+                    + "路径：\r\n  " + folder + "\r\n");
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("[BitFlow] 写不了分享目录说明：" + exception.Message);
+            }
+        }
+
 
         /// <summary>
         /// 程序所在目录。<c>Application.dataPath</c> 在 Player 里是 <c>&lt;exe&gt;\&lt;产品名&gt;_Data</c>、
@@ -219,14 +431,15 @@ namespace ShiftGo.BitFlow.Data
         /// <summary>
         /// 「外部投放目录」：按优先级排列的、玩家可以自己找到并丢文件的目录。
         ///
-        /// 第一个永远是正式目录下的 <see cref="IncomingFolder"/>（<c>SHARE FOLDER</c> 打开的就是它的上级），
-        /// 后面是**程序旁边**的 <c>LevelJson</c> / <c>LevelJson\incoming</c>：
+        /// 第一个是**玩家可见**的 <see cref="ShareFolder"/>（程序旁边 <c>LevelJson/share</c>），
+        /// 然后是正式目录下的 <see cref="IncomingFolder"/>（旧版收件箱），
+        /// 最后是程序旁边的 <c>LevelJson</c> / <c>LevelJson\incoming</c>：
         /// 独立版里那是 exe 同级目录（完全不隐藏），编辑器里就是工程根目录的 <c>LevelJson\</c>
         /// （和 <c>Tools/LevelStudio</c> 存盘、Unity 同步菜单用的是同一处）。
         /// </summary>
         public static List<string> DropFolders()
         {
-            List<string> folders = new List<string> { IncomingFolder };
+            List<string> folders = new List<string> { ShareFolder, IncomingFolder };
 
             string program = ProgramFolder;
             if (!string.IsNullOrEmpty(program))

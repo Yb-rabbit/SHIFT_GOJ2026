@@ -15,7 +15,7 @@ namespace ShiftGo.BitFlow.Data
     /// - <b>编辑器</b>：<c>UnityEditor.EditorUtility.OpenFilePanel</c>，一行就够；
     /// - <b>Windows 独立版</b>：P/Invoke <c>comdlg32!GetOpenFileNameW</c>（系统自带的打开对话框，
     ///   不引 System.Windows.Forms，也就不需要额外的 DLL）；
-    /// - <b>其它平台</b>：<see cref="IsSupported"/> 为 false，调用方退回「收件箱目录」那条路。
+    /// - <b>其它平台</b>：<see cref="IsSupported"/> 为 false，调用方退回「分享目录」那条路。
     ///
     /// 对话框是模态的：Unity 主线程会停在那里直到玩家选完或取消。这是系统对话框的固有行为，
     /// 所以只在玩家主动点按钮时才调，绝不在 Update 里调。
@@ -42,14 +42,14 @@ namespace ShiftGo.BitFlow.Data
         /// 调用方只需要判空，不必区分「玩家点了取消」和「系统不给我这个能力」。
         /// </summary>
         /// <param name="title">对话框标题（纯 ASCII，系统标题栏不需要像素字体）。</param>
-        /// <param name="startFolder">初始目录（不存在就退回关卡目录）。</param>
+        /// <param name="startFolder">初始目录（不存在就退回分享目录）。</param>
         public static string PickJson(string title, string startFolder)
         {
             if (string.IsNullOrEmpty(title)) title = "OPEN LEVEL JSON";
 
             if (string.IsNullOrEmpty(startFolder) || !Directory.Exists(startFolder))
             {
-                startFolder = LevelJsonLibrary.Folder;
+                startFolder = LevelJsonLibrary.ShareFolder;
             }
 
 #if UNITY_EDITOR
@@ -141,8 +141,8 @@ namespace ShiftGo.BitFlow.Data
             }
             catch (Exception exception)
             {
-                // 缺 DLL / 系统太老：静默退回，玩家还能走「收件箱目录」
-                UnityEngine.Debug.LogWarning("[BitFlow] 打不开文件对话框，请改用 IMPORT · FROM INBOX：" + exception.Message);
+                // 缺 DLL / 系统太老：静默退回，玩家还能走分享目录
+                UnityEngine.Debug.LogWarning("[BitFlow] 打不开文件对话框，请改用 IMPORT · FROM SHARE FOLDER：" + exception.Message);
                 return null;
             }
 

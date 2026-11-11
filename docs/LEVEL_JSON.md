@@ -21,17 +21,18 @@ LevelJson/
 
 | 角色 | 落点 |
 |---|---|
-| 运行时关卡目录 | `Application.persistentDataPath/LevelJson/*.json` |
+| 运行时关卡目录 | `Application.persistentDataPath/LevelJson/*.json`（内部存储，玩家不需要手动翻） |
+| 玩家分享 / 导入目录 | 程序旁边 `LevelJson/share/`（独立版 = exe 同级；编辑器 = 工程根目录）；不可写时退到 `文档/SHIFT GO/Levels` |
 | 类型注册表 | `Assets/Resources/BitFlow/LevelTypeRegistry.asset`（进包，运行时 `Resources.Load`） |
 
-- 选关面板（游戏里按 `L` 打开）的 `MY LEVELS` 分区列出该目录里的关卡；`_` 开头的草稿不列出，读不通的文件只在 Console 报原因
+- 选关面板（游戏里按 `L` 打开）的 `MY LEVELS` 分区列出运行时关卡目录里的关卡；`_` 开头的草稿不列出，读不通的文件只在 Console 报原因
 - 面板顶部的 `FILES` 组是玩家侧的文件入口：
   - `IMPORT · FROM FILE` 弹系统文件对话框（Windows：编辑器 + 独立版）挑任意位置的 json；
-  - `IMPORT · FROM INBOX` 把 `LevelJson/incoming/`（以及程序旁边 `LevelJson/`）里能读通的 json 一次性导进来；
+  - `IMPORT · FROM SHARE FOLDER · BATCH IMPORT` 把玩家可见的分享目录（以及旧版 `LevelJson/incoming/`、程序旁边 `LevelJson/`）里能读通的 json 一次性导进来；
   - `IMPORT · FROM CLIPBOARD` 走剪贴板原文；
-  - `MY LEVELS` 每一行的 `X` 删那一关（两段式确认），`DELETE · CURRENT LEVEL` 删当前载入的那一关；
-  - `SHARE FOLDER` / `COPY FOLDER PATH` 打开 / 复制目录（`persistentDataPath` 在 Windows 上是隐藏目录）。
-  导入前一律先验货（和进关同一个 `Parse`），读不通的不落盘。详见 `PLAYER_GUIDE.md`
+  - `MY LEVELS` 每一行 `...` 里的 `EDIT` / `SHARE · SAVE COPY` / `DELETE · JSON FILE` 负责编辑、复制到分享目录、删除；
+  - `SHARE FOLDER` / `COPY SHARE FOLDER PATH` 打开 / 复制玩家可见的分享目录。
+  导入前一律先验货（和进关同一个 `Parse`），读不通的不落盘。分享目录里的文件必须先导入，不会自动出现在列表。详见 `PLAYER_GUIDE.md`
 - 点一条 → `LevelFlow.LoadJson` → `LevelJsonLibrary.TryLoad` → 临时 `LevelSO` → `BitFlowRunner.LoadLevel`。
   读盘/解析失败不盖黑幕，停在面板上；临时资产由 `LevelFlow` / 面板负责回收
 - 类型解析只查注册表、不碰 `AssetDatabase`，所以**编辑器 Play / EditMode 测试 / 打包 Player 跑的是同一段代码**

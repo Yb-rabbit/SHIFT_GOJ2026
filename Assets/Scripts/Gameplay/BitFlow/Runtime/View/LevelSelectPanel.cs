@@ -73,12 +73,6 @@ namespace ShiftGo.BitFlow.View
         /// <summary>列表当前显示的是不是 IMPORT 的第二屏。</summary>
         bool importMode;
 
-        /// <summary>列表当前显示的是不是「把当前关卡的 JSON 原文摊开看」那一屏。</summary>
-        bool jsonViewMode;
-
-        /// <summary>JSON 原文屏要看的文件；null = 退回看 flow.Current。</summary>
-        LevelJsonEntry jsonViewEntry;
-
         /// <summary>哪一行的「...」抽屉是打开的（认路径，不认按钮对象）。</summary>
         string rowActionPath;
 
@@ -169,8 +163,6 @@ namespace ShiftGo.BitFlow.View
             open = true;
             sizePickMode = false;
             importMode = false;
-            jsonViewMode = false;
-            jsonViewEntry = null;
             rowActionPath = null;
             scrollToTop = true;          // 每次开面板都从"内置关卡"那一段开始读
             InputGate.Acquire();
@@ -226,14 +218,6 @@ namespace ShiftGo.BitFlow.View
             {
                 RebuildSizePick();
                 SetScroll(1f);      // 换屏了，位置没意义，从上往下读
-                return;
-            }
-
-            // JSON 原文是第三屏，同理不另开 Canvas
-            if (jsonViewMode)
-            {
-                RebuildJsonView();
-                SetScroll(1f);      // 原文从第一行开始看，接着上一屏的滚动位置会停在莫名其妙的地方
                 return;
             }
 
@@ -309,8 +293,8 @@ namespace ShiftGo.BitFlow.View
             }
 
             // 自己的关卡放哪、刷新一下看到新文件 —— 少了这两个按钮，玩家得自己去翻
-            // AppData/LocalLow 里的隐藏目录，等于没有这个功能。
-            // 只留三个入口：导入、打开共享目录、刷新；导出 / 查看 / 删除都挪到每一行的「...」里，
+            // 系统里的隐藏目录，等于没有这个功能。
+            // 只留三个入口：导入、打开玩家可见的分享目录、刷新；编辑 / 分享 / 删除都挪到每一行的「...」里，
             // 这里不再一屏摆九个同权重按钮。
             if (flow != null)
             {
@@ -378,8 +362,6 @@ namespace ShiftGo.BitFlow.View
         {
             sizePickMode = true;
             importMode = false;
-            jsonViewMode = false;
-            jsonViewEntry = null;
             rowActionPath = null;
             Rebuild();
         }
@@ -397,12 +379,12 @@ namespace ShiftGo.BitFlow.View
             CreateCaption("IMPORT LEVEL JSON", ref y);
 
             CreateAction("FROM FILE  ·  PICK A .JSON", ImportFromFile, ref y);
-            CreateAction("FROM INBOX  ·  BATCH IMPORT", ImportFromInbox, ref y);
+            CreateAction("FROM SHARE FOLDER  ·  BATCH IMPORT", ImportFromInbox, ref y);
             CreateAction("FROM CLIPBOARD", ImportFromClipboard, ref y);
 
-            CreateCaption("FOLDER", ref y);
-            CreateAction("COPY FOLDER PATH", CopyFolderPath, ref y);
-            CreateHint("SAME NAME + DIFFERENT CONTENT IS NEVER OVERWRITTEN", ref y);
+            CreateCaption("SHARE FOLDER", ref y);
+            CreateAction("COPY SHARE FOLDER PATH", CopyFolderPath, ref y);
+            CreateHint("FILES IN THE SHARE FOLDER ARE IMPORTED, NOT PLAYED IN PLACE", ref y);
 
             CreateAction("BACK", BackToLevels, ref y);
 
@@ -413,8 +395,6 @@ namespace ShiftGo.BitFlow.View
         {
             importMode = true;
             sizePickMode = false;
-            jsonViewMode = false;
-            jsonViewEntry = null;
             rowActionPath = null;
             Rebuild();
         }
@@ -423,8 +403,6 @@ namespace ShiftGo.BitFlow.View
         {
             sizePickMode = false;
             importMode = false;
-            jsonViewMode = false;
-            jsonViewEntry = null;
             rowActionPath = null;
             Rebuild();
         }
@@ -433,8 +411,6 @@ namespace ShiftGo.BitFlow.View
         {
             sizePickMode = false;
             importMode = false;
-            jsonViewMode = false;
-            jsonViewEntry = null;
             rowActionPath = null;
             Rebuild();
         }
@@ -446,16 +422,21 @@ namespace ShiftGo.BitFlow.View
         /// 玩家从下载目录 / U 盘 / 聊天记录里挑一个 json，面板验完货就落盘。
         ///
         /// 平台不支持（macOS / Linux 独立版）或玩家点了取消时，返回 null ——
-        /// 不弹报错、不假装成功，只在结果行上指一条还能走的路（收件箱）。
+        /// 不弹报错、不假装成功，只在结果行上指一条还能走的路（分享目录）。
         /// </summary>
         void ImportFromFile()
         {
-            LevelJsonLibrary.EnsureFolder();
+            if (!LevelJsonLibrary.EnsureShareFolder(out string folderError))
+            {
+                Debug.LogWarning("[BitFlow] 分享目录不可用：" + folderError);
+                Flash("SHARE FOLDER UNAVAILABLE  ·  SEE CONSOLE");
+                return;
+            }
 
-            string picked = FilePicker.PickJson("IMPORT LEVEL JSON", LevelJsonLibrary.IncomingFolder);
+            string picked = FilePicker.PickJson("IMPORT LEVEL JSON", LevelJsonLibrary.ShareFolder);
             if (string.IsNullOrEmpty(picked))
             {
-                Flash(FilePicker.IsSupported ? "NOTHING PICKED" : "USE IMPORT  ·  FROM INBOX");
+                Flash(FilePicker.IsSupported ? "NOTHING PICKED" : "USE IMPORT  ·  FROM SHARE FOLDER");
                 return;
             }
 
@@ -493,8 +474,8 @@ namespace ShiftGo.BitFlow.View
         }
 
         /// <summary>
-        /// 「投放目录 → 关卡目录」：把玩家自己丢进收件箱（或程序旁边 <c>LevelJson/</c>）的
-        /// 所有 json 一次性导进来。适合「一次给朋友十关」的情况。
+        /// 「分享目录 → 关卡目录」：把玩家自己丢进 SHARE FOLDER（也可以放旧版 incoming/）
+        /// 的所有 json 一次性导进来。适合「一次给朋友十关」的情况。
         /// </summary>
         void ImportFromInbox()
         {
@@ -515,18 +496,24 @@ namespace ShiftGo.BitFlow.View
             }
 
             // 导入 0 个有三种结局：目录里本来就没有东西 / 有东西但读不通 / 同名不让覆盖。
-            Flash(problems.Count > 0 ? "FILE ERROR  ·  SEE CONSOLE" : "INBOX IS EMPTY");
+            Flash(problems.Count > 0 ? "FILE ERROR  ·  SEE CONSOLE" : "SHARE FOLDER IS EMPTY");
         }
 
         /// <summary>
-        /// 目录路径进剪贴板。比「打开资源管理器」更能应付「路径太长、窗口被别的程序抢走焦点」
+        /// 分享目录路径进剪贴板。比「打开资源管理器」更能应付「路径太长、窗口被别的程序抢走焦点」
         /// 这些情况 —— 玩家可以直接粘进资源管理器的地址栏。
         /// </summary>
         void CopyFolderPath()
         {
-            LevelJsonLibrary.EnsureFolder();
-            WriteClipboard(LevelJsonLibrary.Folder);
-            Flash("PATH COPIED  ·  PASTE IN EXPLORER");
+            if (!LevelJsonLibrary.EnsureShareFolder(out string error))
+            {
+                Debug.LogWarning("[BitFlow] 分享目录不可用：" + error);
+                Flash("SHARE FOLDER UNAVAILABLE  ·  SEE CONSOLE");
+                return;
+            }
+
+            WriteClipboard(LevelJsonLibrary.ShareFolder);
+            Flash("SHARE FOLDER PATH COPIED  ·  PASTE IN EXPLORER");
         }
 
         /// <summary>
@@ -568,11 +555,9 @@ namespace ShiftGo.BitFlow.View
         }
 
         /// <summary>
-        /// 当前关卡 → 关卡目录 + 剪贴板。两件事一起做才叫「导出」：
-        /// 目录里那份能在列表里直接玩、直接改；剪贴板那份能直接发给别人（对方 IMPORT 就得到同一关）。
-        ///
-        /// 写的是可手写格式（<see cref="LevelJsonSerializer.ToJson"/>），和仓库里的关卡文件同一种：
-        /// 内置关卡也能这样导出来当模板，玩家不必从空白板开始。
+        /// 当前关卡 → 玩家可见的分享目录。写的是可手写格式（<see cref="LevelJsonSerializer.ToJson"/>），
+        /// 和仓库里的关卡文件同一种；内置关卡也能这样导出来当模板，玩家不必从空白板开始。
+        /// 面板不显示原文，导出后把 SHARE FOLDER 里的文件发给别人即可。
         /// </summary>
         void ExportCurrent()
         {
@@ -590,16 +575,15 @@ namespace ShiftGo.BitFlow.View
                 return;
             }
 
-            if (!LevelJsonLibrary.TryWriteNew(LevelJsonLibrary.ExportPrefix, json, out string path, out string error))
+            if (!LevelJsonLibrary.TryWriteShare(LevelJsonLibrary.ExportPrefix, json, out string path, out string error))
             {
                 Debug.LogWarning("[BitFlow] 导出失败：" + error);
                 Flash("EXPORT FAILED  ·  SEE CONSOLE");
                 return;
             }
 
-            WriteClipboard(json);
-            Debug.Log("[BitFlow] 已导出关卡：" + path);
-            Flash("EXPORTED  " + System.IO.Path.GetFileNameWithoutExtension(path) + "  ·  COPIED");
+            Debug.Log("[BitFlow] 已导出关卡到分享目录：" + path);
+            Flash("EXPORTED  " + System.IO.Path.GetFileName(path) + "  ·  IN SHARE FOLDER");
         }
 
         /// <summary>把结果行留给下一次 <see cref="Rebuild"/> 显示（顺带刷一遍列表）。</summary>
@@ -720,132 +704,6 @@ namespace ShiftGo.BitFlow.View
             }
         }
 
-        // ---------------------------------------------------------------- JSON 原文屏
-
-        /// <summary>原文屏里每行最多几个字符。16 号像素字体每字符 10px，48×10 = 480 &lt; 内容宽 560。</summary>
-        const int JsonLineChars = 48;
-
-        /// <summary>原文屏行高的兜底估算（字体没就绪时用），真实高度取自 <c>Text.preferredHeight</c>。</summary>
-        const float JsonLineHeight = PixelFont.Small + 4f;
-
-        void BeginJsonView(LevelJsonEntry entry)
-        {
-            sizePickMode = false;
-            importMode = false;
-            jsonViewMode = true;
-            jsonViewEntry = entry;
-            rowActionPath = null;
-            Rebuild();
-        }
-
-        /// <summary>
-        /// 「看一眼这关的 JSON」。只读：这块文本就是 EXPORT 会写进文件的那份字节，
-        /// 玩家想改就 COPY 出去粘到编辑器里 —— 面板自己不提供输入框（工程里没有 InputField）。
-        /// </summary>
-        void RebuildJsonView()
-        {
-            emptyText.gameObject.SetActive(false);
-            listRoot.gameObject.SetActive(true);
-
-            float y = 0f;
-
-            string json = string.Empty;
-            string name = "UNTITLED";
-
-            if (jsonViewEntry != null)
-            {
-                name = jsonViewEntry.DisplayName;
-                try
-                {
-                    if (System.IO.File.Exists(jsonViewEntry.Path)) json = System.IO.File.ReadAllText(jsonViewEntry.Path);
-                }
-                catch (System.Exception exception)
-                {
-                    Debug.LogWarning("[BitFlow] 读不了关卡 JSON：" + jsonViewEntry.Path + " → " + exception.Message);
-                }
-            }
-            else
-            {
-                LevelSO level = flow != null ? flow.Current : null;
-                json = level != null ? LevelJsonSerializer.ToJson(level) : string.Empty;
-                name = level != null && !string.IsNullOrEmpty(level.displayName) ? level.displayName : "UNTITLED";
-            }
-
-            CreateCaption("VIEW JSON  ·  " + name, ref y);
-
-            if (string.IsNullOrEmpty(json))
-            {
-                CreateHint("NO LEVEL LOADED", ref y);
-                CreateAction("BACK", BackToLevels, ref y);
-                listRoot.sizeDelta = new Vector2(listRoot.sizeDelta.x, Mathf.Max(0f, -y));
-                return;
-            }
-
-            // 按钮排在原文<b>上面</b>：原文动辄三四屏高，按钮放末尾的话得先滚到底才看得见，
-            // 玩家会以为这一屏只有一堆字、退不出去。
-            string captured = json;
-            CreateAction("COPY TO CLIPBOARD", () => CopyJson(captured), ref y);
-            CreateAction("BACK", BackToLevels, ref y);
-
-            int lineCount;
-            string wrapped = WrapForPanel(json, JsonLineChars, out lineCount);
-
-            Text body = CreateText("Json", listRoot, wrapped, PixelFont.Small, TextAnchor.UpperLeft, MutedColor);
-            body.horizontalOverflow = HorizontalWrapMode.Overflow;   // 已经折好了，别再折一次
-
-            // 高度直接问 Text 要。硬编码「行数 × 行高」得赌字体的真实行高：
-            // 赌大了底下多出几行空白、滚到底是一片空的，赌小了最后一行被裁掉。
-            // 折行仍然自己做 —— Text 自己 Wrap 的话行数由它决定，滚动范围就对不上了。
-            float height = body.preferredHeight;
-            if (height <= 0f) height = lineCount * JsonLineHeight;   // 字体没就绪时的兜底估算
-
-            SetRect(body.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(ContentWidth, height), new Vector2(0f, y));
-            y -= height + RowGap;   // 末尾留一行空隙，滚到底时最后一行不贴着裁切边
-
-            listRoot.sizeDelta = new Vector2(listRoot.sizeDelta.x, Mathf.Max(0f, -y));
-        }
-
-        void CopyJson(string json)
-        {
-            WriteClipboard(json);
-            Flash("COPIED  ·  PASTE IT ANYWHERE");
-        }
-
-        /// <summary>
-        /// 把原文按每行 <paramref name="lineChars"/> 个字符硬折行（<b>不</b>在空格处折 ——
-        /// JSON 的长行都是紧凑的对象，按字符折反而每行都对得齐）。
-        /// 折出来的行数回填给调用方算高度。
-        /// </summary>
-        static string WrapForPanel(string text, int lineChars, out int lineCount)
-        {
-            if (lineChars < 8) lineChars = 8;
-
-            string[] source = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-            System.Text.StringBuilder builder = new System.Text.StringBuilder(text.Length + text.Length / 8);
-            int lines = 0;
-
-            foreach (string line in source)
-            {
-                if (line.Length <= lineChars)
-                {
-                    builder.Append(line).Append('\n');
-                    lines++;
-                    continue;
-                }
-
-                for (int i = 0; i < line.Length; i += lineChars)
-                {
-                    int count = Mathf.Min(lineChars, line.Length - i);
-                    builder.Append(line, i, count).Append('\n');
-                    lines++;
-                }
-            }
-
-            lineCount = lines;
-            return builder.ToString();
-        }
-
         /// <summary>
         /// 开工坊。顺序：<b>先关面板放锁、再开工坊</b> —— 工坊期间手牌盘必须能收到点击，
         /// 所以这一路不能留着选关面板那把输入锁。
@@ -880,7 +738,7 @@ namespace ShiftGo.BitFlow.View
             button.onClick.AddListener(onClick);
 
             string displayName = level != null ? level.displayName : entry.DisplayName;
-            string subtitle = entry != null ? "JSON  ·  " + entry.Subtitle : string.Empty;
+            string subtitle = entry != null ? "MY LEVEL  ·  " + entry.Subtitle : string.Empty;
 
             string label = string.IsNullOrEmpty(displayName)
                 ? "LEVEL " + (row + 1).ToString("00")
@@ -918,7 +776,7 @@ namespace ShiftGo.BitFlow.View
             {
                 string path = entry.Path;
 
-                // 每行只留一个「...」：编辑器类动作（编辑 / 看 JSON / 删除）放进抽屉，
+                // 每行只留一个「...」：编辑 / 分享 / 删除放进抽屉，
                 // 不再让每一行都挂一颗高风险的 X。
                 bool expanded = rowActionPath == path;
                 Button more = CreateButton("More", rowRect, expanded ? "^" : "...",
@@ -945,7 +803,8 @@ namespace ShiftGo.BitFlow.View
         }
 
         /// <summary>
-        /// JSON 行的动作抽屉：编辑 / 查看原文 / 删除。
+        /// JSON 行的动作抽屉：编辑 / 分享副本 / 删除。
+        /// 分享只把文件复制进玩家可见的 SHARE FOLDER，不在面板里显示文件内容。
         /// 删关仍走两段式确认，第一次点只把按钮改成 PRESS AGAIN。
         /// </summary>
         void BuildRowActions(LevelJsonEntry entry, ref float y)
@@ -953,11 +812,30 @@ namespace ShiftGo.BitFlow.View
             string path = entry.Path;
 
             CreateAction("EDIT  ·  OPEN IN WORKSHOP", () => BeginEditExisting(entry), ref y, 28f);
-            CreateAction("VIEW JSON", () => BeginJsonView(entry), ref y, 28f);
+            CreateAction("SHARE  ·  SAVE COPY", () => ShareEntry(entry), ref y, 28f);
 
             bool armed = IsRowDeleteArmed(path);
             CreateAction(armed ? "DELETE  ·  PRESS AGAIN" : "DELETE  ·  JSON FILE",
                 () => RequestRowDelete(path), ref y, 28f);
+        }
+
+        /// <summary>
+        /// 把这一关的 JSON 复制进玩家可见的分享目录。只做文件复制：
+        /// 面板不展开原文，文件名冲突时写 <c>_01</c>、<c>_02</c>，绝不覆盖已分享的副本。
+        /// </summary>
+        void ShareEntry(LevelJsonEntry entry)
+        {
+            if (entry == null) return;
+
+            if (!LevelJsonLibrary.TryCopyToShare(entry.Path, out string path, out string error))
+            {
+                Debug.LogWarning("[BitFlow] 分享关卡失败：" + entry.Path + " → " + error);
+                Flash("SHARE FAILED  ·  SEE CONSOLE");
+                return;
+            }
+
+            Debug.Log("[BitFlow] 已保存关卡分享副本：" + path);
+            Flash("SHARED  " + System.IO.Path.GetFileName(path) + "  ·  IN SHARE FOLDER");
         }
 
         /// <summary>
@@ -1027,17 +905,24 @@ namespace ShiftGo.BitFlow.View
         }
 
         /// <summary>
-        /// 在资源管理器里打开「玩家自己放关卡」的目录（<c>Application.persistentDataPath/LevelJson</c>）。
+        /// 在资源管理器里打开「玩家可见的分享目录」（程序旁边 <c>LevelJson/share</c>，
+        /// 程序目录不可写时是「文档/SHIFT GO/Levels」）。
         ///
         /// 为什么不做系统文件对话框：那要引 System.Windows.Forms 或写一堆平台分支，
-        /// 而玩家真正需要的只有「把 json 丢进去」这一件事 —— 打开目录就够了。
+        /// 而玩家真正需要的只有「把 json 丢进去 / 把文件发给别人」这两件事 —— 打开目录就够了。
         /// 移动端 / 主机没有这个概念，直接跳过（路径仍会写进 Console）。
         /// </summary>
         void OpenJsonFolder()
         {
-            LevelJsonLibrary.EnsureFolder();
-            string folder = LevelJsonLibrary.Folder;
-            Debug.Log("[BitFlow] 关卡 JSON 目录：" + folder);
+            if (!LevelJsonLibrary.EnsureShareFolder(out string error))
+            {
+                Debug.LogWarning("[BitFlow] 分享目录不可用：" + error);
+                Flash("SHARE FOLDER UNAVAILABLE  ·  SEE CONSOLE");
+                return;
+            }
+
+            string folder = LevelJsonLibrary.ShareFolder;
+            Debug.Log("[BitFlow] 关卡分享目录：" + folder);
 
             RuntimePlatform platform = Application.platform;
             bool windows = platform == RuntimePlatform.WindowsPlayer || platform == RuntimePlatform.WindowsEditor;
@@ -1054,7 +939,7 @@ namespace ShiftGo.BitFlow.View
             }
             catch (System.Exception exception)
             {
-                Debug.LogWarning("[BitFlow] 打不开关卡目录：" + exception.Message + "（路径见上一条日志）");
+                Debug.LogWarning("[BitFlow] 打不开分享目录：" + exception.Message + "（路径见上一条日志）");
             }
         }
 

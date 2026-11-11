@@ -213,6 +213,64 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         /// <summary>
+        /// <c>SHARE · SAVE COPY</c> 的底层：副本必须落在玩家可见的 SHARE FOLDER，
+        /// 内容照抄；同内容重复分享不堆副本，同名不同内容则换号，绝不覆盖。
+        /// </summary>
+        [Test]
+        public void TryCopyToShare_WritesVisibleCopy_AndNeverOverwrites()
+        {
+            string folder = LevelJsonLibrary.ShareFolder;
+            string readme = Path.Combine(folder, LevelJsonLibrary.ReadmeName);
+            bool hadReadme = File.Exists(readme);
+
+            Assert.IsTrue(LevelJsonLibrary.EnsureShareFolder(out string folderError),
+                "分享目录应该能建出来：" + folderError);
+
+            folder = LevelJsonLibrary.ShareFolder;
+            string resolvedReadme = Path.Combine(folder, LevelJsonLibrary.ReadmeName);
+            if (!string.Equals(readme, resolvedReadme, System.StringComparison.OrdinalIgnoreCase))
+            {
+                readme = resolvedReadme;
+                hadReadme = File.Exists(readme);
+            }
+
+            try
+            {
+                Assert.Contains(folder, LevelJsonLibrary.DropFolders(),
+                    "分享目录必须参与批量导入，否则 FROM SHARE FOLDER 永远导不出东西");
+
+                string source = WriteLevelJson("ShareSource.json", LevelJsonSerializer.ToJson(LoadAssetOrFail()));
+
+                Assert.IsTrue(LevelJsonLibrary.TryCopyToShare(source, out string first, out string error),
+                    "复制到分享目录失败：" + error);
+                writtenFiles.Add(first);
+
+                Assert.IsTrue(first.StartsWith(folder, System.StringComparison.OrdinalIgnoreCase),
+                    "分享副本必须落在玩家可见的目录：" + first);
+                Assert.AreEqual(File.ReadAllText(source), File.ReadAllText(first), "分享副本必须和原文件一致");
+
+                // 同一份内容再分享一次：返回已有副本，不再堆 _02
+                Assert.IsTrue(LevelJsonLibrary.TryCopyToShare(source, out string same, out string sameError),
+                    "重复分享同一份内容失败：" + sameError);
+                Assert.AreEqual(first, same, "内容相同就不该再造一份副本");
+
+                // 同名但内容不同：换号，且不能动到已有副本
+                string different = WriteExternalJson("ShareSource.json", "{\"different\": true}");
+                Assert.IsTrue(LevelJsonLibrary.TryCopyToShare(different, out string second, out string secondError),
+                    "同名不同内容应该换号保存：" + secondError);
+                writtenFiles.Add(second);
+
+                Assert.AreNotEqual(first, second, "同名不同内容绝不能覆盖已有分享副本");
+                Assert.AreEqual("{\"different\": true}", File.ReadAllText(second));
+                Assert.AreEqual(File.ReadAllText(source), File.ReadAllText(first), "旧副本被改写了");
+            }
+            finally
+            {
+                if (!hadReadme && File.Exists(readme)) File.Delete(readme);
+            }
+        }
+
+        /// <summary>
         /// 剪贴板导入用的判定：<see cref="LevelJsonLibrary.TryParseJson"/> 不落盘，
         /// 但必须和「从文件读」得出同一关 —— 两边共用 <c>Parse</c>，这条测试钉住这一点。
         /// </summary>

@@ -86,56 +86,62 @@
 - **内置关卡**：关卡表里的正式关，通关的右边有 `OK`，当前这关标 `NOW`。点一下进去。
 - **`MY LEVELS`**：工坊存的关 + 你导入的 JSON 关，副标题是文件名和尺寸。
   - `+ NEW LEVEL`：进工坊新建一关（已存满 30 关时会直接退回这里让你先清理）。
-  - 每一行右边的 **`X`**：删这一关。第一次点变成红色 `SURE`，**3 秒内**再点一次才真删（文件删了没有回收站）。
+  - 每一行右边的 **`...`**：展开这一关的动作 —— `EDIT` / `SHARE · SAVE COPY` / `DELETE · JSON FILE`。
+    删除第一次点变成 `PRESS AGAIN`，**3 秒内**再点一次才真删（文件删了没有回收站）。
 - **`FILES`**：文件进出（见下一节）。
 
-列表下方随时会有一行回话：`IMPORTED xxx` / `DELETED xxx` / `PRESS SURE TO DELETE xxx` / `INBOX IS EMPTY` …
+列表下方随时会有一行回话：`IMPORTED xxx` / `DELETED xxx` / `SHARED xxx` / `SHARE FOLDER IS EMPTY` …
 
-## 关卡文件（导入 / 导出 / 删除）
+## 关卡文件（导入 / 分享 / 删除）
 
-### 关卡放在哪
+### 分享目录在哪
+
+玩家之间传关卡只看一个目录：
 
 ```
-Windows: C:\Users\<用户名>\AppData\LocalLow\DefaultCompany\SHIFT_GO2026\LevelJson\
+Windows 独立版: <游戏 exe 所在目录>\LevelJson\share\
+Unity 编辑器:   <工程根目录>\LevelJson\share\
 ```
 
-这是 Unity 的 `Application.persistentDataPath`，**Windows 默认不显示 AppData**，所以别去手翻：
-在面板上点 `SHARE FOLDER` 直接打开，或 `COPY FOLDER PATH` 把路径复制出来粘进资源管理器地址栏。
+如果游戏装在 `Program Files` 这类不可写的位置，会自动改用 `文档\SHIFT GO\Levels\`。
+在面板上点 `SHARE FOLDER` 直接打开，或 `COPY SHARE FOLDER PATH` 把路径复制出来粘进资源管理器地址栏。
 
-目录里三样东西：
+目录里只有两样东西：
 
 | 名字 | 是什么 |
 |---|---|
-| `*.json` | 关卡本体。一个文件 = 列表里一行，文件名不重要（关名写在文件里的 `displayName`） |
-| `incoming\` | **收件箱**：把想导入的 json 丢这里，再点 `IMPORT · FROM INBOX` |
-| `README.txt` | 这份目录的说明（第一次运行自动生成，删了也会再生成） |
+| `*.json` | 分享 / 待导入的关卡文件。一个文件 = 一关，文件名不重要（关名写在文件里的 `displayName`） |
+| `README.txt` | 这份目录的说明（第一次打开分享目录时自动生成） |
+
+这里的文件**不会自动出现在 MY LEVELS**：先通过 `IMPORT` 导入，才会进游戏自己的关卡库。
+游戏内部另有一份正式关卡目录（在系统的 `persistentDataPath` 下），那是运行时存储，玩家不需要手动去翻。
 
 以 `_` 开头的文件（`_template.json` 之类）是模板 / 草稿，**不会**出现在列表里。
 
-### 把外部关卡弄进来（五条路，任选）
+### 把外部关卡弄进来（任选一条）
 
 | 做法 | 说明 | 适合 |
 |---|---|---|
 | `IMPORT · FROM FILE` | 弹系统文件对话框，挑**任意位置**的一个 json | **最常用**：从下载目录 / U 盘 / 聊天记录里直接选 |
-| `IMPORT · FROM INBOX` | 把 `incoming\`（以及程序旁边 `LevelJson\`）里能读通的 json 一次全导进来 | 一次给十关 |
+| `IMPORT · FROM SHARE FOLDER · BATCH IMPORT` | 把分享目录里能读通的 json 一次全导进来 | 一次给十关 |
 | `IMPORT · FROM CLIPBOARD` | 复制一段 JSON 文本 → 点这个 | 别人在聊天软件里直接发了文本 |
-| 手动复制文件进目录 → `REFRESH` | 不经过导入，直接读 | 你已经打开了那个目录 |
+| 手动复制文件进分享目录 → `IMPORT · FROM SHARE FOLDER` | 先放进分享目录，再批量导入 | 你已经打开了 `SHARE FOLDER` |
 | Unity 菜单 `同步到运行时目录` | 把工程里 `LevelJson\` 单向复制过来 | 作者自测（见 `LEVEL_JSON.md`） |
 
 导入的顺序永远是**先验货再落盘**：读不通的 json 一个字节都不写，面板上只留一句
 `NOT A LEVEL · SEE CONSOLE`，具体原因同时写在 Console 里。同一份文件重复导入 = 覆盖它自己，不会堆出 `_02`。
 
-> 系统文件对话框只有 **Windows**（编辑器与独立版）有。macOS / Linux 独立版请走收件箱那条路。
+> 系统文件对话框只有 **Windows**（编辑器与独立版）有。macOS / Linux 独立版请走分享目录或剪贴板那条路。
 
-### 导出 / 看原文 / 删除
+### 分享 / 编辑 / 删除
 
 | 按钮 | 作用 |
 |---|---|
-| `EXPORT · CURRENT LEVEL` | 把**当前这一关**写进目录（`EXPORT_01.json`…）并把同一份 JSON 复制进剪贴板 —— 可以直接发给别人 |
-| `VIEW JSON · CURRENT LEVEL` | 就地摊开当前关卡的 JSON 原文，带 `COPY TO CLIPBOARD`（面板没有输入框，想改就复制出去改） |
-| `SHARE FOLDER` / `COPY FOLDER PATH` | 打开 / 复制关卡目录 |
-| `DELETE · CURRENT LEVEL` | 删「当前载入的这一关」的文件（内置关没有文件，会提示 `ONLY MY LEVELS CAN BE DELETED`）。**平时用行上的 `X` 更顺** |
-| `REFRESH` | 重扫目录（你在外面改了文件、加了关）。重开面板也会重扫 |
+| `SHARE FOLDER` / `COPY SHARE FOLDER PATH` | 打开 / 复制玩家可见的分享目录 |
+| 行内 `...` → `SHARE · SAVE COPY` | 把这一关复制进分享目录（文件名冲突时自动加 `_01`、`_02`，不覆盖已有副本） |
+| 行内 `...` → `EDIT · OPEN IN WORKSHOP` | 把这一关读回工坊继续改（`DONE` 写回原文件） |
+| 行内 `...` → `DELETE · JSON FILE` | 删这一关的文件（第一次点变成 `PRESS AGAIN`，3 秒内再点一次才真删） |
+| `REFRESH` | 重扫正式关卡目录。重开面板也会重扫 |
 
 **删掉正在玩的那一关**：可以删。屏幕上这台机器还在（内存里那份没动），但 `REPLAY` 会退回
 「重放内存里这一份」，因为磁盘上已经没有可以重新读的文件了。
@@ -158,13 +164,12 @@ Windows: C:\Users\<用户名>\AppData\LocalLow\DefaultCompany\SHIFT_GO2026\Level
 |---|---|
 | 按 `L` 没反应 | 开场演出 / 换关黑幕期间会被挡，等一下再按；Console 有 `没找到 LevelFlow` 说明场景缺组件 |
 | 手牌点不动、放不下 | 这关不该有 BUILD MODE。旧版工坊存档可能带着 `allowBuild: true`，现在进关会对手牌关强制摘掉，重进这关即可 |
-| 点了 `IMPORT · FROM FILE` 没弹窗 | 只有 Windows 支持系统对话框；其它平台把文件丢进 `incoming\`，用 `IMPORT · FROM INBOX` |
-| 导入后列表里没有 | 看那行状态：`NOT A LEVEL`（JSON 读不通，原因在 Console）或 `INBOX IS EMPTY`（收件箱是空的） |
-| `IMPORT · FROM INBOX` 导不进 | 文件要放在**关卡目录**下的 `incoming\`；`SHARE FOLDER` 打开的就是它的上级 |
-| 行上的 `X` 点了没反应 | 第一次点只是「举手」（变成红色 `SURE`），3 秒内再点一次才真删 |
-| `DELETE · CURRENT LEVEL` 说不能删 | 内置关卡是打包资源，没有文件；只有 `MY LEVELS` 里的关能删 |
+| 点了 `IMPORT · FROM FILE` 没弹窗 | 只有 Windows 支持系统对话框；其它平台把文件丢进 `SHARE FOLDER`，用 `IMPORT · FROM SHARE FOLDER` |
+| 导入后列表里没有 | 看那行状态：`NOT A LEVEL`（JSON 读不通，原因在 Console）或 `SHARE FOLDER IS EMPTY`（分享目录里没有可导入的文件） |
+| `IMPORT · FROM SHARE FOLDER` 导不进 | 文件要放在**分享目录**里（点 `SHARE FOLDER` 打开的就是它）；分享目录里的文件要先导入，不会自动出现在列表 |
+| 行内 `...` 的删除点了没反应 | 第一次点只是「举手」（变成 `PRESS AGAIN`），3 秒内再点一次才真删 |
 | `DONE` 不让我存 | 面板上那行 ASCII 就是原因，对照上面的工坊表；中文全文在 Console |
-| 改完关卡「不生效」 | 本页所有编辑都只作用于内存草稿；`DONE` 才会写文件，写的是上面那个用户目录，`Assets/Data` 的资产不会变 |
+| 改完关卡「不生效」 | 本页所有编辑都只作用于内存草稿；`DONE` 才会写文件，写的是游戏的运行时关卡目录，`Assets/Data` 的资产不会变 |
 | 位流不动 | 每次改动都会自动暂停并回到 `TICK 00`，点 `PLAY` 或 `STEP` 继续 |
 
 ## 改完这些功能后怎么验证
