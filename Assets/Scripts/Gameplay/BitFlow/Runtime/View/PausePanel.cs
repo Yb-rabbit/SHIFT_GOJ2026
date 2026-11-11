@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using ShiftGo.BitFlow.Data;
 
 namespace ShiftGo.BitFlow.View
 {
@@ -22,13 +23,24 @@ namespace ShiftGo.BitFlow.View
         static readonly Color MutedColor = new Color(0.62f, 0.72f, 0.80f, 1f);
 
         const float PanelWidth = 460f;
-        const float PanelHeight = 400f;
+
+        /// <summary>
+        /// 400 → 470：底部多一行音频设置（开关 + 音量 [-] / [+]）。
+        /// 高度只在居中锚点下向上/下各长 35，标题与按钮的绝对间距靠 <c>y = 120</c> 保持原样。
+        /// </summary>
+        const float PanelHeight = 470f;
 
         LevelFlow flow;
         Font font;
 
         GameObject canvasObject;
         Button resumeButton;
+
+        Button audioToggleButton;
+        Text audioToggleLabel;
+        Button volumeDownButton;
+        Button volumeUpButton;
+        Text volumeLabel;
 
         bool open;
         float previousTimeScale = 1f;
@@ -99,6 +111,7 @@ namespace ShiftGo.BitFlow.View
             Time.timeScale = 0f;
             InputGate.Acquire();
             if (canvasObject != null) canvasObject.SetActive(true);
+            RefreshAudioUi();
 
             EnsureEventSystem();
             if (EventSystem.current != null && resumeButton != null)
@@ -224,7 +237,7 @@ namespace ShiftGo.BitFlow.View
             SetRect(hint.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
                 new Vector2(PanelWidth - 48f, 22f), new Vector2(0f, 22f));
 
-            float y = 76f;
+            float y = 120f;
             resumeButton = CreateButton("Resume", panelRect, "RESUME", y, Resume);
             y -= 68f;
             CreateButton("Restart", panelRect, "RESTART", y, Restart);
@@ -232,16 +245,103 @@ namespace ShiftGo.BitFlow.View
             CreateButton("LevelSelect", panelRect, "LEVEL SELECT", y, OpenLevelSelect);
             y -= 68f;
             CreateButton("Quit", panelRect, "QUIT", y, Quit);
+            y -= 68f;
+            CreateAudioRow(panelRect, y);
+        }
+
+        /// <summary>
+        /// 底部音频行：左边整颗开关，右边 [-] 80% [+]。
+        /// 不用滑杆：暂停面板只有 460 宽，滑杆在 1080p 下拖动精度差，
+        /// 而且键盘/手柄选中一颗按钮比选中滑杆更稳定。
+        /// </summary>
+        void CreateAudioRow(RectTransform panelRect, float y)
+        {
+            audioToggleButton = CreateButton("AudioToggle", panelRect, "AUDIO ON",
+                new Vector2(-100f, y), 150f, ToggleAudio);
+            audioToggleLabel = audioToggleButton.GetComponentInChildren<Text>();
+
+            volumeDownButton = CreateButton("VolumeDown", panelRect, "-",
+                new Vector2(11f, y), 48f, () => ChangeVolume(-10));
+
+            volumeLabel = CreateText("VolumeValue", panelRect, "80%", PixelFont.Body,
+                TextAnchor.MiddleCenter, TitleColor);
+            SetRect(volumeLabel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f), new Vector2(76f, 52f), new Vector2(81f, y));
+
+            volumeUpButton = CreateButton("VolumeUp", panelRect, "+",
+                new Vector2(151f, y), 48f, () => ChangeVolume(10));
+
+            RefreshAudioUi();
+        }
+
+        void ToggleAudio()
+        {
+            GameSettings.ToggleAudio();
+            RefreshAudioUi();
+        }
+
+        void ChangeVolume(int delta)
+        {
+            GameSettings.AdjustAudioVolume(delta);
+            RefreshAudioUi();
+        }
+
+        /// <summary>
+        /// 把存档里的音频状态画到面板上。关掉时 [-] / [+] 变灰且不可点，
+        /// 但百分比文字保留 —— 玩家能看到"关之前是 80%"，再打开不会跳回别的值。
+        /// </summary>
+        void RefreshAudioUi()
+        {
+            bool on = GameSettings.AudioOn;
+            int percent = GameSettings.AudioVolumePercent;
+
+            if (audioToggleLabel != null) audioToggleLabel.text = on ? "AUDIO ON" : "AUDIO OFF";
+            if (volumeLabel != null)
+            {
+                volumeLabel.text = percent + "%";
+                volumeLabel.color = on ? TitleColor : MutedColor;
+            }
+
+            bool canLower = on && percent > 0;
+            bool canRaise = on && percent < 100;
+
+            if (volumeDownButton != null) volumeDownButton.interactable = canLower;
+            if (volumeUpButton != null) volumeUpButton.interactable = canRaise;
+
+            SetButtonTextColor(audioToggleButton, on ? TitleColor : MutedColor);
+            SetButtonTextColor(volumeDownButton, canLower ? TitleColor : MutedColor);
+            SetButtonTextColor(volumeUpButton, canRaise ? TitleColor : MutedColor);
+
+            if (audioToggleButton != null && audioToggleButton.targetGraphic is Image image)
+            {
+                image.color = on
+                    ? new Color(0.12f, 0.26f, 0.34f, 0.95f)
+                    : new Color(0.10f, 0.14f, 0.18f, 0.95f);
+            }
+        }
+
+        static void SetButtonTextColor(Button button, Color color)
+        {
+            if (button == null) return;
+
+            Text label = button.GetComponentInChildren<Text>();
+            if (label != null) label.color = color;
         }
 
         Button CreateButton(string name, Transform parent, string label, float y,
+            UnityEngine.Events.UnityAction onClick)
+        {
+            return CreateButton(name, parent, label, new Vector2(0f, y), 280f, onClick);
+        }
+
+        Button CreateButton(string name, Transform parent, string label, Vector2 position, float width,
             UnityEngine.Events.UnityAction onClick)
         {
             GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
             go.transform.SetParent(parent, false);
 
             SetRect(go.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(280f, 52f), new Vector2(0f, y));
+                new Vector2(0.5f, 0.5f), new Vector2(width, 52f), position);
 
             Image image = go.GetComponent<Image>();
             image.color = new Color(0.12f, 0.20f, 0.28f, 0.95f);

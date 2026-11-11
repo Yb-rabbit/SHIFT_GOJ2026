@@ -333,6 +333,9 @@ namespace ShiftGo.BitFlow.View
 
         void ApplyReport(TickReport report, bool snap, float moveDuration)
         {
+            bool emitterFired = false;
+            bool receiverMatched = false;
+
             // 1) 销毁：格子上爆红闪，同时让所在元件红闪（撞墙 / 过滤器拒绝 / 逆行撞入）
             foreach (BitDestroyed destroyed in report.Destroyed)
             {
@@ -351,6 +354,7 @@ namespace ShiftGo.BitFlow.View
             // 2) 新位出现
             foreach (BitSpawned spawned in report.Spawns)
             {
+                emitterFired = true;
                 CreateBitView(spawned.BitId, spawned.Value, GridMetrics.CellToWorld(spawned.Coord));
             }
 
@@ -373,6 +377,8 @@ namespace ShiftGo.BitFlow.View
 
                 if (delivery.Matched) view.PlayAccepted();
                 else view.PlayError();
+
+                if (delivery.Matched) receiverMatched = true;
             }
 
             // 5) 值可能被非门改掉：按模拟器终态同步一次颜色
@@ -385,6 +391,17 @@ namespace ShiftGo.BitFlow.View
             }
 
             RefreshProgressViews();
+            PlayTickSounds(emitterFired, receiverMatched);
+        }
+
+        /// <summary>
+        /// 每个 tick 最多各播一次：多台发射器同 tick 吐位、多个位同 tick 命中时，
+        /// 逐条 PlayOneShot 会叠成一片爆音；玩家只需要听到"这一 tick 有事件"。
+        /// </summary>
+        static void PlayTickSounds(bool emitterFired, bool receiverMatched)
+        {
+            if (emitterFired) BitFlowSfx.EmitterShot();
+            if (receiverMatched) BitFlowSfx.ReceiverMatch();
         }
 
         IEnumerator SlideRoutine(BitActorView view, Vector3 target, float duration)

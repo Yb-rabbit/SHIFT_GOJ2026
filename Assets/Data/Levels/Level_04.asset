@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 70be23a18564f99488f2111e20592de1, type: 3}
   m_Name: Level_04
   m_EditorClassIdentifier: 
-  displayName: 03  TURN + FILTER
+  displayName: 03  TURN DOWN
   width: 9
   height: 7
   tickInterval: 0.35
@@ -27,6 +27,8 @@ MonoBehaviour:
     count: 1
     overrideFace: 0
     acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 1
   - type: {fileID: 11400000, guid: d71006145954bbc46a166471edbab091, type: 2}
     coord: {x: 7, y: 4}
     rotationSteps: 0
@@ -37,6 +39,8 @@ MonoBehaviour:
     count: 1
     overrideFace: 0
     acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 1
   - type: {fileID: 11400000, guid: c2ab3d2e4a2c4ff429144184df4d4348, type: 2}
     coord: {x: 7, y: 2}
     rotationSteps: 0
@@ -47,8 +51,13 @@ MonoBehaviour:
     count: 1
     overrideFace: 0
     acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 1
+  wallType: {fileID: 0}
+  wallMap: 
   supplies:
   - type: {fileID: 11400000, guid: cdae8e12b73a3f94787ad29d7c5d928d, type: 2}
     count: 1
   - type: {fileID: 11400000, guid: 72e0f092f423256469efff2bb76d54a1, type: 2}
     count: 1
+  allowBuild: 0

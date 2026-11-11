@@ -12,11 +12,90 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 70be23a18564f99488f2111e20592de1, type: 3}
   m_Name: Level_05
   m_EditorClassIdentifier: 
-  displayName: Level 05 - BIT FLOW
+  displayName: 05 - GREAT WALL
   width: 9
-  height: 8
+  height: 7
   tickInterval: 0.35
-  placements: []
-  wallType: {fileID: 0}
-  wallMap: 
-  supplies: []
+  placements:
+  - type: {fileID: 11400000, guid: 0f10091336aa94641bb81a464c27f4af, type: 2}
+    coord: {x: 0, y: 6}
+    rotationSteps: 0
+    playerEditable: 0
+    overrideSequence: 0
+    sequence: 
+    overrideCount: 0
+    count: 4
+    overrideFace: 0
+    acceptAnyFace: 0
+    overridePassValue: 0
+    passValue: 0
+  - type: {fileID: 11400000, guid: 1cd036b44983b284ab67c5487b45913c, type: 2}
+    coord: {x: 8, y: 3}
+    rotationSteps: 0
+    playerEditable: 0
+    overrideSequence: 0
+    sequence: 
+    overrideCount: 0
+    count: 0
+    overrideFace: 0
+    acceptAnyFace: 0
+    overridePassValue: 0
+    passValue: 0
+  - type: {fileID: 11400000, guid: cdae8e12b73a3f94787ad29d7c5d928d, type: 2}
+    coord: {x: 0, y: 3}
+    rotationSteps: 0
+    playerEditable: 1
+    overrideSequence: 0
+    sequence: 
+    overrideCount: 0
+    count: 0
+    overrideFace: 0
+    acceptAnyFace: 0
+    overridePassValue: 0
+    passValue: 0
+  - type: {fileID: 11400000, guid: 1cd036b44983b284ab67c5487b45913c, type: 2}
+    coord: {x: 4, y: 6}
+    rotationSteps: 0
+    playerEditable: 0
+    overrideSequence: 1
+    sequence: 111
+    overrideCount: 1
+    count: 3
+    overrideFace: 0
+    acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 0
+  - type: {fileID: 11400000, guid: 3b4702fe9f20b884da62214723812feb, type: 2}
+    coord: {x: 4, y: 0}
+    rotationSteps: 0
+    playerEditable: 0
+    overrideSequence: 0
+    sequence: 111
+    overrideCount: 0
+    count: 1
+    overrideFace: 0
+    acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 0
+  - type: {fileID: 11400000, guid: 3b4702fe9f20b884da62214723812feb, type: 2}
+    coord: {x: 8, y: 6}
+    rotationSteps: 3
+    playerEditable: 0
+    overrideSequence: 1
+    sequence: 1
+    overrideCount: 0
+    count: 1
+    overrideFace: 0
+    acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 0
+  wallType: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
+  wallMap: '##.......'
+  supplies:
+  - type: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
+    count: 1
+  - type: {fileID: 11400000, guid: 7e3473b8ae100234aa994dd6ea61145f, type: 2}
+    count: 1
+  - type: {fileID: 11400000, guid: e25817d1fdcd78042ae44997f5900f44, type: 2}
+    count: 1
+  allowBuild: 0

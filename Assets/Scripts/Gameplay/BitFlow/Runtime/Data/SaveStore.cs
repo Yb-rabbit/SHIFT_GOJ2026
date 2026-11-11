@@ -26,6 +26,23 @@ namespace ShiftGo.BitFlow.Data
         /// 没玩过的副本直接继承内置关的 OK。路径才是这份文件的身份。
         /// </summary>
         public List<string> clearedJsonLevels = new List<string>();
+
+        /// <summary>
+        /// 设置字段的版本号。老存档没有这个字段时 JsonUtility 会给 0，读取时按 0 补齐默认值
+        /// （音频开、80%、提示开）。以后再加设置项就把它 +1，并在 <see cref="SaveStore.Load"/> 里补迁移。
+        /// </summary>
+        public int settingsVersion = CurrentSettingsVersion;
+
+        /// <summary>音频总开关：1 = 开，0 = 关。用 int 而不是 bool 是为了让"字段缺失"能被 version 判定出来。</summary>
+        public int audioOn = 1;
+
+        /// <summary>音频总音量（0 ~ 100）。关掉音频时保留这个值，下次打开还是原音量。</summary>
+        public int audioVolumePercent = 80;
+
+        /// <summary>是否显示玩法提示（1 = 开，0 = 关）。帮助系统接进来之前先存着，避免以后再改一次存档结构。</summary>
+        public int helpHintOn = 1;
+
+        public const int CurrentSettingsVersion = 1;
     }
 
     /// <summary>
@@ -235,6 +252,20 @@ namespace ShiftGo.BitFlow.Data
                 if (loaded.seenElements == null) loaded.seenElements = new List<string>();
                 if (loaded.clearedLevels == null) loaded.clearedLevels = new List<string>();
                 if (loaded.clearedJsonLevels == null) loaded.clearedJsonLevels = new List<string>();
+
+                // 老存档（带进度、但不带设置）在这里补齐设置默认值。
+                // 不能只靠字段初始化：JsonUtility 走 FormatterServices 建对象，不执行构造函数/字段初始化。
+                if (loaded.settingsVersion < SaveData.CurrentSettingsVersion)
+                {
+                    loaded.settingsVersion = SaveData.CurrentSettingsVersion;
+                    loaded.audioOn = 1;
+                    loaded.audioVolumePercent = 80;
+                    loaded.helpHintOn = 1;
+                }
+
+                // 手改坏的存档（例如 250）也夹回合法范围，别让音量按钮从 250% 开始
+                if (loaded.audioVolumePercent < 0) loaded.audioVolumePercent = 0;
+                if (loaded.audioVolumePercent > 100) loaded.audioVolumePercent = 100;
                 return loaded;
             }
             catch (Exception exception)
@@ -244,7 +275,11 @@ namespace ShiftGo.BitFlow.Data
             }
         }
 
-        static void Save()
+        /// <summary>
+        /// 立即把当前内存存档写盘。设置类字段（音频等）改完就调它 ——
+        /// 设置没有"关卡进度"那种批量标记的时机，等下一次 MarkSeen 才落盘会让重启丢设置。
+        /// </summary>
+        public static void Save()
         {
             try
             {

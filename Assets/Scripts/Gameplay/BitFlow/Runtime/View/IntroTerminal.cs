@@ -82,6 +82,10 @@ namespace ShiftGo.BitFlow.View
             // 必须在 PlayOpen 之前 —— 开机动画的第一帧就该看到机器在后面。
             stage = IntroStage.Build();
 
+            // 开机动画的第一帧 = "弹窗启动的那一刻"：音效放在 PlayOpen 之前，
+            // 不能等协程第一帧结束再补，否则画面已经亮了才响。
+            BitFlowSfx.TerminalOpen();
+
             // 开机动画自带透明度上升（线点亮 → 撑满 → 回弹），这里不要再 FadeTo 一次，
             // 两次淡入叠在前 0.1 秒会让画面先发一层灰
             yield return view.PlayOpen(fadeInDuration);

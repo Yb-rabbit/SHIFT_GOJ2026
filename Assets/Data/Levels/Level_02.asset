@@ -27,8 +27,10 @@ MonoBehaviour:
     count: 6
     overrideFace: 0
     acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 1
   - type: {fileID: 11400000, guid: d71006145954bbc46a166471edbab091, type: 2}
-    coord: {x: 6, y: 4}
+    coord: {x: 7, y: 4}
     rotationSteps: 0
     playerEditable: 0
     overrideSequence: 0
@@ -37,6 +39,11 @@ MonoBehaviour:
     count: 1
     overrideFace: 0
     acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 1
+  wallType: {fileID: 0}
+  wallMap: 
   supplies:
   - type: {fileID: 11400000, guid: e25817d1fdcd78042ae44997f5900f44, type: 2}
     count: 1
+  allowBuild: 0
