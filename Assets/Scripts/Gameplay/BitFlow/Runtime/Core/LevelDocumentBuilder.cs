@@ -50,7 +50,6 @@ namespace ShiftGo.BitFlow.Core
                 if (element == null) continue;
 
                 element.Label = cell.Spec.label;
-                element.Hint = cell.Spec.hint;
                 element.TypeKey = string.IsNullOrEmpty(cell.TypeKey) ? cell.Spec.key : cell.TypeKey;
 
                 // JSON 里的 playerEditable 是「玩家能不能搬这一格」的唯一来源。
@@ -58,6 +57,11 @@ namespace ShiftGo.BitFlow.Core
                 element.PlayerEditable = cell.Cell != null && cell.Cell.playerEditable;
 
                 ApplyCellOverrides(element, cell);
+
+                // 说明文本按「改过参数之后」的这份定义重算（标题行沿用类型目录里的那一行）。
+                // 先在前面贴 spec.hint 再覆盖参数的话，详情 UI 会把预设值当成实际值 ——
+                // 和 LevelSO.ToDefinition 是同一条规矩。
+                element.Hint = ElementHint.Describe(element, cell.Spec.hint);
 
                 definition.Elements.Add(element);
                 occupied.Add(element.Coord);

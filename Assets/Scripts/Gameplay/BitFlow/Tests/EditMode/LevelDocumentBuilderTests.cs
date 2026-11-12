@@ -352,6 +352,35 @@ namespace ShiftGo.BitFlow.Tests
             Assert.IsTrue(lookup[new GridPoint(1, 1)].PlayerEditable, "自由件读回来还是自由的");
         }
 
+        /// <summary>
+        /// 详情文本必须按「这一格真实的参数」拼，而不是照抄类型目录里的预设说明。
+        ///
+        /// 反例（修之前）：<c>kind=DelayGate, delay=3</c> 的 JSON 关卡，悬停详情永远写 HOLD 1 TICK。
+        /// </summary>
+        [Test]
+        public void Hint_FollowsCellParams_NotCatalogPreset()
+        {
+            LevelDocument document = new LevelDocument
+            {
+                displayName = "HINT",
+                width = 3,
+                height = 3,
+                elements = new List<LevelDocumentCell>
+                {
+                    new LevelDocumentCell { x = 1, y = 1, kind = "DelayGate", delay = 3 },
+                },
+            };
+
+            LevelDefinition built = LevelDocumentBuilder.Build(document, new List<string>());
+            Assert.AreEqual(1, built.Elements.Count);
+
+            DelayGateDefinition gate = built.Elements[0] as DelayGateDefinition;
+            Assert.IsNotNull(gate);
+            Assert.AreEqual(3, gate.SafeDelayTicks, "delay=3 要落到定义上");
+            StringAssert.Contains("HOLD 3 TICK", gate.Hint, "详情要跟着这一格的真实延迟走");
+            StringAssert.DoesNotContain("HOLD 1 TICK", gate.Hint);
+        }
+
         static LevelDocumentCell FindCell(LevelDocument document, GridPoint coord)
         {
             if (document.elements == null) return null;

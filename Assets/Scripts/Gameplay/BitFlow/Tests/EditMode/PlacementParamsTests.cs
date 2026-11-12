@@ -144,6 +144,82 @@ namespace ShiftGo.BitFlow.Tests
             }
         }
 
+        /// <summary>
+        /// 详情文本要跟着「这一格」走，不是照抄类型资产的预设说明。
+        ///
+        /// 踩过的坑：延迟器放了 Type_DelayGate_D1（预设 1 tick），在关卡里把本格延迟改成 3，
+        /// 悬停详情却仍然写 HOLD 1 TICK —— 玩家按写着的 1 tick 去算时间，关卡就过不去了。
+        /// </summary>
+        [Test]
+        public void ElementHint_FollowsPlacementOverrides()
+        {
+            DelayGateTypeSO type = ScriptableObject.CreateInstance<DelayGateTypeSO>();
+            LevelSO level = ScriptableObject.CreateInstance<LevelSO>();
+            try
+            {
+                type.label = "D1";
+                type.delayTicks = 1;
+
+                level.placements.Add(new ElementPlacement
+                {
+                    type = type,
+                    coord = new Vector2Int(0, 0),
+                    overrideDelayTicks = true,
+                    delayTicks = 3,
+                });
+
+                DelayGateDefinition gate = level.ToDefinition().Elements[0] as DelayGateDefinition;
+                Assert.IsNotNull(gate);
+                Assert.AreEqual(3, gate.SafeDelayTicks, "实际延迟必须是本格填的 3");
+                StringAssert.Contains("HOLD 3 TICK", gate.Hint, "详情要写真实延迟，而不是预设的 1 tick");
+                StringAssert.DoesNotContain("HOLD 1 TICK", gate.Hint);
+                StringAssert.StartsWith("DELAY D1", gate.Hint, "标题行（含短名）仍沿用类型资产");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(level);
+                UnityEngine.Object.DestroyImmediate(type);
+            }
+        }
+
+        /// <summary>
+        /// 整体旋转也要算进详情里：类型资产只记基准朝向，关卡里转过的格子实际朝向不一样。
+        /// </summary>
+        [Test]
+        public void ElementHint_FollowsRotation()
+        {
+            EmitterTypeSO type = ScriptableObject.CreateInstance<EmitterTypeSO>();
+            LevelSO level = ScriptableObject.CreateInstance<LevelSO>();
+            try
+            {
+                type.label = "E1";
+                type.sequence = "1011";
+                type.repeatCount = 1;
+                type.facing = Dir.Right;
+
+                level.placements.Add(new ElementPlacement
+                {
+                    type = type,
+                    coord = new Vector2Int(0, 0),
+                    rotationSteps = 1,
+                });
+
+                EmitterDefinition emitter = level.ToDefinition().Elements[0] as EmitterDefinition;
+                Assert.IsNotNull(emitter);
+                Assert.AreEqual(Dir.Down, emitter.Facing, "转 90° 后实际朝下");
+
+                StringAssert.StartsWith("EMITTER E1", emitter.Hint, "标题行沿用类型资产");
+                StringAssert.Contains(Dir.Down.ToMark(), emitter.Hint, "详情要写旋转后的真实朝向");
+                StringAssert.DoesNotContain(Dir.Right.ToMark(), emitter.Hint, "不能还留着基准朝向");
+                StringAssert.Contains("1011 x4", emitter.Hint, "位数按真实定义（1011 ×1 = 4 位）");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(level);
+                UnityEngine.Object.DestroyImmediate(type);
+            }
+        }
+
         [Test]
         public void ReceiverPlacement_OverrideFace_CanForceSingleFace()
         {

@@ -158,33 +158,10 @@ namespace ShiftGo.BitFlow.View
 
         static string BuildDescription(ElementDefinition element)
         {
-            if (!string.IsNullOrEmpty(element.Hint)) return element.Hint;
-
-            // 说明里不再写 #Id：编号对玩家没有意义（同一类型的几件长得一模一样，
-            // 玩家也无从对照），而且以前 HUD / 结算 / 提示三处各自算编号，
-            // 一换关就对不上。现在三处都不出现编号。
-            //
-            // 全英文 + 箭头：UI 字体是像素字体（View.PixelFont），没有中文字形。
-            // 这里只是「类型资产没填 Hint」时的兜底（程序化关卡），文案要和
-            // ElementTypeSO.Describe() 同一套写法，否则同一个元件在两种来源下长得不一样。
-            switch (element)
-            {
-                case EmitterDefinition emitter:
-                    return "EMITTER\n" + emitter.Sequence + " x" + emitter.EmitCount + "  FACE " + emitter.Facing.ToMark();
-                case ReceiverDefinition receiver:
-                    string mouth = receiver.AcceptAnyFace ? "ANY FACE" : "IN " + receiver.FeedFace.ToMark();
-                    return "RECEIVER\nNEED " + receiver.TargetSequence + " x" + receiver.TargetCount + "  " + mouth;
-                case SplitterDefinition splitter:
-                    return "SPLITTER\n1 " + splitter.OneArm.ToMark() + "   0 " + splitter.ZeroArm.ToMark();
-                case NotGateDefinition notGate:
-                    return "NOT\nINVERT  OUT " + notGate.OutputDir.ToMark();
-                case FilterDefinition filter:
-                    return "FILTER\nPASS " + filter.PassValue + "  OUT " + filter.OutputDir.ToMark();
-                case DelayGateDefinition delayGate:
-                    return "DELAY\nHOLD " + delayGate.SafeDelayTicks + " TICK  THROUGH";
-                default:
-                    return "WALL";
-            }
+            // 定义里带了 Hint 就用它（类型资产 / 关卡 JSON 的标题行 + 实际参数行，
+            // 见 Core.ElementHint）；没有就按这份定义现拼一份。
+            // 两条路都收在 ElementHint 里，同一个元件不会因为来源不同长得不一样。
+            return string.IsNullOrEmpty(element.Hint) ? ElementHint.Describe(element) : element.Hint;
         }
 
         /// <summary>元件类型 → 本体颜色。游戏内编辑器的 ghost / 调色板色块也用它，保证"颜色=类型"处处一致。</summary>

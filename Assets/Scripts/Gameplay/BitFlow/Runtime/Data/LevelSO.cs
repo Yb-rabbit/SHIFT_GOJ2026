@@ -81,7 +81,6 @@ namespace ShiftGo.BitFlow.Data
                 if (element == null) continue;
 
                 element.Label = placement.type.label;
-                element.Hint = placement.type.Describe();
                 element.TypeKey = placement.type.Key;
 
                 // 和 CreatePlayerDraft 用同一个字段：作者锁着的那一件，玩家局里就该锁着
@@ -90,6 +89,11 @@ namespace ShiftGo.BitFlow.Data
                 // 关卡设计权：这一格在编辑器里填的序列 / 次数，覆盖类型资产的默认值。
                 // 没填过的格子这里是个空操作，所以老关卡行为完全不变。
                 placement.ApplyOverrides(element);
+
+                // 说明文本必须按「覆盖 + 旋转之后」的这份定义来拼：
+                // 直接贴 type.Describe() 会把预设值（1011 x1 / HOLD 1 TICK / 基准朝向）当成实际值，
+                // 详情 UI 就和场上跑的对不上了。标题行（"EMITTER E1"）仍然借资产的。
+                element.Hint = ElementHint.Describe(element, placement.type.Describe());
 
                 definition.Elements.Add(element);
                 nextId++;
