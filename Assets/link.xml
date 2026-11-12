@@ -1,0 +1,26 @@
+<!--
+  IL2CPP 链接器保留清单（WebGL 构建）
+  =====================================
+
+  为什么需要这个文件
+  ==================
+  项目在运行时会用 GameObject.CreatePrimitive(PrimitiveType.Quad) 造地板和网格线
+  （LevelBuilder.cs / BitFlowBuildMode.cs / BitFlowCardTray.cs 等 7 处），
+  Unity 的 Quad 图元自带的是 **MeshCollider**（Cube 才是 BoxCollider）。
+
+  项目里没有任何脚本、场景或预制体直接引用 MeshCollider，
+  ProjectSettings.asset 又是 stripEngineCode: 1（开启引擎代码剥离），
+  于是 WebGL 构建把 UnityEngine.MeshCollider 当无用引擎代码剔掉了。
+
+  症状：页面能正常启动，但控制台每建一个 Quad 就刷一条
+      Can't add component because class 'MeshCollider' doesn't exist!
+  编辑器里不会有这个问题，所以只在打包后暴露。
+
+  这里只保留 MeshCollider 一个类型，不关掉整体剥离（stripEngineCode 保持 1），
+  这样 wasm 体积基本不变。删掉这个文件前请先确认没有 CreatePrimitive(Quad/Plane)。
+-->
+<linker>
+  <assembly fullname="UnityEngine.PhysicsModule">
+    <type fullname="UnityEngine.MeshCollider" preserve="all" />
+  </assembly>
+</linker>

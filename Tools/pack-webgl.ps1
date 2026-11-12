@@ -1,4 +1,4 @@
-# Packages the Unity WebGL build for itch.io: Builds/WebGL -> Builds/SHIFT_GO2026-webgl.zip
+﻿# Packages the Unity WebGL build for itch.io: Builds/WebGL -> Builds/SHIFT_GO2026-webgl.zip
 #
 # Why this exists
 # ---------------
@@ -54,6 +54,9 @@ $OutZip   = [System.IO.Path]::GetFullPath($OutZip)
 
 Write-Host ''
 Write-Host "source : $BuildDir"
+if (-not (Test-Path -LiteralPath $BuildDir)) {
+    Fail ("build directory does not exist: $BuildDir -- build it first: Unity > Build Settings > WebGL > Build")
+}
 
 # --- 1. index.html must be at the root and must name its own payload ----------
 $indexPath = Join-Path $BuildDir 'index.html'
@@ -213,3 +216,4 @@ Write-Host ('size   : {0:N1} MB  ({1} entries)' -f ((Get-Item -LiteralPath $OutZ
 Write-Host 'upload : itch.io -> project -> Edit game -> Uploads, kind "HTML",'
 Write-Host '         tick "This file will be played in the browser"'
 Write-Host ''
+

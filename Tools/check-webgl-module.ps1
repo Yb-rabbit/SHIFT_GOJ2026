@@ -79,10 +79,11 @@ $found = [ordered]@{}
 foreach ($f in $files) {
     $bytes = [System.IO.File]::ReadAllBytes($f)
     $text  = [System.Text.Encoding]::GetEncoding(28591).GetString($bytes)
-    foreach ($m in [regex]::Matches($text, 'Unity (\d+\.\d+\.\d+[a-z]\d+(?:c\d+)?) \(([0-9a-f]{12})\)')) {
+    foreach ($m in [regex]::Matches($text, '(20\d\d\.\d+\.\d+[a-z]\d+(?:c\d+)?)[ _]\(?([0-9a-f]{12})\)?')) {
         $key = "$($m.Groups[1].Value) ($($m.Groups[2].Value))"
         if (-not $found.Contains($key)) { $found[$key] = @() }
-        $found[$key] += (Split-Path -Leaf (Split-Path -Parent $f))
+        $dir = Split-Path -Leaf (Split-Path -Parent $f)
+        if (-not $found[$key].Contains($dir)) { $found[$key] += $dir }
     }
 }
 
@@ -117,4 +118,9 @@ Write-Host '        Unity Hub -> Installs -> <version> -> Add modules -> WebGL B
 Write-Host '        (or run UnitySetup-WebGL-Support-for-Editor-<version>.exe and point it at'
 Write-Host "         $EditorPath )"
 Write-Host '     4. re-run this script, then rebuild the project'
+Write-Host '     5. on a CN connection the download 302s to unitychina.cn and you get a c1'
+Write-Host '        module again -- then switch editors instead: see docs/WEBGL_PUBLISH.md'
 exit 1
+
+
+

@@ -1,6 +1,7 @@
-# WebGL 发布手册（itch.io）
+﻿# WebGL 发布手册（itch.io）
 
-> 适用版本：Unity 2022.3.36f1 ｜ 构建目录：`Builds/WebGL/` ｜ 打包脚本：`Tools/pack-webgl.ps1`
+> 目标编辑器：**Unity 2023.2.20f1**（`D:\UnityHubNocn\Unity2023.2.20f1\Unity 2023.2.20f1`，模块自洽）
+> 构建目录：`Builds/WebGL/` ｜ 体检：`Tools/check-webgl-module.ps1` ｜ 打包：`Tools/pack-webgl.ps1`
 >
 > 本文只讲 **把游戏发到 itch.io 并且真能跑起来**。关卡编辑在 [BUILD_MODE.md](BUILD_MODE.md)，
 > 玩家操作在 [PLAYER_GUIDE.md](PLAYER_GUIDE.md)。
@@ -8,6 +9,8 @@
 ## 一分钟流程
 
 ```powershell
+# 0) 先体检编辑器，输出 status : OK 才继续（MIXED 的话构建出来必然是废包）
+powershell -ExecutionPolicy Bypass -File Tools\check-webgl-module.ps1
 # 1) 出包（Unity：File > Build Settings > WebGL > Build，输出到 Builds/WebGL）
 # 2) 校验 + 打包（这些检查会在出坏包时直接报错中止）
 powershell -ExecutionPolicy Bypass -File Tools\pack-webgl.ps1
@@ -74,43 +77,146 @@ Editor\Data\PlaybackEngines\WebGLSupport\BuildTools\lib\modules*\
 `WebGLSupport_*_Dynamic.a`）来自中国版 2022.3.36f1c1（`b8d22fa5b824`）。整个 `lib` 目录里
 找不到任何 `95a4219250e5`。**这种安装出的每一个 WebGL 包都启动不了**，跟项目无关。
 
-## 修复路径（二选一）
+## 最终结论与修复路径（2026-11-13）
 
-**A. 修编辑器（推荐，不动项目）**
+A 方案（修好 2022.3.36f1 的模块）在本机**不可行**，卡的不是技术是网络：
 
-1. 关闭 Unity
-2. Unity Hub → `2022.3.36f1` → 卸载/重装 **WebGL Build Support** 模块
-   （Hub 里认不出这个自定义路径的话，直接用官方 `UnitySetup-WebGL-Support-for-Editor-2022.3.36f1.exe`
-   装到 `D:\UnityHubNocn\Unity2022.3.36f1\Unity 2022.3.36f1`）
-3. 删掉 `Library\Bee\artifacts\WebGL`、`Library\PlayerDataCache`
-4. 重新 Build，然后 `pack-webgl.ps1 -NoZip` 确认两个版本号一致
+```
+download.unity3d.com/.../UnitySetup-WebGL-Support-for-Editor-2022.3.36f1.exe
+  302 -> download.unitychina.cn/...        (证书 *.unitychina.cn, Server=AliyunOSS)
+```
 
-**B. 换一个自洽的编辑器**
+Unity 按出口 IP 做地理重定向，给 CN 用户发的都是中国版模块安装器：那个 560 MB 的安装器装完，
+`WebGLSupport_CoreModule_Dynamic.a` 里依旧是 `b8d22fa5b824`。两个下载 hash 的 ETag 完全相同
+= 同一个文件。代理 / 改 UA / 换 hash 都绕不过去，除非整条链路换出口 IP。
 
-本机 `D:\UnityHubNocn\Unity2023.2.20f1\Unity 2023.2.20f1` 的 WebGL 模块是自洽的
-（`0e25a174756c` 对得上），但会把项目升到 2023.2.20f1（`ProjectVersion.txt`、资源重导入都变）。
-比赛项目不建议轻易升级，除非 A 走不通。
+所以走 B：**改用本机已自洽的 2023.2.20f1（`0e25a174756c`）**，代价是项目要升版：
+
+1. 关闭 Unity，备份 `ProjectSettings/ProjectVersion.txt` 和未提交改动
+2. 用 `D:\UnityHubNocn\Unity2023.2.20f1\Unity 2023.2.20f1\Editor\Unity.exe` 打开项目
+   （Hub → Installs → Locate 指到该目录），等全量重导入完成（首次 10~30 分钟）
+3. 按 2022→2023 的 API 差异修编译错误（本作只用基础 2D 功能，风险低）
+4. 删 `Library\Bee\artifacts\WebGL` 和 `Library\PlayerDataCache`（换编辑器后必做，否则会复用旧 wasm）
+5. 体检 → 构建 → 打包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File Tools\check-webgl-module.ps1 -EditorPath 'D:\UnityHubNocn\Unity2023.2.20f1\Unity 2023.2.20f1'
+# 期望输出：player : 2023.2.20f1 (0e25a174756c)   status : OK
+# Unity: Build Settings > WebGL > Build -> Builds\WebGL
+powershell -ExecutionPolicy Bypass -File Tools\pack-webgl.ps1 -NoZip
+```
 
 > 一句话：**一个项目的 WebGL 包必须由同一个、未混装的编辑器产出**。
-> 本机同时装过 Unity 中国版（`c1`）和国际版，切编辑器后一定要清 `Library/Bee/artifacts/WebGL`。
+> 本机同时装过 Unity 中国版（`c1`）和国际版，任何换编辑器动作之后都要清 `Library/Bee/artifacts/WebGL`。
+
+## 体检脚本 check-webgl-module.ps1
+
+读编辑器 `Data\PlaybackEngines\WebGLSupport\BuildTools\lib\modules*\` 下那 7 个
+`WebGLSupport_*_Dynamic.a`，跟编辑器自身的版本串对比：
+
+| 输出 | 含义 |
+|---|---|
+| `status : OK`，exit 0 | 模块 revision 与编辑器一致，出包可以放心 |
+| `status : MIXED`，exit 1 | 播放器库来自另一个版本（本机就是 `f1c1`），**怎么构建都是废包** |
+| `status : MISSING`，exit 1 | 没装 WebGL 模块，或 `-EditorPath` 指错了 |
+
+不传 `-EditorPath` 时会在 `C:\Program Files\Unity\Hub\Editor\*`、`secondaryInstallPath` 等常见位置自动找。
+注意 `.a` 里的版本串**没有** `Unity ` 前缀，形如 `2022.3.36f1c1 (b8d22fa5b824)` / `2022.3.36f1c1_b8d22fa5b824`。
 
 ## 本地复现（上传前先自己跑一遍）
 
 ```powershell
-# 任意静态服务器都行，注意 .wasm 的 Content-Type 必须是 application/wasm
-cd Builds\WebGL
-python -m http.server 8099
+# 静态服务器：自带 application/wasm MIME（Unity 缺了它不启动）
+node Tools\webgl-verify\serve.js Builds\WebGL 8099
 # 浏览器打开 http://127.0.0.1:8099/ ，F12 看 Console
+
+# 可选：无头 Edge 自动探测，打印控制台报错 / 5s 一次 canvas+进度条状态 / 截屏
+msedge --headless=new --disable-gpu --remote-debugging-port=9222 --user-data-dir=%TEMP%\edge-verify about:blank
+node Tools\webgl-verify\cdp-probe.js http://127.0.0.1:8099/ 9222 120
+# 产物：%TEMP%\shiftgo_cdp.log、%TEMP%\shiftgo_shot.png
 ```
 
 要点：`file://` 直接双击 `index.html` 一定不行（fetch 被拦），必须走 http。
 如果本地 http 正常、itch 上不正常，问题才在 itch 设置；如果本地就卡在进度条，
 先看控制台里是不是又出现了 `Invalid serialized file version`。
 
+## 运行时坑：MeshCollider 被剥离（2026-11-13 切到 2023 后暴露）
+
+坏包修好之后，浏览器里还有一类只在打包后出现的报错：
+
+```
+Can't add component because class 'MeshCollider' doesn't exist!
+```
+
+页面能启动、能进主菜单。现有这几处调用紧接着就把图元自带的碰撞体 `Destroy` 掉了，
+所以画面看起来正常，只是在控制台刷屏；但只要以后有地方真的依赖图元自带的碰撞体，
+就会静默失去碰撞（拖上去的物体穿透地板），很难查。
+
+- **谁在要 MeshCollider**：`GameObject.CreatePrimitive(PrimitiveType.Quad)`
+  （`LevelBuilder.cs:200/242`、`BitFlowBuildMode.cs:445`、`BitFlowCardTray.cs:832/850/1902`）。
+  图元自带的碰撞体是 Cube→`BoxCollider`、**Quad/Plane→`MeshCollider`**、Cylinder→`CapsuleCollider`。
+- **为什么被剥掉**：`ProjectSettings.asset` 里 `stripEngineCode: 1`（引擎代码剥离开着），
+  而项目里没有任何脚本 / 场景 / 预制体直接引用 `MeshCollider`，
+  IL2CPP 链接器就把它当无用引擎类删了。编辑器不剥离，所以只有打包后炸。
+- **修法**：仓库根 `Assets/link.xml` 只保留这一个类型（不关整体剥离，wasm 体积基本不变）：
+
+```xml
+<linker>
+  <assembly fullname="UnityEngine.PhysicsModule">
+    <type fullname="UnityEngine.MeshCollider" preserve="all" />
+  </assembly>
+</linker>
+```
+
+写 link.xml 时注意 **XML 注释里不能出现 `--`**（`-----` 分隔线会让 UnityLinker 直接抛
+`System.Xml.XmlException: An XML comment cannot contain '--'`，构建失败，日志在
+`%LOCALAPPDATA%\Unity\Editor\Editor.log`）。
+
+同类风险：以后再用 `CreatePrimitive` 造别的图元（Plane / Sphere / Capsule），
+如果项目里没别处引用对应碰撞体类型，同样要补进 link.xml。
+
+## 本次核验结果（2026-11-13，Unity 2023.2.20f1）
+
+| 步骤 | 结果 |
+|---|---|
+| `check-webgl-module.ps1 -EditorPath '...\Unity2023.2.20f1\Unity 2023.2.20f1'` | `status : OK`，`player : 2023.2.20f1 (0e25a174756c)` |
+| Unity 构建（MCP，Output = `Builds/WebGL`，关闭 Development Build） | `Build succeeded: WebGL → Builds/WebGL (42.43 MB, 189.9s)` |
+| 产物 | `WebGL.wasm` 32.3 MB、`WebGL.data` 9.7 MB、`framework.js` 0.4 MB |
+| `pack-webgl.ps1 -NoZip` | `player : wasm=2023.2.20f1  data=2023.2.20f1`，`OK checks passed` |
+| 无头 Edge 探针（`serve.js` + `cdp-probe.js`） | `Initialize engine version: 2023.2.20f1 (0e25a174756c)`；`hasCanvas:true 960x600`；进度条 `100% / none`；`MeshCollider` 报错 **0**；`Invalid serialized file version` **0**；截图是开场终端剧情 |
+| `pack-webgl.ps1` | `Builds\SHIFT_GO2026-webgl.zip` 12.7 MB / 17 个条目，根目录有 `index.html` |
+
+console 里还剩两类**无害**刷屏，认识一下就不会误判：
+
+- `The AudioContext was not allowed to start ... after a user gesture`：
+  浏览器自动播放策略，headless 里没人点页面就一直提示；玩家点一下就好。
+- `ERROR: Shader Hidden/Universal Render Pipeline/... is not supported on this GPU`：
+  URP 的调试用 shader 在无 GPU 的 headless 或部分集显上不可用，跟游戏画面无关。
+
 ## 上传前检查清单
 
-- [ ] `pack-webgl.ps1` 跑过且没有报错（版本号一致、没有 `.br/.gz`、zip 根目录有 `index.html`）
-- [ ] 本地 `http://127.0.0.1:8099/` 能进主菜单，能开一关
-- [ ] zip 体积在 35 MB 上下（Development Build 会是 ~60 MB，说明忘了关）
+- [ ] `check-webgl-module.ps1` 输出 `status : OK`
+- [ ] `pack-webgl.ps1` 跑过且没报错（wasm/data 版本一致、无 `.br/.gz`、zip 根有 `index.html`）
+- [ ] `Assets/link.xml` 在（保住 `MeshCollider`，否则控制台刷 `Can't add component`）
+- [ ] 本地 `http://127.0.0.1:8099/` 能进主菜单、能开一关
+- [ ] zip 体积 12~13 MB（未压缩产物 ~42 MB；~60 MB 说明 Development Build 忘了关）
 - [ ] itch：Kind = HTML、勾了浏览器运行、嵌入尺寸 960x600
-- [ ] 上传后强刷（Ctrl+F5）再看，itch 会缓存旧包
+- [ ] 上传后 Ctrl+F5 强刷再看（itch 会缓存旧包）
+
+## 清理记录（2026-11-13）
+
+为排除污染删掉的东西，全部可再生或本就是错版，合计 ~1.40 GB：
+
+| 路径 | 体积 | 为什么删 |
+|---|---|---|
+| `Library\Bee\artifacts\WebGL` | 584.7 MB | 缓存里就是 `c1` 的 `build.wasm` |
+| `%TEMP%\UnitySetup-WebGL-Support-for-Editor-2022.3.36f1.exe` | 560.1 MB | 中国镜像发的 `c1` 模块安装器 |
+| `%TEMP%\shiftgo_edge_p3` | 180.7 MB | 无头 Edge 探针的临时 profile |
+| `Builds\WebGL` | 35.4 MB | 已知坏包（wasm `c1` / data `f1`） |
+| `Desktop\webgl26` | 35.4 MB | 同一个坏包的桌面副本 |
+| `Library\PlayerDataCache` | 3.6 MB | 播放器数据缓存，同属 `c1` |
+| `D:\UnityHubNocn\Unity2022.3.36f1\...\PlaybackEngines\WebGLSupport` | 2606 MB | 中国版 `c1` 模块，跟编辑器对不上，Hub 里还会显示"已装 WebGL" |
+
+保留：`Builds\FinalSizeCheck`（Windows 桌面构建，跟 WebGL 无关）、
+`D:\UnityHubNocn\Unity2022.3.36f1` 编辑器本体（已无 WebGL 模块，Hub 里不会再显示 WebGL；
+等确认新包没问题后再决定删不删，约 4~5 GB）。
