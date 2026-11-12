@@ -53,6 +53,20 @@ namespace ShiftGo.BitFlow.View
             if (library != null) Play(library.TerminalOpen);
         }
 
+        /// <summary>整关通过（结算面板弹出 PASS 的那一刻）。</summary>
+        public static void LevelSuccess()
+        {
+            SfxLibrarySO library = SfxLibrarySO.Load();
+            if (library != null) Play(library.LevelSuccess);
+        }
+
+        /// <summary>整关失败（结算面板弹出 FAIL 的那一刻）。</summary>
+        public static void LevelFail()
+        {
+            SfxLibrarySO library = SfxLibrarySO.Load();
+            if (library != null) Play(library.LevelFail);
+        }
+
         static void Play(AudioClip clip)
         {
             if (clip == null) return;

@@ -952,7 +952,12 @@ namespace ShiftGo.BitFlow.View
 
             // 工坊试跑不弹结算面板：玩家只是想知道机器跑不跑得起来，
             // 弹一个 PASS/FAIL 盖住网格，还得再点一次关掉。结论由工坊那行状态文字说。
+            // 结算音也一起省掉：试跑是调试动作，响一声反而像正式过关。
             if (workshopBar) return;
+
+            // 结算音放在面板判空之前：HUD 面板万一没建起来，结论也还能靠耳朵听到。
+            if (result.IsSuccess) BitFlowSfx.LevelSuccess();
+            else BitFlowSfx.LevelFail();
 
             // HUD 自身可能已随场景卸载，这里做防御，避免 MissingReferenceException 刷屏
             if (resultPanel == null || resultTitle == null || resultDetail == null) return;

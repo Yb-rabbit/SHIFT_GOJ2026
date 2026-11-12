@@ -30,12 +30,21 @@ namespace ShiftGo.BitFlow.Data
         [Tooltip("开场终端面板启动（开机动画开始）的那一刻播放")]
         [SerializeField] AudioClip terminalOpen;
 
+        [Header("结算")]
+        [Tooltip("整关通过（PASS）时播放")]
+        [SerializeField] AudioClip levelSuccess;
+
+        [Tooltip("整关失败（FAIL）时播放。和通过分开两条，玩家不用看面板也能听出结果")]
+        [SerializeField] AudioClip levelFail;
+
         static SfxLibrarySO cached;
         static bool warned;
 
         public AudioClip EmitterShot => emitterShot;
         public AudioClip ReceiverMatch => receiverMatch;
         public AudioClip TerminalOpen => terminalOpen;
+        public AudioClip LevelSuccess => levelSuccess;
+        public AudioClip LevelFail => levelFail;
 
         /// <summary>取音效清单（带缓存）。找不到时只警告一次，播放端按 null 静音处理。</summary>
         public static SfxLibrarySO Load()

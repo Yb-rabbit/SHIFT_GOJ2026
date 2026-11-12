@@ -15,3 +15,5 @@ MonoBehaviour:
   emitterShot: {fileID: 8300000, guid: 60492e56beb420343a404989e1166dc4, type: 3}
   receiverMatch: {fileID: 8300000, guid: c832572eb9de6de418e1a676bebc93bd, type: 3}
   terminalOpen: {fileID: 8300000, guid: c832572eb9de6de418e1a676bebc93bd, type: 3}
+  levelSuccess: {fileID: 8300000, guid: 43f7fffef87abcf408748566ad5a3c08, type: 3}
+  levelFail: {fileID: 8300000, guid: 6ff15ea8d2ecd4742a9779a5f716efdf, type: 3}
