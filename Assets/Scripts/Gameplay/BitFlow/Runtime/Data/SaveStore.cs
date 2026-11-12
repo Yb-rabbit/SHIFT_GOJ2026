@@ -77,6 +77,16 @@ namespace ShiftGo.BitFlow.Data
             }
         }
 
+        /// <summary>
+        /// WebGL 下存档落 <see cref="PlayerPrefs"/>（浏览器里由 Unity 写进 IndexedDB）：
+        /// 沙箱没有可写的本地目录，<c>File</c> / <c>Directory</c> 全是 stub。
+        /// 键名带文件名，编辑器档与玩家档互不干扰 —— 和桌面端「两个文件」的约定一一对应。
+        /// </summary>
+        static string PrefsKey => "BitFlow.Save." + ActiveFileName;
+
+        /// <summary>当前平台是否只能靠 PlayerPrefs 存档（WebGL；测试里可通过 BrowserFileSystem 强制打开）。</summary>
+        static bool UsePrefs => BrowserFileSystem.IsActive;
+
         static SaveData data;
 
         /// <summary>当前存档（首次访问时从磁盘读）。</summary>
@@ -230,7 +240,10 @@ namespace ShiftGo.BitFlow.Data
 
             try
             {
-                if (File.Exists(FilePath)) File.Delete(FilePath);
+                if (UsePrefs) PlayerPrefs.DeleteKey(PrefsKey);
+                else if (File.Exists(FilePath)) File.Delete(FilePath);
+
+                if (UsePrefs) PlayerPrefs.Save();
             }
             catch (Exception exception)
             {
@@ -242,9 +255,19 @@ namespace ShiftGo.BitFlow.Data
         {
             try
             {
-                if (!File.Exists(FilePath)) return new SaveData();
+                string raw;
+                if (UsePrefs)
+                {
+                    raw = PlayerPrefs.GetString(PrefsKey, string.Empty);
+                    if (string.IsNullOrEmpty(raw)) return new SaveData();
+                }
+                else
+                {
+                    if (!File.Exists(FilePath)) return new SaveData();
+                    raw = File.ReadAllText(FilePath);
+                }
 
-                SaveData loaded = JsonUtility.FromJson<SaveData>(File.ReadAllText(FilePath));
+                SaveData loaded = JsonUtility.FromJson<SaveData>(raw);
                 if (loaded == null) return new SaveData();
 
                 // JsonUtility 走 FormatterServices 建对象，不走构造函数：
@@ -283,10 +306,20 @@ namespace ShiftGo.BitFlow.Data
         {
             try
             {
+                string json = JsonUtility.ToJson(Data, true);
+
+                if (UsePrefs)
+                {
+                    // 浏览器里必须显式 Save：否则刷新页面 / 关标签页就丢了
+                    PlayerPrefs.SetString(PrefsKey, json);
+                    PlayerPrefs.Save();
+                    return;
+                }
+
                 string folder = Path.GetDirectoryName(FilePath);
                 if (!string.IsNullOrEmpty(folder) && !Directory.Exists(folder)) Directory.CreateDirectory(folder);
 
-                File.WriteAllText(FilePath, JsonUtility.ToJson(Data, true));
+                File.WriteAllText(FilePath, json);
             }
             catch (Exception exception)
             {

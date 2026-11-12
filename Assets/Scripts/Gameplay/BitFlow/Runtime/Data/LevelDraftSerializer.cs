@@ -19,6 +19,18 @@ namespace ShiftGo.BitFlow.Data
         /// <summary>默认存档路径（Win/Mac/Linux 在 persistentDataPath/ShiftGoLevels 下）。</summary>
         public static string DefaultPath => Path.Combine(Application.persistentDataPath, FolderName, DefaultFileName);
 
+        /// <summary>
+        /// WebGL 没有可写目录，草稿改存 PlayerPrefs（浏览器里落 IndexedDB）。
+        /// 键里带文件名，和桌面端「一个文件一份草稿」的约定对应得上。
+        /// </summary>
+        static string PrefsKeyOf(string target)
+        {
+            return "BitFlow.Draft." + System.IO.Path.GetFileName(target);
+        }
+
+        /// <summary>当前平台是否该把草稿写进 PlayerPrefs（WebGL；测试里可通过 BrowserFileSystem 强制打开）。</summary>
+        static bool UsePrefs => BrowserFileSystem.IsActive;
+
         /// <summary>把草稿写成 JSON；失败（IO 异常）返回 false，不抛出去打断游戏。</summary>
         public static bool Save(LevelDraft draft, string path = null)
         {
@@ -27,10 +39,19 @@ namespace ShiftGo.BitFlow.Data
             try
             {
                 string target = string.IsNullOrEmpty(path) ? DefaultPath : path;
+                string json = JsonUtility.ToJson(ToDto(draft), true);
+
+                if (UsePrefs)
+                {
+                    PlayerPrefs.SetString(PrefsKeyOf(target), json);
+                    PlayerPrefs.Save();
+                    return true;
+                }
+
                 string folder = Path.GetDirectoryName(target);
                 if (!string.IsNullOrEmpty(folder) && !Directory.Exists(folder)) Directory.CreateDirectory(folder);
 
-                File.WriteAllText(target, JsonUtility.ToJson(ToDto(draft), true));
+                File.WriteAllText(target, json);
                 return true;
             }
             catch (Exception exception)
@@ -46,9 +67,20 @@ namespace ShiftGo.BitFlow.Data
             try
             {
                 string target = string.IsNullOrEmpty(path) ? DefaultPath : path;
-                if (!File.Exists(target)) return null;
 
-                DraftDto dto = JsonUtility.FromJson<DraftDto>(File.ReadAllText(target));
+                string json;
+                if (UsePrefs)
+                {
+                    json = PlayerPrefs.GetString(PrefsKeyOf(target), string.Empty);
+                    if (string.IsNullOrEmpty(json)) return null;
+                }
+                else
+                {
+                    if (!File.Exists(target)) return null;
+                    json = File.ReadAllText(target);
+                }
+
+                DraftDto dto = JsonUtility.FromJson<DraftDto>(json);
                 return FromDto(dto);
             }
             catch (Exception exception)
@@ -60,7 +92,12 @@ namespace ShiftGo.BitFlow.Data
 
         public static bool Exists(string path = null)
         {
-            return File.Exists(string.IsNullOrEmpty(path) ? DefaultPath : path);
+            string target = string.IsNullOrEmpty(path) ? DefaultPath : path;
+
+            // 浏览器里 File.Exists 是 stub（一碰就抛），必须走 PlayerPrefs
+            if (UsePrefs) return PlayerPrefs.HasKey(PrefsKeyOf(target));
+
+            return File.Exists(target);
         }
 
         static DraftDto ToDto(LevelDraft draft)

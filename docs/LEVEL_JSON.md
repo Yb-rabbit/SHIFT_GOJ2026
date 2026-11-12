@@ -87,6 +87,11 @@ LevelJson/
 
 `{ "kind": "Filter", "count": 3 }`（或 `"type": "Type_Filter_F1"`）。同一类型写多条 = 再多给几张。
 
+要发**具体变体**（F1 而不是 F0、D3 而不是 D1）必须写 `type`：`kind` 只按「同种类 + 朝向」去挑，
+挑中的是该种类在类型清单里的第一个（Filter→F0、DelayGate→D1）。手牌不像 `elements` 那样有
+`pass` / `delay` 通道，变体差异只能靠 `type` 表达 —— 编辑器的手牌下拉列的就是类型资产，「过滤器 · F1（PASS 1）」
+存下来是 `{ "type": "Type_Filter_F1", "kind": "Filter", "count": 1 }`。
+
 ## 最小例子
 
 ```json

@@ -75,6 +75,75 @@ namespace ShiftGo.BitFlow.Data
         /// <summary>关卡 JSON 目录的绝对路径（可能还不存在）。</summary>
         public static string Folder => System.IO.Path.Combine(Application.persistentDataPath, FolderName);
 
+        // ---------------------------------------------------------------- 存储后端
+        //
+        // 浏览器沙箱里没有可写的本地目录：WebGL 的 System.IO 是 stub，碰一下就抛。
+        // 关卡库真正需要的只是「路径 → 文本」这么几个动作，所以全部收敛到这里：
+        // 桌面端原样调 System.IO，WebGL 交给 BrowserFileSystem（PlayerPrefs / IndexedDB）。
+        // 上层（选关面板、工坊）不需要任何 #if。
+
+        /// <summary>本平台能不能落真正的文件（WebGL 不能，关卡存在浏览器存储里）。</summary>
+        public static bool HasLocalFiles => !BrowserFileSystem.IsActive;
+
+        /// <summary>文件是否存在（含浏览器存储里的关卡）。</summary>
+        public static bool FileExists(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            return BrowserFileSystem.IsActive ? BrowserFileSystem.Exists(path) : File.Exists(path);
+        }
+
+        /// <summary>读 UTF-8 文本；文件不存在时抛异常，语义与 <c>File.ReadAllText</c> 一致。</summary>
+        public static string ReadAllText(string path)
+        {
+            return BrowserFileSystem.IsActive ? BrowserFileSystem.ReadAllText(path) : File.ReadAllText(path);
+        }
+
+        /// <summary>写 UTF-8 文本（浏览器里存进 PlayerPrefs）。</summary>
+        public static void WriteAllText(string path, string text)
+        {
+            if (BrowserFileSystem.IsActive) BrowserFileSystem.WriteAllText(path, text);
+            else File.WriteAllText(path, text);
+        }
+
+        /// <summary>删一个文件（浏览器里删掉对应的存储键）。</summary>
+        public static void DeleteFile(string path)
+        {
+            if (BrowserFileSystem.IsActive) BrowserFileSystem.Delete(path);
+            else File.Delete(path);
+        }
+
+        /// <summary>
+        /// 把路径归一化成绝对形式，好让「在不在关卡目录里」这类判断可靠。
+        ///
+        /// 浏览器里<b>不能</b>用 <c>Path.GetFullPath</c>：它依赖 <c>CurrentDirectory</c>，
+        /// 而 WebGL 下那是 stub。好在 <see cref="Folder"/> 本身就已经是绝对形式，
+        /// 上层传进来的也都是 <c>Path.Combine(Folder, ...)</c> 拼出来的，原样返回即可。
+        /// </summary>
+        static string NormalizePath(string path)
+        {
+            return BrowserFileSystem.IsActive ? path : System.IO.Path.GetFullPath(path);
+        }
+
+        /// <summary>目录是否存在。浏览器里「关卡目录」恒存在，免得面板报「还没有关卡目录」。</summary>
+        static bool DirectoryExists(string directory)
+        {
+            return BrowserFileSystem.IsActive || Directory.Exists(directory);
+        }
+
+        /// <summary>建目录。浏览器里没有真实目录，空操作。</summary>
+        static void CreateDirectory(string directory)
+        {
+            if (!BrowserFileSystem.IsActive) Directory.CreateDirectory(directory);
+        }
+
+        /// <summary>列目录里的 <c>*.json</c>。浏览器里来自存储索引。</summary>
+        static string[] GetJsonFiles(string folder)
+        {
+            return BrowserFileSystem.IsActive
+                ? BrowserFileSystem.GetFiles(folder, "*.json")
+                : Directory.GetFiles(folder, "*.json");
+        }
+
         /// <summary>
         /// 旧版「收件箱」目录名。仍保留在批量导入的扫描列表里，兼容以前把 json 丢进
         /// <see cref="IncomingFolder"/> 的玩家；新流程请用 <see cref="ShareFolder"/>。
@@ -116,10 +185,10 @@ namespace ShiftGo.BitFlow.Data
         public static void EnsureFolder()
         {
             string folder = Folder;
-            if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+            if (!DirectoryExists(folder)) CreateDirectory(folder);
 
             string incoming = IncomingFolder;
-            if (!Directory.Exists(incoming)) Directory.CreateDirectory(incoming);
+            if (!DirectoryExists(incoming)) CreateDirectory(incoming);
 
             WriteReadmeIfMissing(folder);
         }
@@ -131,6 +200,13 @@ namespace ShiftGo.BitFlow.Data
         public static bool EnsureShareFolder(out string error)
         {
             error = null;
+
+            // 浏览器里没有「程序旁边的目录」这回事，分享 / 批量导入一律不可用
+            if (BrowserFileSystem.IsActive)
+            {
+                error = "浏览器版本没有分享目录，请用 EXPORT · COPY JSON 复制关卡";
+                return false;
+            }
 
             string preferred = ShareFolder;
             if (TryEnsureShareDirectory(preferred, out error))
@@ -244,11 +320,11 @@ namespace ShiftGo.BitFlow.Data
             for (int n = 1; n <= MaxAutoNames; n++)
             {
                 string candidate = System.IO.Path.Combine(Folder, prefix + n.ToString("00") + ".json");
-                if (File.Exists(candidate)) continue;
+                if (FileExists(candidate)) continue;
 
                 try
                 {
-                    File.WriteAllText(candidate, json);
+                    WriteAllText(candidate, json);
                 }
                 catch (Exception exception)
                 {
@@ -288,12 +364,12 @@ namespace ShiftGo.BitFlow.Data
             {
                 string candidate = System.IO.Path.Combine(folder, prefix + n.ToString("00") + ".json");
 
-                if (File.Exists(candidate))
+                if (FileExists(candidate))
                 {
                     try
                     {
                         // 同一份内容已经在分享目录里 = 已经分享过，不再堆一份副本
-                        if (string.Equals(File.ReadAllText(candidate), json, StringComparison.Ordinal))
+                        if (string.Equals(ReadAllText(candidate), json, StringComparison.Ordinal))
                         {
                             path = candidate;
                             return true;
@@ -309,7 +385,7 @@ namespace ShiftGo.BitFlow.Data
 
                 try
                 {
-                    File.WriteAllText(candidate, json);
+                    WriteAllText(candidate, json);
                 }
                 catch (Exception exception)
                 {
@@ -331,7 +407,7 @@ namespace ShiftGo.BitFlow.Data
             path = null;
             error = null;
 
-            if (string.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
+            if (string.IsNullOrEmpty(sourcePath) || !FileExists(sourcePath))
             {
                 error = "文件不在了：" + sourcePath;
                 return false;
@@ -340,7 +416,7 @@ namespace ShiftGo.BitFlow.Data
             string json;
             try
             {
-                json = File.ReadAllText(sourcePath);
+                json = ReadAllText(sourcePath);
             }
             catch (Exception exception)
             {
@@ -405,6 +481,9 @@ namespace ShiftGo.BitFlow.Data
         /// </summary>
         static void WriteReadmeIfOutdated(string folder, string content)
         {
+            // 浏览器里没有真实目录，README 无从谈起（也别往关卡存储里塞非关卡文本）
+            if (BrowserFileSystem.IsActive) return;
+
             try
             {
                 string path = System.IO.Path.Combine(folder, ReadmeName);
@@ -472,6 +551,9 @@ namespace ShiftGo.BitFlow.Data
         /// </summary>
         public static List<string> DropFolders()
         {
+            // 浏览器里没有「玩家能自己丢文件的目录」，批量导入无从谈起
+            if (BrowserFileSystem.IsActive) return new List<string>();
+
             List<string> folders = new List<string> { ShareFolder, IncomingFolder };
 
             string program = ProgramFolder;
@@ -532,7 +614,7 @@ namespace ShiftGo.BitFlow.Data
                 return ImportOutcome.Invalid;
             }
 
-            if (!File.Exists(sourcePath))
+            if (!FileExists(sourcePath))
             {
                 error = "文件不在了：" + sourcePath;
                 return ImportOutcome.Invalid;
@@ -556,7 +638,7 @@ namespace ShiftGo.BitFlow.Data
             string json;
             try
             {
-                json = File.ReadAllText(sourcePath);
+                json = ReadAllText(sourcePath);
             }
             catch (Exception exception)
             {
@@ -574,7 +656,7 @@ namespace ShiftGo.BitFlow.Data
 
             if (IsInsideLibrary(sourcePath))
             {
-                path = System.IO.Path.GetFullPath(sourcePath);
+                path = NormalizePath(sourcePath);
                 return ImportOutcome.AlreadyInLibrary;
             }
 
@@ -583,12 +665,12 @@ namespace ShiftGo.BitFlow.Data
             // 目标名 = 源文件名：重复导入同一份文件就是覆盖它自己，不会在列表里长出 _02、_03
             string destination = System.IO.Path.Combine(Folder, System.IO.Path.GetFileName(sourcePath));
 
-            if (File.Exists(destination))
+            if (FileExists(destination))
             {
                 string existing;
                 try
                 {
-                    existing = File.ReadAllText(destination);
+                    existing = ReadAllText(destination);
                 }
                 catch (Exception exception)
                 {
@@ -613,7 +695,7 @@ namespace ShiftGo.BitFlow.Data
 
             try
             {
-                File.WriteAllText(destination, json);
+                WriteAllText(destination, json);
             }
             catch (Exception exception)
             {
@@ -697,12 +779,12 @@ namespace ShiftGo.BitFlow.Data
 
             try
             {
-                string folder = System.IO.Path.GetFullPath(Folder);
-                string full = System.IO.Path.GetFullPath(path);
+                string folder = NormalizePath(Folder);
+                string full = NormalizePath(path);
                 if (!full.StartsWith(folder, StringComparison.OrdinalIgnoreCase)) return false;
 
                 // 收件箱在正式目录下面，但那不是「已经在列表里」
-                string incoming = System.IO.Path.GetFullPath(IncomingFolder);
+                string incoming = NormalizePath(IncomingFolder);
                 return !full.StartsWith(incoming, StringComparison.OrdinalIgnoreCase);
             }
             catch (Exception)
@@ -730,8 +812,8 @@ namespace ShiftGo.BitFlow.Data
             string full;
             try
             {
-                folder = Path.GetFullPath(Folder);
-                full = Path.GetFullPath(path);
+                folder = NormalizePath(Folder);
+                full = NormalizePath(path);
             }
             catch (Exception exception)
             {
@@ -749,13 +831,13 @@ namespace ShiftGo.BitFlow.Data
 
             try
             {
-                if (!File.Exists(full))
+                if (!FileExists(full))
                 {
                     error = "文件已经不在了";
                     return false;
                 }
 
-                File.Delete(full);
+                DeleteFile(full);
                 return true;
             }
             catch (Exception exception)
@@ -803,7 +885,7 @@ namespace ShiftGo.BitFlow.Data
             List<LevelJsonEntry> entries = new List<LevelJsonEntry>();
 
             string folder = Folder;
-            if (!Directory.Exists(folder))
+            if (!DirectoryExists(folder))
             {
                 problems.Add("还没有关卡目录：" + folder);
                 return entries;
@@ -819,7 +901,7 @@ namespace ShiftGo.BitFlow.Data
             string[] files;
             try
             {
-                files = Directory.GetFiles(folder, "*.json");
+                files = GetJsonFiles(folder);
             }
             catch (Exception exception)
             {
@@ -877,7 +959,7 @@ namespace ShiftGo.BitFlow.Data
             string json;
             try
             {
-                json = File.ReadAllText(path);
+                json = ReadAllText(path);
             }
             catch (Exception exception)
             {

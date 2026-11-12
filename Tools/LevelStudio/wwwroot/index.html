@@ -11,11 +11,10 @@
 <header class="bar">
   <div class="brand">SHIFT&nbsp;GO<span class="dim"> / BitFlow 关卡编辑器</span></div>
   <div class="meta">
-    <label>关卡名 <input id="displayName" type="text" spellcheck="false" /></label>
-    <label>宽 <input id="width" type="number" min="2" max="40" /></label>
-    <label>高 <input id="height" type="number" min="2" max="40" /></label>
+    <label title="只能用 A-Z、0-9、- _ 和空格，最多 20 字。游戏里的像素字体只认这些字形，中文名会显示成方块。">关卡名 <input id="displayName" type="text" spellcheck="false" maxlength="20" placeholder="CUSTOM LEVEL 01" /><span id="nameRule" class="dim"></span></label>
+    <label title="游戏里玩家新建关卡只有这四档，9x8 是主线的标准板">尺寸 <select id="size"></select></label>
     <label>tick <input id="tickInterval" type="number" min="0.05" max="5" step="0.05" /></label>
-    <label class="check"><input id="allowBuild" type="checkbox" /> 允许玩家进关后自己改</label>
+    <label class="check"><input id="allowBuild" type="checkbox" /> 允许玩家进关后自己改 <span id="allowBuildNote" class="dim"></span></label>
   </div>
 </header>
 
@@ -24,13 +23,15 @@
   <section class="panel palette">
     <h2>元件</h2>
     <div id="palette" class="palette-list"></div>
-    <p class="hint">左键放、右键擦。方向键的朝向就是位会走的方向。</p>
+    <p class="hint">左键放、右键擦。点已有元件只会选中它，不会覆盖 —— 要换种类先右键擦掉。方向键的朝向就是位会走的方向。</p>
   </section>
 
   <section class="panel stage">
     <div class="row">
       <span id="coordLabel" class="dim">—</span>
       <span class="grow"></span>
+      <button id="btnUndo" title="撤销（Ctrl+Z）">撤销</button>
+      <button id="btnRedo" title="重做（Ctrl+Y）">重做</button>
       <button id="btnRotate" title="顺时针旋转 90°（快捷键 R）">旋转 R</button>
       <button id="btnErase" title="擦掉这一格">擦除这一格</button>
       <button id="btnClear" title="清空所有元件和墙">清空</button>
@@ -42,6 +43,15 @@
   <section class="panel inspector">
     <h2>选中格子</h2>
     <div id="inspector" class="inspector-body"><p class="dim">先点一下网格里的格子。</p></div>
+
+    <h2>手牌</h2>
+    <div class="row">
+      <select id="supplyKind"></select>
+      <input id="supplyCount" type="number" min="1" max="99" value="1" />
+      <button id="btnAddSupply">加一张</button>
+    </div>
+    <ul id="supplyList" class="supply-list"></ul>
+    <p class="hint">手牌只能发「不改出题权」的件：墙 / 分流器 / 非门 / 过滤器 / 延迟器。有手牌时「允许玩家进关后自己改」会被强制打开并锁住 —— 发得出牌就得放得下。<br />尺寸只有游戏给的四档：9x8（主线标准板）/ 11x8 / 7x6 / 13x9，和玩家 NEW LEVEL 里能选的完全一致。</p>
 
     <h2>自测</h2>
     <button id="btnCheck" class="primary">跑一遍真引擎</button>
@@ -64,7 +74,8 @@
 
     <h2>存盘</h2>
     <div class="row">
-      <input id="saveName" type="text" spellcheck="false" placeholder="文件名（不含 .json）" />
+      <span id="saveAsPreview" class="dim">存为 —</span>
+      <span class="grow"></span>
       <button id="btnSave" class="primary">保存</button>
     </div>
     <div class="row">
@@ -75,11 +86,16 @@
     <textarea id="jsonBox" spellcheck="false" placeholder="导出的 JSON 会出现在这里（也可以直接粘一份进来，然后点下面的按钮读进编辑器）"></textarea>
     <div class="row">
       <button id="btnImport">把这段 JSON 读进编辑器</button>
+      <button id="btnPickFile">选一个 .json 文件…</button>
+      <input id="filePicker" type="file" accept=".json,application/json" hidden />
     </div>
+    <p class="hint">外部 json 也可以直接拖到窗口任意位置。</p>
     <p id="status" class="status"></p>
   </section>
 
 </main>
+
+<div id="dropHint"><strong>松开就能读进编辑器</strong><span>只认 .json 文件</span></div>
 
 <script src="app.js"></script>
 </body>

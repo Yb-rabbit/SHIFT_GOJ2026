@@ -482,7 +482,12 @@ namespace ShiftGo.BitFlow.View
             string picked = FilePicker.PickJson("IMPORT LEVEL JSON", LevelJsonLibrary.ShareFolder);
             if (string.IsNullOrEmpty(picked))
             {
-                Flash(FilePicker.IsSupported ? "NOTHING PICKED" : "USE IMPORT  ·  FROM SHARE FOLDER");
+                // WebGL 没有文件对话框也没有分享目录，唯一能建关的路是 + NEW LEVEL
+                Flash(FilePicker.IsSupported
+                    ? "NOTHING PICKED"
+                    : LevelJsonLibrary.HasLocalFiles
+                        ? "USE IMPORT  ·  FROM SHARE FOLDER"
+                        : "BROWSER BUILD  ·  USE + NEW LEVEL");
                 return;
             }
 

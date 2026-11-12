@@ -484,7 +484,7 @@ namespace ShiftGo.BitFlow.View
                 for (int number = 1; number <= MaxLevels; number++)
                 {
                     string path = Path.Combine(LevelJsonLibrary.Folder, FileNameOf(DisplayNameOf(number)));
-                    if (!File.Exists(path)) return DisplayNameOf(number);
+                    if (!LevelJsonLibrary.FileExists(path)) return DisplayNameOf(number);
                 }
             }
             catch (Exception exception)
@@ -503,60 +503,30 @@ namespace ShiftGo.BitFlow.View
         }
 
         /// <summary>"MY LEVEL 07" → "MY_LEVEL_07.json"（文件名里不留空格，方便玩家手打路径）。</summary>
+        /// <remarks>
+        /// 规则本体在 <see cref="LevelNaming"/>，这里只留转发：外部编辑器（<c>Tools/LevelStudio</c>）
+        /// 编进去的是同一个文件，两边不可能各写一份。以前各写一份，编辑器存出
+        /// <c>MY_LEVEL_02_01.json</c>、游戏里这关却叫 <c>111</c> —— 同一关两个名字。
+        /// </remarks>
         public static string FileNameOf(string displayName)
         {
-            string safe = SanitizeDisplayName(displayName);
-            if (string.IsNullOrEmpty(safe)) safe = "CUSTOM LEVEL";
-            return safe.Replace(' ', '_') + ".json";
+            return LevelNaming.FileNameOf(displayName);
         }
 
         /// <summary>
         /// 关卡名输入的统一规则：只留 ASCII 的 <c>A-Z 0-9 - _</c> 与空格，自动大写、折叠连续空格、
-        /// 最长 20 字符。像素字体只有 ASCII 字形，中文名存进去在面板上会是一排方块；
+        /// 最长 <see cref="LevelNaming.MaxLength"/> 字符。像素字体只有 ASCII 字形，中文名存进去在面板上会是一排方块；
         /// 文件名也只由这份结果生成，所以这里同时挡掉路径分隔符与平台非法字符。
         /// </summary>
         public static string SanitizeDisplayName(string raw)
         {
-            return SanitizeName(raw, true);
+            return LevelNaming.Sanitize(raw);
         }
 
         /// <summary>输入框逐字清理：同样只留 ASCII / 大写 / 20 字，但不折叠空格（光标不跳来跳去）。</summary>
         public static string SanitizeTypedDisplayName(string raw)
         {
-            return SanitizeName(raw, false);
-        }
-
-        static string SanitizeName(string raw, bool finish)
-        {
-            if (string.IsNullOrEmpty(raw)) return string.Empty;
-
-            System.Text.StringBuilder builder = new System.Text.StringBuilder(raw.Length);
-            bool lastWasSpace = false;
-
-            foreach (char source in raw)
-            {
-                char c = char.ToUpperInvariant(source);
-
-                bool allowed = (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == ' ';
-                if (!allowed) continue;
-
-                if (c == ' ')
-                {
-                    // 输入过程中保留玩家刚敲下的空格；提交 / 生成文件名时折叠并去掉首尾
-                    if (finish && (lastWasSpace || builder.Length == 0)) continue;
-                    lastWasSpace = true;
-                }
-                else
-                {
-                    lastWasSpace = false;
-                }
-
-                builder.Append(c);
-                if (builder.Length >= 20) break;
-            }
-
-            string result = builder.ToString();
-            return finish ? result.Trim() : result;
+            return LevelNaming.SanitizeTyped(raw);
         }
 
         /// <summary>
@@ -603,7 +573,7 @@ namespace ShiftGo.BitFlow.View
             string candidatePath = Path.Combine(LevelJsonLibrary.Folder, FileNameOf(candidate));
 
             // 自己正在编辑的那份文件不算重名：作者可以只改 displayName，不必改文件名。
-            if (!SamePath(candidatePath, editingPath) && File.Exists(candidatePath)) return true;
+            if (!SamePath(candidatePath, editingPath) && LevelJsonLibrary.FileExists(candidatePath)) return true;
 
             if (flow != null && flow.Catalog != null)
             {
@@ -652,7 +622,7 @@ namespace ShiftGo.BitFlow.View
                 LevelJsonLibrary.EnsureFolder();
 
                 string path = Path.Combine(LevelJsonLibrary.Folder, FileNameOf(displayName));
-                if (File.Exists(path))
+                if (LevelJsonLibrary.FileExists(path))
                 {
                     error = "NAME TAKEN  -  PICK ANOTHER";
                     return false;
@@ -706,7 +676,8 @@ namespace ShiftGo.BitFlow.View
 
             // wallRows 为 null 时 JsonUtility 会写成 "wallRows": null，
             // 读回来照样走「没有墙层」那条分支，不用特意补一个空数组。
-            File.WriteAllText(path, JsonUtility.ToJson(document, true));
+            // 走 LevelJsonLibrary 的包装：桌面写文件，WebGL 写浏览器存储。
+            LevelJsonLibrary.WriteAllText(path, JsonUtility.ToJson(document, true));
             return true;
         }
 

@@ -663,6 +663,17 @@ namespace ShiftGo.BitFlow.Data
 
                 int steps;
                 ElementTypeSO type = resolver.Resolve(probe, out steps);
+                if (type == null && string.IsNullOrEmpty(supply.type))
+                {
+                    // kind=Wall 是合法手牌（SupplyKinds 允许发墙），但 MatchByKind 故意跳过 WallTypeSO
+                    // —— 墙在 elements 里会被 wallRows 盖掉，所以那条路径不收墙。手牌不是「格子」，
+                    // 得在这里自己兜回来，否则 kind-only 的墙手牌会被整条判成「解析不出」直接丢掉。
+                    if (TryParseKind(supply.kind, out CellKind wallKind) && wallKind == CellKind.Wall)
+                    {
+                        type = resolver.ResolveWall();
+                    }
+                }
+
                 if (type == null)
                 {
                     result.Errors.Add(where + " 解析不出元件类型：" + DescribeCell(probe));

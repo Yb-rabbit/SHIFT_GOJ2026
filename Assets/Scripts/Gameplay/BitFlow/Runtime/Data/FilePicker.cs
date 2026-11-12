@@ -45,6 +45,10 @@ namespace ShiftGo.BitFlow.Data
         /// <param name="startFolder">初始目录（不存在就退回分享目录）。</param>
         public static string PickJson(string title, string startFolder)
         {
+            // 浏览器 / 其它平台没有系统文件对话框：先挡住，别去碰 Directory.Exists
+            // （WebGL 的 System.IO 是 stub，一碰就抛）
+            if (!IsSupported) return null;
+
             if (string.IsNullOrEmpty(title)) title = "OPEN LEVEL JSON";
 
             if (string.IsNullOrEmpty(startFolder) || !Directory.Exists(startFolder))
