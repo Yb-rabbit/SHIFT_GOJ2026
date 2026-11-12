@@ -1,7 +1,7 @@
-/* BitFlow 关卡编辑器前端。
-   没有任何构建步骤：这个文件由本地 http 服务直接发给浏览器。
-   校验一律走后端（/api/check），跑的是 Unity 里同一份 BitFlowSimulation ——
-   前端只负责画格子、改参数、拼 JSON。 */
+/* BitFlow 关卡编辑器前端 —— 和「宿主」无关的那一半。
+   本文件只做三件事：画格子、改参数、拼 JSON。
+   「存到哪 / 怎么自测」全部走 HOST（host.js = 本地服务，host-static.js = 纯浏览器）。
+   同一份 app.js 被桌面板和独立版共用，改这里两边一起变。 */
 
 /* 种类表必须和 Core 的 CellKind 一一对应（7 种）。
    少写一种的后果不是「画不出来」，而是**读进来的那一格被整格丢掉** ——
@@ -84,7 +84,7 @@ function escapeHtml(text) {
    规则本体在 Assets/Scripts/Gameplay/BitFlow/Runtime/Core/LevelNaming.cs —— 那个文件被
    游戏和这个编辑器一起编译（ShiftGoLevelStudio.csproj 直接 Include 它），所以判定只有一份。
    下面是它的逐字符镜像，唯一用途是让作者在打字时就看到「这个名字会存成哪个文件」；
-   真正的判定在 /api/save 里，前端说什么都不算数。
+   真正的判定在宿主那一侧（本地服务走 Api.cs，独立版走 host-static.js），前端说什么都不算数。
 
    改了 Core/LevelNaming.cs 就同步这里，否则预览会和落盘结果不一致。
    注意 char.ToUpperInvariant 对某些字符（ß）不做映射，JS 的 toUpperCase 却会展开成 'SS' ——
@@ -1120,21 +1120,12 @@ function addSupply() {
   afterEdit();
 }
 
-// ------------------------------------------------------------------ 跟本地服务说话
+// ------------------------------------------------------------------ 跟宿主说话
 
-async function apiGet(path) {
-  const response = await fetch(path);
-  return response.json();
-}
-
-async function apiPost(path, body) {
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  return response.json();
-}
+/* 这里以前是 apiGet / apiPost 两个函数，直接 fetch('/api/*')。
+   现在改成走 HOST（见 host.js / host-static.js）——
+   「怎么保存、怎么自测」由宿主决定，本文件只负责编辑和拼 JSON。
+   纯静态版把 host.js 换成 host-static.js，这个文件一行都不用改。 */
 
 function setStatus(text, ok) {
   el.status.textContent = text || '';
@@ -1143,7 +1134,7 @@ function setStatus(text, ok) {
 
 async function loadCatalog() {
   try {
-    const catalog = await apiGet('/api/catalog');
+    const catalog = await HOST.catalog();
     state.catalog = (catalog && catalog.types) || [];
   } catch (error) {
     state.catalog = [];
@@ -1156,7 +1147,7 @@ async function loadFiles() {
   el.fileList.innerHTML = '<li class="dim">读取中…</li>';
 
   try {
-    const listing = await apiGet('/api/levels?where=' + encodeURIComponent(state.where));
+    const listing = await HOST.listLevels(state.where);
     el.fileList.innerHTML = '';
     state.files = listing.files || [];
 
@@ -1166,7 +1157,7 @@ async function loadFiles() {
     }
 
     if (!listing.files.length) {
-      el.fileList.innerHTML = '<li class="dim">这个目录里没有 .json</li>';
+      el.fileList.innerHTML = '<li class="dim">还没有关卡：点「保存」写一份，或把 .json 拖进来</li>';
       return;
     }
 
@@ -1195,7 +1186,7 @@ async function loadFiles() {
 async function openLevel(name) {
   setStatus('读 ' + name + ' …');
   try {
-    const raw = await apiGet('/api/level?where=' + encodeURIComponent(state.where) + '&name=' + encodeURIComponent(name));
+    const raw = await HOST.readLevel(state.where, name);
     if (raw && raw.error) {
       setStatus(raw.error, false);
       return;
@@ -1252,11 +1243,19 @@ async function runCheck() {
   el.problems.textContent = '';
 
   try {
-    const result = await apiPost('/api/check', serializeDoc());
+    const result = await HOST.check(serializeDoc());
 
     if (result.error) {
       el.checkResult.className = 'result fail';
       el.checkResult.textContent = result.error;
+      return;
+    }
+
+    // 宿主明确说「这项没跑」（独立版还没接引擎）—— 只转述，不伪造结论。
+    if (result.pending) {
+      el.checkResult.className = 'result dim';
+      el.checkResult.textContent = result.report + '\n\n' + CHECK_CAVEAT;
+      el.problems.textContent = '';
       return;
     }
 
@@ -1294,7 +1293,7 @@ async function runCheck() {
     el.problems.textContent = notes.join('\n\n');
   } catch (error) {
     el.checkResult.className = 'result fail';
-    el.checkResult.textContent = '连不上本地服务：' + error.message;
+    el.checkResult.textContent = '自测失败：' + error.message;
   }
 }
 
@@ -1598,7 +1597,7 @@ function bindUi() {
   document.getElementById('btnRefresh').onclick = loadFiles;
 
   document.getElementById('btnOpenFolder').onclick = async () => {
-    const result = await apiPost('/api/open-folder', { where: state.where });
+    const result = await HOST.openFolder(state.where);
     setStatus(result.ok ? '已打开：' + result.directory : String(result.error || '打不开这个目录'), result.ok);
   };
 
@@ -1659,7 +1658,7 @@ async function saveLevel() {
 
   setStatus('保存中…');
   try {
-    const result = await apiPost('/api/save', { where: state.where, oldName: oldName, json: json });
+    const result = await HOST.save(state.where, oldName, json);
 
     if (!result.ok) {
       setStatus(String(result.error || '保存失败'), false);
@@ -1704,6 +1703,12 @@ async function saveLevel() {
 // ------------------------------------------------------------------ 启动
 
 async function boot() {
+  // 「往哪儿存」由宿主决定：桌面板是 incoming，纯静态版是本机（浏览器存储）。
+  if (typeof HOST.defaultWhere === 'function') {
+    state.where = HOST.defaultWhere();
+    if (el.where) el.where.value = state.where;
+  }
+
   await loadCatalog();
 
   // 先取一次文件列表：新文档的默认标题要看目录里已经有哪些名字，别再添一个 CUSTOM LEVEL。
@@ -1721,12 +1726,12 @@ async function boot() {
   resetHistory();
 
   try {
-    const info = await apiGet('/api/state');
-    el.pathInfo.textContent = '工程：' + info.projectRoot
+    const info = await HOST.state();
+    el.pathInfo.textContent = '工程：' + (info.projectRoot || '未知')
       + '\n玩家关卡目录：' + (info.playerDir || '未知')
       + (info.hasCatalog ? '' : '\n（还没导出类型目录：Unity 菜单 SHIFT GO/导出类型目录 之后，打开 Unity 导出的关才认得 type）');
   } catch (error) {
-    el.pathInfo.textContent = '连不上本地服务：' + error.message;
+    el.pathInfo.textContent = '宿主信息读取失败：' + error.message;
   }
 
   setStatus('左键放元件，右键擦。点格子后右边改参数。');

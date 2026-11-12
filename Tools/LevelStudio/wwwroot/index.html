@@ -97,6 +97,9 @@
 
 <div id="dropHint"><strong>松开就能读进编辑器</strong><span>只认 .json 文件</span></div>
 
+<!-- host.js 是「前端 ↔ 宿主」的接缝：桌面板连本地服务，纯静态版换成 host-static.js。
+     必须排在 app.js 前面。 -->
+<script src="host.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
