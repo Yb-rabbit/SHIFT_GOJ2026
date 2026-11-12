@@ -252,6 +252,7 @@ namespace ShiftGo.BitFlow.Core
                 count = defaults.Count,
                 acceptAnyFace = true,
                 pass = defaults.PassValue,
+                delay = defaults.DelayTicks,
             };
 
             LevelTypeSpec named = catalog != null ? catalog.FindByKind(kind) : null;
@@ -304,6 +305,10 @@ namespace ShiftGo.BitFlow.Core
                 case FilterDefinition filter:
                     if (kindMode && TryParseDir(cell.dir, out Dir filterOutput)) filter.OutputDir = filterOutput;
                     if (kindMode && cell.pass >= 0) filter.PassValue = (byte)(cell.pass == 0 ? 0 : 1);
+                    break;
+
+                case DelayGateDefinition delayGate:
+                    if (kindMode && cell.delay >= 0) delayGate.DelayTicks = cell.delay < 1 ? 1 : (cell.delay > 4 ? 4 : cell.delay);
                     break;
             }
         }

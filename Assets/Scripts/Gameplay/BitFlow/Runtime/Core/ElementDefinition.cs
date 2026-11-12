@@ -11,6 +11,12 @@ namespace ShiftGo.BitFlow.Core
         Splitter = 3,
         NotGate = 4,
         Filter = 5,
+
+        /// <summary>
+        /// 延迟器（D）：位从任意面进入后先进本格的 FIFO 队列，比直通元件多停 N 个 tick，
+        /// 再从进入方向的对面原样穿出（不改值、不改向）。追加在枚举末尾，老存档的数值不变。
+        /// </summary>
+        DelayGate = 6,
     }
 
     /// <summary>
@@ -196,5 +202,42 @@ namespace ShiftGo.BitFlow.Core
         public override CellKind Kind => CellKind.Filter;
 
         public override IReadOnlyList<Dir> ExitDirs => new[] { OutputDir };
+    }
+
+    /// <summary>
+    /// 延迟器（D）：位进入后不占格、不打转，直接进本格的 FIFO 队列；
+    /// 比直通元件多等 N 个 tick 之后，才从"进入方向的对面"原样穿出（值、朝向都不变），
+    /// 所以它只改<b>时间</b>，不改路由。
+    ///
+    /// 时间线（以 delay=1 为例，T = 位撞进延迟器的那个 tick）：
+    ///   T     进队；T+1 它在队列里（场上没有这个位）；T+2 放行出口、当 tick 迈一步；T+3 抵达下游。
+    /// 也就是说 delay=N 恰好比"直通元件"晚 N 个 tick —— 填 1 就一定看得出慢了。
+    ///
+    /// 为什么是 FIFO 且容量有限：它要能当"蓄水池"用（前面堵住时先按住若干个位），
+    /// 但无限蓄水会让关卡失去时间压力，所以队列上限是 <see cref="Capacity"/>。
+    /// 无方向、不可旋转：四个面等价，旋转它不会有任何可见变化。
+    /// </summary>
+    public sealed class DelayGateDefinition : ElementDefinition
+    {
+        /// <summary>队列容量。5 个位连续涌入是关卡里的常见峰值，留到 8 才不容易"莫名丢位"。</summary>
+        public const int Capacity = 8;
+
+        /// <summary>延迟 tick 数：N = 比直通元件多停 N 拍（1 就是最轻的延迟，仍然比直通晚 1 tick）。</summary>
+        public int DelayTicks = 1;
+
+        public override CellKind Kind => CellKind.DelayGate;
+
+        /// <summary>延迟器四面都能进，没有"出口面逆行"的概念。</summary>
+        public override IReadOnlyList<Dir> ExitDirs => System.Array.Empty<Dir>();
+
+        /// <summary>把配置夹到合法区间，模拟器与 UI 共用这一份判定。</summary>
+        public int SafeDelayTicks
+        {
+            get
+            {
+                if (DelayTicks < 1) return 1;
+                return DelayTicks > 4 ? 4 : DelayTicks;
+            }
+        }
     }
 }

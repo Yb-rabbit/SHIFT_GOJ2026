@@ -142,6 +142,72 @@ namespace ShiftGo.BitFlow.View
                     AddRails(filter.OutputDir);
                     AddGateBarrier(filter.OutputDir, filter.PassValue);
                     break;
+
+                case DelayGateDefinition delayGate:
+                    // 延迟器 = 方底座 + 钢蓝齿轮柱：方形底盘说明"这一格是机器"，
+                    // 齿轮柱说明"位在这里被卷进去等一会儿"。齿数和顶部刻度点都跟着 delay 数走，
+                    // 所以不悬停也能一眼看出它是 1 拍还是 4 拍的延迟器。
+                    AddBlock(new Vector3(0.94f, 0.09f, 0.94f), 0.045f);
+                    AddDelayGear(delayGate.SafeDelayTicks);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// 延迟器本体：一根钢蓝圆柱 + 一圈齿轮齿 + 顶面刻度点。
+        ///
+        /// 用圆柱而不是方块，是为了和"实心矮块 = 发射器 / 分流器"分开：
+        /// 旋转体天生读作"机构里的一个滚轮"，没有任何正面，也就不会让玩家去找方向。
+        /// </summary>
+        void AddDelayGear(int ticks)
+        {
+            Color steel = new Color(0.52f, 0.68f, 0.82f);
+
+            GameObject drum = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            drum.name = "gear_drum";
+            DestroyImmediateSafe(drum.GetComponent<Collider>());
+            drum.transform.SetParent(transform, false);
+            drum.transform.localPosition = new Vector3(0f, 0.20f, 0f);
+            // Unity 的圆柱原始高度是 2，所以 y 缩放取"目标高度的一半"
+            drum.transform.localScale = new Vector3(0.58f, 0.16f, 0.58f);
+            ApplyRenderer(drum, bodyMaterial);
+
+            // 齿：比柱子更亮一点，斜视角下轮廓才不会被柱面吃掉
+            Material toothMaterial = MaterialFactory.Emissive(steel, 1.6f);
+
+            const int teeth = 8;
+            const float radius = 0.34f;
+            for (int i = 0; i < teeth; i++)
+            {
+                float angle = i * Mathf.PI * 2f / teeth;
+                GameObject tooth = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                tooth.name = "gear_tooth_" + i;
+                DestroyImmediateSafe(tooth.GetComponent<Collider>());
+                tooth.transform.SetParent(transform, false);
+                tooth.transform.localPosition = new Vector3(
+                    Mathf.Cos(angle) * radius,
+                    0.20f,
+                    Mathf.Sin(angle) * radius);
+                tooth.transform.localRotation = Quaternion.Euler(0f, -angle * Mathf.Rad2Deg, 0f);
+                tooth.transform.localScale = new Vector3(0.13f, 0.10f, 0.16f);
+                ApplyRenderer(tooth, toothMaterial);
+            }
+
+            // 顶面刻度：几拍就几颗点，排成一排压在齿轮上方
+            const float step = 0.10f;
+            const float size = 0.07f;
+            float startX = -(ticks - 1) * step * 0.5f;
+            Material pipMaterial = MaterialFactory.Emissive(new Color(0.78f, 0.90f, 1f), 2.2f);
+
+            for (int i = 0; i < ticks; i++)
+            {
+                GameObject pip = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                pip.name = "delay_pip_" + i;
+                DestroyImmediateSafe(pip.GetComponent<Collider>());
+                pip.transform.SetParent(transform, false);
+                pip.transform.localPosition = new Vector3(startX + i * step, 0.40f, 0f);
+                pip.transform.localScale = Vector3.one * size;
+                ApplyRenderer(pip, pipMaterial);
             }
         }
 

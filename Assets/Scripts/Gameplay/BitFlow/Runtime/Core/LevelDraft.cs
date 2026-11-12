@@ -35,6 +35,15 @@ namespace ShiftGo.BitFlow.Core
         /// <summary>过滤器放行的取值（0 或 1）。</summary>
         public byte PassValue = 1;
 
+        /// <summary>延迟器的延迟 tick 数（1~4）。比直通元件多停 N 拍，其它元件忽略这个字段。</summary>
+        public int DelayTicks = 1;
+
+        /// <summary>
+        /// 这种元件旋转有没有意义：延迟器四面等价，转它既看不出变化、也不改行为，
+        /// 所以手牌 / 游戏内编辑器的 R 键要跳过它（避免玩家以为"转了就会换向"）。
+        /// </summary>
+        public bool SupportsRotation => Kind != CellKind.DelayGate;
+
         /// <summary>
         /// 来源类型资产的标识（与 ElementTypeSO.Key 同源）。空字符串表示手工摆的、没有归属的元件。
         /// 玩家拾回元件时靠它把牌还回正确地那摞，不靠类型猜。
@@ -73,6 +82,10 @@ namespace ShiftGo.BitFlow.Core
                 case CellKind.NotGate:
                 case CellKind.Filter:
                     element.PrimaryDir = Dir.Right;
+                    break;
+
+                case CellKind.DelayGate:
+                    element.DelayTicks = 1;
                     break;
             }
 
@@ -115,6 +128,10 @@ namespace ShiftGo.BitFlow.Core
                     element.PrimaryDir = filter.OutputDir;
                     element.PassValue = filter.PassValue;
                     break;
+
+                case DelayGateDefinition delayGate:
+                    element.DelayTicks = delayGate.SafeDelayTicks;
+                    break;
             }
 
             return element;
@@ -132,6 +149,7 @@ namespace ShiftGo.BitFlow.Core
                 Count = Count,
                 AcceptAnyFace = AcceptAnyFace,
                 PassValue = PassValue,
+                DelayTicks = DelayTicks,
                 TypeKey = TypeKey,
             };
         }
@@ -195,6 +213,14 @@ namespace ShiftGo.BitFlow.Core
                         PassValue = PassValue == 0 ? (byte)0 : (byte)1,
                     };
 
+                case CellKind.DelayGate:
+                    return new DelayGateDefinition
+                    {
+                        Id = id,
+                        Coord = Coord,
+                        DelayTicks = Math.Max(1, Math.Min(4, DelayTicks)),
+                    };
+
                 default:
                     return new WallDefinition { Id = id, Coord = Coord };
             }
@@ -216,6 +242,8 @@ namespace ShiftGo.BitFlow.Core
                     return "非门  取反后向" + PrimaryDir.ToChineseName() + "输出";
                 case CellKind.Filter:
                     return "过滤器  只放行 " + PassValue;
+                case CellKind.DelayGate:
+                    return "延迟器  延迟 " + Math.Max(1, Math.Min(4, DelayTicks)) + " tick  直行穿出";
                 default:
                     return "墙";
             }
@@ -342,6 +370,8 @@ namespace ShiftGo.BitFlow.Core
         {
             if (Blocked(coord)) return false;
             if (!cells.TryGetValue(coord, out EditableElement element)) return false;
+            // 延迟器四面等价：转了既不改行为也没有视觉变化，直接当作"无需旋转"
+            if (!element.SupportsRotation) return false;
 
             PushHistory();
             element.Rotate();

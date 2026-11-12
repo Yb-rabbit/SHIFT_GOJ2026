@@ -68,14 +68,18 @@ LevelJson/
 |---|---|
 | `x` `y` | 坐标，x 向右、y 向上 |
 | `type` | 类型资产名（如 `Type_Emitter_E2`）。导出总会带，**写它就不用管朝向**（靠 `rot`） |
-| `kind` | `Wall` `Emitter` `Receiver` `Splitter` `NotGate` `Filter`，手写用这个 |
+| `kind` | `Wall` `Emitter` `Receiver` `Splitter` `NotGate` `Filter` `DelayGate`，手写用这个 |
 | `rot` | `0`~`3` 顺时针 90°/档（只在 `type` 模式下生效） |
 | `dir` `dir2` | 绝对朝向 `Up/Right/Down/Left`（也认 `↑→↓←`、`上右下左`）；`dir2` = 分流器的 0 臂 |
 | `sequence` | 发射序列 / 接收期望序列。**写了就覆盖类型资产** |
 | `count` | 发射总位数 / 接收总个数。写了就覆盖；`0` 是合法值 |
 | `face` | 接收器专用：`any` 四面可收 / `in` 只认进料面 |
 | `pass` | 过滤器放行值 `0`/`1`（只有 `kind=Filter` 能改） |
+| `delay` | 延迟器延迟 tick 数 `1`~`4`（只有 `kind=DelayGate` 能改）：比直通元件多停 N 个 tick，再从对面直行穿出（`1` = 晚 1 tick，`4` = 晚 4 tick） |
 | `playerEditable` | `true` = 玩家能搬动/拾回；缺省 `false` = 关卡预设件 |
+
+> 延迟器没有方向、也不能旋转：`dir` / `rot` 对它没有意义（四面等价）。它只改**时间**，
+> 不改值也不改朝向；队列 FIFO、容量 8 个位，出口被占时队首原地等。
 
 `type` 和 `kind` 都写时以 `type` 为准（`kind`/`dir` 只是给人看的、以及资产改名后的回退线索）。
 

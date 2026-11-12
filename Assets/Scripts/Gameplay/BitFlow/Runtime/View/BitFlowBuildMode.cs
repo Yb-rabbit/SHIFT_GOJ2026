@@ -36,9 +36,10 @@ namespace ShiftGo.BitFlow.View
             CellKind.Splitter,
             CellKind.NotGate,
             CellKind.Filter,
+            CellKind.DelayGate,
         };
 
-        static readonly string[] PaletteNames = { "墙", "发射器", "接收器", "分流器", "非门", "过滤器" };
+        static readonly string[] PaletteNames = { "墙", "发射器", "接收器", "分流器", "非门", "过滤器", "延迟器" };
 
         const int EraseIndex = 6; // 第 7 个按钮＝擦除
         const float CursorHeight = 0.02f;
@@ -136,7 +137,7 @@ namespace ShiftGo.BitFlow.View
             {
                 if (Input.GetKeyDown(KeyCode.Alpha1 + i)) Select(i);
             }
-            if (Input.GetKeyDown(KeyCode.Alpha7)) Select(EraseIndex);
+            if (Input.GetKeyDown(KeyCode.Alpha8)) Select(EraseIndex);
 
             if (Input.GetKeyDown(KeyCode.R) && TryPickCell(out GridPoint cell) && draft.Rotate(cell))
             {
@@ -502,6 +503,7 @@ namespace ShiftGo.BitFlow.View
                 + " ｜分 " + draft.CountOf(CellKind.Splitter)
                 + " ｜非 " + draft.CountOf(CellKind.NotGate)
                 + " ｜滤 " + draft.CountOf(CellKind.Filter)
+                + " ｜延 " + draft.CountOf(CellKind.DelayGate)
                 + " ｜墙 " + draft.CountOf(CellKind.Wall)
                 + (string.IsNullOrEmpty(statusMessage) ? string.Empty : "\n" + statusMessage);
         }

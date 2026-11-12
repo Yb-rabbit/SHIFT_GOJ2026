@@ -42,6 +42,9 @@ namespace ShiftGo.BitFlow.Core
 
         public int pass = 1;
 
+        /// <summary>延迟器的延迟 tick 数（1~4）。</summary>
+        public int delay = 1;
+
         public CellKind KindOrDefault()
         {
             return LevelDocumentBuilder.TryParseKind(kind, out CellKind parsed) ? parsed : CellKind.Wall;
@@ -100,6 +103,14 @@ namespace ShiftGo.BitFlow.Core
                         Coord = coord,
                         OutputDir = LevelDocumentBuilder.Rotate(primary, rotationSteps),
                         PassValue = (byte)(pass == 0 ? 0 : 1),
+                    };
+
+                case CellKind.DelayGate:
+                    return new DelayGateDefinition
+                    {
+                        Id = id,
+                        Coord = coord,
+                        DelayTicks = delay < 1 ? 1 : (delay > 4 ? 4 : delay),
                     };
 
                 default:

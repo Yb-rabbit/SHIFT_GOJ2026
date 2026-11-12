@@ -406,10 +406,13 @@ namespace ShiftGo.BitFlow.View
             // 玩家能不能搬这一件：工坊里唯一决定"存档里 playerEditable 是 true 还是 false"的开关
             BuildLockRow();
 
-            BuildDirRow(selected.Kind == CellKind.Splitter ? "ONE" : "DIR", false);
+            // 延迟器四面等价，DIR 行对它没有意义（转了也不会换向），
+            // 只留 DELAY 行，玩家不会以为自己没转对。
+            if (selected.SupportsRotation) BuildDirRow(selected.Kind == CellKind.Splitter ? "ONE" : "DIR", false);
 
             if (selected.Kind == CellKind.Splitter) BuildDirRow("ZERO", true);
             if (selected.Kind == CellKind.Filter) BuildPassRow();
+            if (selected.Kind == CellKind.DelayGate) BuildDelayRow();
 
             if (selected.Kind == CellKind.Emitter || selected.Kind == CellKind.Receiver)
             {
@@ -481,6 +484,21 @@ namespace ShiftGo.BitFlow.View
 
             AddButton(row, "0", 54f, 72f, () => SetPass(0), selected.PassValue == 0 ? ActiveColor : IdleColor, PixelFont.Body);
             AddButton(row, "1", 132f, 72f, () => SetPass(1), selected.PassValue != 0 ? ActiveColor : IdleColor, PixelFont.Body);
+        }
+
+        /// <summary>延迟器：延迟 1~4 个 tick，四个按钮直接选。</summary>
+        void BuildDelayRow()
+        {
+            RectTransform row = BeginRow(38f, 8f);
+            AddLabel(row, "DELAY", 0f, 60f, TextAnchor.MiddleLeft, MutedColor, PixelFont.Small);
+
+            int current = Mathf.Clamp(selected.DelayTicks, 1, 4);
+            for (int i = 0; i < 4; i++)
+            {
+                int ticks = i + 1;
+                AddButton(row, ticks.ToString(), 64f + i * 58f, 52f,
+                    () => SetDelay(ticks), current == ticks ? ActiveColor : IdleColor, PixelFont.Body);
+            }
         }
 
         /// <summary>序列行：每一位都是一个按钮，点一下 0 ↔ 1。</summary>
@@ -718,6 +736,11 @@ namespace ShiftGo.BitFlow.View
             Edit(e => e.PassValue = value, "PASS " + value);
         }
 
+        void SetDelay(int ticks)
+        {
+            Edit(e => e.DelayTicks = Mathf.Clamp(ticks, 1, 4), "DELAY " + Mathf.Clamp(ticks, 1, 4) + " TICK");
+        }
+
         void ToggleBit(int index)
         {
             Edit(e => e.Sequence = ToggleBitAt(e.Sequence, index), "BIT " + index);
@@ -806,6 +829,8 @@ namespace ShiftGo.BitFlow.View
                     return "NOT GATE " + where + "   OUT " + DirName(element.PrimaryDir);
                 case CellKind.Filter:
                     return "FILTER " + where + "   PASS " + element.PassValue;
+                case CellKind.DelayGate:
+                    return "DELAY " + where + "   " + Mathf.Clamp(element.DelayTicks, 1, 4) + " TICK";
                 default:
                     return "WALL " + where;
             }

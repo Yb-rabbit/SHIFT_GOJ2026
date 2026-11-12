@@ -665,6 +665,14 @@ namespace ShiftGo.BitFlow.View
             // 手里有牌时 R 转「待放朝向」，否则转鼠标下的元件
             if (armedType != null)
             {
+                // 延迟器四面等价：转它不改行为，也不该让玩家以为「转一下就能换出口」
+                if (KindOf(armedType) == CellKind.DelayGate)
+                {
+                    statusMessage = "FIXED - NO ROTATE";
+                    RefreshAll();
+                    return;
+                }
+
                 armedRotation = (armedRotation + 1) % 4;
                 statusMessage = "AIM " + RotationName(armedRotation);
                 RefreshAll();
@@ -674,6 +682,11 @@ namespace ShiftGo.BitFlow.View
             if (TryPickCell(out GridPoint cell))
             {
                 if (LockedForMe(cell))
+                {
+                    statusMessage = "FIXED - NO ROTATE";
+                    RefreshAll();
+                }
+                else if (draft.GetAt(cell) is EditableElement pickedRotation && !pickedRotation.SupportsRotation)
                 {
                     statusMessage = "FIXED - NO ROTATE";
                     RefreshAll();

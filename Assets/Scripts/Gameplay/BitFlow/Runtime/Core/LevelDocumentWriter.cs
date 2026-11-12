@@ -166,6 +166,10 @@ namespace ShiftGo.BitFlow.Core
                     cell.pass = filter.PassValue == 0 ? 0 : 1;
                     break;
 
+                case DelayGateDefinition delayGate:
+                    cell.delay = delayGate.SafeDelayTicks;
+                    break;
+
                 default:
                     return null;
             }

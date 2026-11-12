@@ -88,6 +88,9 @@ namespace ShiftGo.BitFlow.Core
         /// <summary>过滤器放行值（0/1）。-1 = 没写。</summary>
         public int pass = -1;
 
+        /// <summary>延迟器的延迟 tick 数（1~4）。-1 = 没写。</summary>
+        public int delay = -1;
+
         /// <summary>允许玩家搬动 / 拾回这一格。</summary>
         public bool playerEditable;
     }

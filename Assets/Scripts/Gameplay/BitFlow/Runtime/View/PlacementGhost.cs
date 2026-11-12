@@ -162,7 +162,7 @@ namespace ShiftGo.BitFlow.View
         {
             // 形状由"是什么元件 + 主副朝向 + 放行值"唯一决定，所以缓存键就用这几项
             string key = element.TypeKey + "|" + element.Kind + "|" + element.PrimaryDir + "|" +
-                         element.SecondaryDir + "|" + element.PassValue;
+                         element.SecondaryDir + "|" + element.PassValue + "|" + element.DelayTicks;
 
             if (variants.TryGetValue(key, out Variant cached) && cached.Root != null) return cached;
 

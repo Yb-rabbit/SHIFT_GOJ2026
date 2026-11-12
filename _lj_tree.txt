@@ -1,5 +1,0 @@
-﻿D:\UnityHubLab\SHIFT_GO2026\LevelJson\exported
-D:\UnityHubLab\SHIFT_GO2026\LevelJson\incoming
-D:\UnityHubLab\SHIFT_GO2026\LevelJson\exported\Level_01.json
-BUILD_MODE.md
-LEVEL_JSON.md

@@ -351,6 +351,18 @@ namespace ShiftGo.BitFlow.View
                 bitViews.Remove(destroyed.BitId);
             }
 
+            // 1.5) 延迟器收位：小方块被"卷进"齿轮，安静地撤掉（不是销毁，不爆红闪）
+            foreach (DelayAbsorbed absorbed in report.DelayAbsorbed)
+            {
+                SpawnFlash(GridMetrics.CellToWorld(absorbed.Coord), new Color(0.55f, 0.75f, 0.95f));
+
+                if (bitViews.TryGetValue(absorbed.BitId, out BitActorView absorbedView) && absorbedView != null)
+                {
+                    Destroy(absorbedView.gameObject);
+                }
+                bitViews.Remove(absorbed.BitId);
+            }
+
             // 2) 新位出现
             foreach (BitSpawned spawned in report.Spawns)
             {

@@ -60,6 +60,16 @@ namespace ShiftGo.EditorTools
         GUIStyle cellStyle;
         GUIStyle tinyStyle;
 
+        /// <summary>
+        /// 网格绘制用的查表（每次 OnGUI 重建一次）。原来每格都要线性扫一遍 placements + 每格拆一次
+        /// wallMap，格子数 × 摆放数 × 每个 GUI 事件，拖一下就掉帧；改成先建索引再逐格查，
+        /// 单帧开销从 O(格数 × 摆放数) 降到 O(摆放数 + 格数)。
+        /// </summary>
+        readonly Dictionary<Vector2Int, ElementPlacement> placementLookup =
+            new Dictionary<Vector2Int, ElementPlacement>();
+        readonly Dictionary<Vector2Int, int> stackLookup = new Dictionary<Vector2Int, int>();
+        readonly HashSet<Vector2Int> wallLookup = new HashSet<Vector2Int>();
+
         [MenuItem("SHIFT GO/BitFlow/关卡编辑器", false, 21)]
         static void Open()
         {
@@ -345,6 +355,8 @@ namespace ShiftGo.EditorTools
             int width = Mathf.Max(1, level.width);
             int height = Mathf.Max(1, level.height);
 
+            RebuildLookup();
+
             float step = cellSize + CellGap;
             float gridWidth = RowLabelWidth + width * step;
             float gridHeight = height * step;
@@ -387,13 +399,78 @@ namespace ShiftGo.EditorTools
             return new Rect(x, y, cellSize, cellSize);
         }
 
+        /// <summary>
+        /// 重建三张表：格 → 第一个摆放（<see cref="FindPlacement"/> 的语义）、格 → 叠放数量、
+        /// 墙层坐标集合。每个 GUI 事件重建一次就够（拖动/撤销/改参数都会走到这里），
+        /// 但比"每格扫一遍 placements + 每格 Split 一次 wallMap"便宜一个数量级。
+        /// </summary>
+        void RebuildLookup()
+        {
+            placementLookup.Clear();
+            stackLookup.Clear();
+            wallLookup.Clear();
+
+            if (level == null) return;
+
+            for (int i = 0; i < level.placements.Count; i++)
+            {
+                ElementPlacement placement = level.placements[i];
+                if (placement == null) continue;
+
+                Vector2Int coord = placement.coord;
+                // 同一格叠了多个时，FindPlacement 取列表里第一个，这里保持同一取舍
+                if (!placementLookup.ContainsKey(coord)) placementLookup[coord] = placement;
+
+                stackLookup.TryGetValue(coord, out int count);
+                stackLookup[coord] = count + 1;
+            }
+
+            // wallMap 是"每行一串字符"的文本：按行扫一遍，避免每格都 Split 出一堆字符串
+            string map = level.wallMap;
+            if (string.IsNullOrEmpty(map)) return;
+
+            int x = 0;
+            int y = 0;
+            for (int i = 0; i < map.Length; i++)
+            {
+                char c = map[i];
+                if (c == '\r')
+                {
+                    y++;
+                    x = 0;
+                    // \r\n 只当一次换行，和 LevelSO.SplitWallLines 的行为对齐
+                    if (i + 1 < map.Length && map[i + 1] == '\n') i++;
+                    continue;
+                }
+                if (c == '\n')
+                {
+                    y++;
+                    x = 0;
+                    continue;
+                }
+
+                if (c == '#') wallLookup.Add(new Vector2Int(x, y));
+                x++;
+            }
+        }
+
+        ElementPlacement LookupPlacement(Vector2Int coord)
+        {
+            return placementLookup.TryGetValue(coord, out ElementPlacement placement) ? placement : null;
+        }
+
+        int LookupStack(Vector2Int coord)
+        {
+            return stackLookup.TryGetValue(coord, out int count) ? count : 0;
+        }
+
         void DrawCell(Rect area, Vector2Int coord, int height)
         {
             Rect cell = CellRect(area, coord, height);
 
-            ElementPlacement placement = FindPlacement(coord);
-            int stacked = CountAt(coord);
-            bool wallInMap = level.IsWallInMap(coord);
+            ElementPlacement placement = LookupPlacement(coord);
+            int stacked = LookupStack(coord);
+            bool wallInMap = wallLookup.Contains(coord);
 
             if (Event.current.type == EventType.Repaint)
             {
@@ -928,6 +1005,11 @@ namespace ShiftGo.EditorTools
                     DrawReceiverParams(placement, receiver);
                     break;
 
+                case DelayGateDefinition delayGate:
+                    EditorGUILayout.LabelField(header + "    延迟器", EditorStyles.boldLabel);
+                    DrawDelayParams(placement, delayGate);
+                    break;
+
                 default:
                     EditorGUILayout.LabelField(header + " —— 这种元件没有可调参数", EditorStyles.miniLabel);
                     break;
@@ -999,6 +1081,36 @@ namespace ShiftGo.EditorTools
                 "循环单元 " + BitsText(cycle) + "（" + cycle.Count + " 位，含 1 共 " + CountOnes(cycle)
                 + " 个）→ 循环填充到 " + Mathf.Max(0, count) + " 位",
                 EditorStyles.miniLabel);
+        }
+
+        /// <summary>延迟器：只调延迟 tick 数（1~4）。它没有朝向，旋转对它没有意义。</summary>
+        void DrawDelayParams(ElementPlacement placement, DelayGateDefinition effective)
+        {
+            EditorGUI.BeginChangeCheck();
+
+            int current = placement.overrideDelayTicks
+                ? Mathf.Clamp(placement.delayTicks, 1, 4)
+                : effective.SafeDelayTicks;
+
+            int delayTicks = EditorGUILayout.IntSlider(
+                new GUIContent("延迟 tick", "N = 比直通元件多停 N 拍（1 就比直通晚 1 tick，4 晚 4 tick）；位从对面直行穿出"),
+                current, 1, 4);
+
+            if (EditorGUI.EndChangeCheck() && delayTicks != current)
+            {
+                Undo.RecordObject(level, "Edit Delay Gate");
+
+                placement.overrideDelayTicks = true;
+                placement.delayTicks = Mathf.Clamp(delayTicks, 1, 4);
+
+                EditorUtility.SetDirty(level);
+                status = "已改 " + LabelFor(placement.type) + " @ (" + placement.coord.x + ", "
+                    + placement.coord.y + ")：" + placement.ParamsSummary();
+            }
+
+            EditorGUILayout.LabelField("延迟器四面等价，没有可转的朝向；队列 FIFO、容量 "
+                + DelayGateDefinition.Capacity + " 个位。", EditorStyles.miniLabel);
+            DrawParamActions(placement);
         }
 
         void DrawReceiverParams(ElementPlacement placement, ReceiverDefinition effective)
@@ -1223,6 +1335,7 @@ namespace ShiftGo.EditorTools
                 case CellKind.Splitter: return "分流器";
                 case CellKind.NotGate: return "非门";
                 case CellKind.Filter: return "过滤器";
+                case CellKind.DelayGate: return "延迟器";
                 default: return "墙";
             }
         }

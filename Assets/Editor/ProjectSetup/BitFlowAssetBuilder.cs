@@ -36,6 +36,7 @@ namespace ShiftGo.EditorTools
         const string NotGateFolder = ElementFolder + "/NotGate";
         const string FilterFolder = ElementFolder + "/Filter";
         const string WallFolder = ElementFolder + "/Wall";
+        const string DelayGateFolder = ElementFolder + "/DelayGate";
 
         const string LevelFolder = "Assets/Data/Levels";
         const string LevelAssetPath = LevelFolder + "/Level_01.asset";
@@ -53,6 +54,7 @@ namespace ShiftGo.EditorTools
             EnsureFolder(NotGateFolder);
             EnsureFolder(FilterFolder);
             EnsureFolder(WallFolder);
+            EnsureFolder(DelayGateFolder);
             EnsureFolder(LevelFolder);
             EnsureFolder("Assets/Scenes");
 
@@ -72,6 +74,33 @@ namespace ShiftGo.EditorTools
         /// 逃生门：清掉 Level_01 的摆放再重新种一遍。会丢掉所有手改，只在
         /// 「想把关卡恢复成设计文档原样」或「新克隆项目种子里数据坏了」时用。
         /// </summary>
+        /// <summary>
+        /// 只补延迟器类型资产（Type_DelayGate_D1），并刷新运行时类型注册表。
+        /// 单独一条菜单是因为 BuildAll 会顺带重建场景 / 演示关，改一个元件不该动那些。
+        /// </summary>
+        [MenuItem("SHIFT GO/Setup/3. 生成延迟器类型资产 + 刷新注册表", priority = 2)]
+        public static void EnsureDelayGateAssets()
+        {
+            EnsureFolder("Assets/Data");
+            EnsureFolder(ElementFolder);
+            EnsureFolder(DelayGateFolder);
+
+            DelayGateTypeSO delayGate = EnsureAsset<DelayGateTypeSO>(DelayGateFolder + "/Type_DelayGate_D1.asset");
+            if (string.IsNullOrEmpty(delayGate.label))
+            {
+                delayGate.label = "D1";
+                delayGate.delayTicks = 1;
+            }
+            EditorUtility.SetDirty(delayGate);
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            int count = LevelJsonRuntimeSetup.RefreshRegistry();
+            Debug.Log("[BitFlowAssetBuilder] 延迟器类型资产就绪：" + DelayGateFolder
+                + "/Type_DelayGate_D1.asset，注册表共 " + count + " 个类型");
+        }
+
         [MenuItem("SHIFT GO/Setup/⚠ 强制重建 Level_01（覆盖手改）", priority = 90)]
         public static void ForceRebuildLevel01()
         {
@@ -181,6 +210,15 @@ namespace ShiftGo.EditorTools
                 EditorUtility.SetDirty(filter);
             }
             types["F1"] = filter;
+
+            DelayGateTypeSO delayGate = EnsureAsset<DelayGateTypeSO>(DelayGateFolder + "/Type_DelayGate_D1.asset");
+            if (string.IsNullOrEmpty(delayGate.label))
+            {
+                delayGate.label = "D1";
+                delayGate.delayTicks = 1;
+                EditorUtility.SetDirty(delayGate);
+            }
+            types["D1"] = delayGate;
 
             ReceiverTypeSO receiver1 = EnsureAsset<ReceiverTypeSO>(ReceiverFolder + "/Type_Receiver_R1.asset");
             if (string.IsNullOrEmpty(receiver1.label))

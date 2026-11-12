@@ -224,6 +224,10 @@ namespace ShiftGo.EditorTools
                 case CellKind.Filter:
                     return (expected.PassValue == 0 ? 0 : 1) == (actual.PassValue == 0 ? 0 : 1);
 
+                case CellKind.DelayGate:
+                    // 延迟器没有方向（PrimaryDir 对它是无意义的显示值），只比延迟数
+                    return Mathf.Clamp(expected.DelayTicks, 1, 4) == Mathf.Clamp(actual.DelayTicks, 1, 4);
+
                 default:
                     return true;
             }
@@ -299,6 +303,12 @@ namespace ShiftGo.EditorTools
                     variant = filter;
                     break;
 
+                case CellKind.DelayGate:
+                    DelayGateTypeSO delayGate = ScriptableObject.CreateInstance<DelayGateTypeSO>();
+                    delayGate.delayTicks = Mathf.Clamp(cell.DelayTicks, 1, 4);
+                    variant = delayGate;
+                    break;
+
                 default:
                     variant = ScriptableObject.CreateInstance<WallTypeSO>();
                     break;
@@ -324,6 +334,7 @@ namespace ShiftGo.EditorTools
                 case CellKind.Splitter: return "L";
                 case CellKind.NotGate: return "N";
                 case CellKind.Filter: return "F";
+                case CellKind.DelayGate: return "D";
                 default: return "W";
             }
         }
@@ -332,7 +343,8 @@ namespace ShiftGo.EditorTools
         static string Signature(EditableElement cell)
         {
             return cell.Kind + "|" + (int)cell.PrimaryDir + "|" + (int)cell.SecondaryDir + "|"
-                + NormalizeSequence(cell.Sequence) + "|" + cell.Count + "|" + (cell.PassValue == 0 ? 0 : 1);
+                + NormalizeSequence(cell.Sequence) + "|" + cell.Count + "|" + (cell.PassValue == 0 ? 0 : 1)
+                + "|" + Mathf.Clamp(cell.DelayTicks, 1, 4);
         }
 
         static string NormalizeSequence(string sequence)

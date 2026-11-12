@@ -114,7 +114,7 @@ namespace ShiftGo.BitFlow.View
 
             yield return BuildGroup(Collect(definition, CellKind.Wall), wallStage, speed);
             yield return BuildGroup(Collect(definition, CellKind.Receiver, CellKind.Emitter), ioStage, speed);
-            yield return BuildGroup(Collect(definition, CellKind.Splitter, CellKind.NotGate, CellKind.Filter),
+            yield return BuildGroup(Collect(definition, CellKind.Splitter, CellKind.NotGate, CellKind.Filter, CellKind.DelayGate),
                 logicStage, speed);
 
             routine = null;

@@ -52,8 +52,14 @@ namespace ShiftGo.BitFlow.Data
         [Tooltip("过滤器专用：放行的值（0 或 1）")]
         public byte passValue = 1;
 
+        [Tooltip("延迟器专用：勾上 = 这一格自己决定延迟几个 tick")]
+        public bool overrideDelayTicks;
+
+        [Tooltip("延迟器专用：延迟 tick 数（1~4）")]
+        [Range(1, 4)] public int delayTicks = 1;
+
         /// <summary>这一格有没有改过参数（= 和类型资产的默认值不一样）。</summary>
-        public bool HasParamOverride => overrideSequence || overrideCount || overrideFace || overridePassValue;
+        public bool HasParamOverride => overrideSequence || overrideCount || overrideFace || overridePassValue || overrideDelayTicks;
 
         /// <summary>
         /// 把本格参数套到生成好的逻辑定义上。只在勾了 override 的字段上动手，
@@ -79,6 +85,10 @@ namespace ShiftGo.BitFlow.Data
                 case FilterDefinition filter:
                     if (overridePassValue) filter.PassValue = (byte)(passValue == 0 ? 0 : 1);
                     break;
+
+                case DelayGateDefinition delayGate:
+                    if (overrideDelayTicks) delayGate.DelayTicks = delayTicks < 1 ? 1 : (delayTicks > 4 ? 4 : delayTicks);
+                    break;
             }
         }
 
@@ -101,6 +111,10 @@ namespace ShiftGo.BitFlow.Data
                 case CellKind.Filter:
                     if (overridePassValue) element.PassValue = passValue == 0 ? (byte)0 : (byte)1;
                     break;
+
+                case CellKind.DelayGate:
+                    if (overrideDelayTicks) element.DelayTicks = delayTicks < 1 ? 1 : (delayTicks > 4 ? 4 : delayTicks);
+                    break;
             }
         }
 
@@ -114,14 +128,21 @@ namespace ShiftGo.BitFlow.Data
             string cnt = overrideCount ? count.ToString() : "(资产次数)";
             string face = overrideFace ? (acceptAnyFace ? " · 四面可收" : " · 只认进料面") : string.Empty;
             string pass = overridePassValue ? " · 放行 " + (passValue == 0 ? 0 : 1) : string.Empty;
+            string delay = overrideDelayTicks ? " · 延迟 " + delayTicks + " tick" : string.Empty;
 
             // 只改了过滤器放行值时，别把「序列 / 次数」那堆无关字段也糊上来
-            if (overridePassValue && !overrideSequence && !overrideCount && !overrideFace)
+            if (overridePassValue && !overrideSequence && !overrideCount && !overrideFace && !overrideDelayTicks)
             {
                 return "放行 " + (passValue == 0 ? 0 : 1);
             }
 
-            return seq + " · " + cnt + face + pass;
+            // 延迟器同理：它的参数只有 delay，别显示成「序列 · 次数」
+            if (overrideDelayTicks && !overrideSequence && !overrideCount && !overrideFace && !overridePassValue)
+            {
+                return "延迟 " + delayTicks + " tick";
+            }
+
+            return seq + " · " + cnt + face + pass + delay;
         }
     }
 }

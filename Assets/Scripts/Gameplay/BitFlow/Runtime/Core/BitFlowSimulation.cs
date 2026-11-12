@@ -20,15 +20,34 @@ namespace ShiftGo.BitFlow.Core
         }
     }
 
+    /// <summary>某个延迟器的蓄水进度（View 用来在元件上方显示队列点阵）。</summary>
+    public readonly struct DelayGateProgress
+    {
+        public readonly int GateId;
+        public readonly int QueuedCount;
+        public readonly int Capacity;
+        public readonly int NextReleaseTick;
+
+        public DelayGateProgress(int gateId, int queuedCount, int capacity, int nextReleaseTick)
+        {
+            GateId = gateId;
+            QueuedCount = queuedCount;
+            Capacity = capacity;
+            NextReleaseTick = nextReleaseTick;
+        }
+    }
+
     /// <summary>
     /// 位流路由的纯逻辑核心：不依赖 UnityEngine，可被 EditMode 单元测试直接驱动。
     ///
-    /// 每个 tick 严格三步：
+    /// 每个 tick 严格按顺序走四步：
+    ///   0) 延迟器放行：队列里到期且出口空的位先回到自己格子上
+    ///      （delay=N 表示"比直通多停 N 拍"：第 T tick 吸入，第 T+1+N 个 tick 放行，再下一个 tick 抵达下游）；
     ///   1) 发射：各发射器尝试吐出下一个位（前方被占则顺延；多发射器抢同一格 → 一起销毁）；
     ///      吐出的位当 tick 就前进一步，因此发射器可以每个 tick 连续吐位
     ///   2) 前进：所有位按当前朝向尝试走 1 格。允许"跟随前进"——前方位同 tick 会离开时自己就能补位；
     ///      撞墙/出界/进错接收器面 → 销毁；两位抢同一格或对穿 → 全部销毁
-    ///   3) 裁决：本 tick 刚进入元件格的位，按元件规则改向/改值/销毁
+    ///   3) 裁决：本 tick 刚进入元件格的位，按元件规则改向/改值/销毁（延迟器在这里把位收进队列）
     /// 位进入元件格后会"停 1 tick"（裁决只改朝向），真正离开元件格要等下一个 tick。
     /// </summary>
     public sealed class BitFlowSimulation
@@ -75,6 +94,27 @@ namespace ShiftGo.BitFlow.Core
             public bool Overflow => Received.Count > Def.TargetCount;
         }
 
+        /// <summary>延迟器队列里的一位：值、出口朝向（= 进队时的前进方向）和放行 tick。</summary>
+        readonly struct DelayQueuedBit
+        {
+            public readonly byte Value;
+            public readonly Dir ExitDir;
+            public readonly int ReleaseTick;
+
+            public DelayQueuedBit(byte value, Dir exitDir, int releaseTick)
+            {
+                Value = value;
+                ExitDir = exitDir;
+                ReleaseTick = releaseTick;
+            }
+        }
+
+        sealed class DelayGateState
+        {
+            public DelayGateDefinition Def;
+            public readonly List<DelayQueuedBit> Queue = new List<DelayQueuedBit>();
+        }
+
         readonly struct PendingMove
         {
             public readonly RuntimeBit Bit;
@@ -91,8 +131,10 @@ namespace ShiftGo.BitFlow.Core
         readonly Dictionary<GridPoint, ElementDefinition> lookup;
         readonly List<EmitterState> emitters = new List<EmitterState>();
         readonly List<ReceiverState> receivers = new List<ReceiverState>();
+        readonly List<DelayGateState> delayGates = new List<DelayGateState>();
         readonly Dictionary<int, EmitterState> emittersById = new Dictionary<int, EmitterState>();
         readonly Dictionary<int, ReceiverState> receiversById = new Dictionary<int, ReceiverState>();
+        readonly Dictionary<int, DelayGateState> delayGatesById = new Dictionary<int, DelayGateState>();
         readonly List<RuntimeBit> bits = new List<RuntimeBit>();
         readonly Dictionary<GridPoint, RuntimeBit> occupancy = new Dictionary<GridPoint, RuntimeBit>();
 
@@ -130,8 +172,10 @@ namespace ShiftGo.BitFlow.Core
             occupancy.Clear();
             emitters.Clear();
             receivers.Clear();
+            delayGates.Clear();
             emittersById.Clear();
             receiversById.Clear();
+            delayGatesById.Clear();
 
             foreach (ElementDefinition element in level.Elements)
             {
@@ -146,6 +190,12 @@ namespace ShiftGo.BitFlow.Core
                     ReceiverState state = new ReceiverState { Def = receiverDef };
                     receivers.Add(state);
                     receiversById[receiverDef.Id] = state;
+                }
+                else if (element is DelayGateDefinition delayDef)
+                {
+                    DelayGateState state = new DelayGateState { Def = delayDef };
+                    delayGates.Add(state);
+                    delayGatesById[delayDef.Id] = state;
                 }
             }
         }
@@ -162,17 +212,71 @@ namespace ShiftGo.BitFlow.Core
 
             TickIndex++;
 
+            DelayReleasePhase(report);
             EmitPhase(report);
             AdvancePhase(report);
             ResolvePhase(report);
 
-            if ((AllEmittersDone() && bits.Count == 0) || TickIndex >= SafetyTickLimit)
+            if ((AllEmittersDone() && bits.Count == 0 && !HasQueuedBits()) || TickIndex >= SafetyTickLimit)
             {
                 finished = true;
                 report.IsFinished = true;
             }
 
             return report;
+        }
+
+        // ---------------------------------------------------------------- 阶段 0：延迟器放行
+
+        /// <summary>
+        /// 队列到期的位先回到自己的格子上，再走本 tick 的发射 / 前进 / 裁决。
+        ///
+        /// 放在发射之前有两个理由：
+        /// 1) 放行出来的位和普通元件在**同一条时间线**上，只是整体后移：delay=N 比直通多 N 拍，
+        ///    N=1 就是"比普通元件晚 1 tick 抵达下游"，所以它必须在本 tick 的 AdvancePhase 里就能迈步；
+        /// 2) 先占住格子，发射器 / 上游位这一 tick 才会正确地"被堵住顺延"，
+        ///    不会出现"位还没出来、后面又塞一个进去"的穿模。
+        /// 出口被占时队首原地等（FIFO 不跳队），不丢失。
+        /// </summary>
+        void DelayReleasePhase(TickReport report)
+        {
+            if (delayGates.Count == 0) return;
+
+            RebuildOccupancy();
+
+            foreach (DelayGateState gate in delayGates)
+            {
+                if (gate.Queue.Count == 0) continue;
+
+                DelayQueuedBit front = gate.Queue[0];
+                if (front.ReleaseTick > TickIndex) continue;
+
+                if (occupancy.ContainsKey(gate.Def.Coord))
+                {
+                    // 上一颗还没走出去（被前方堵住）：本 tick 继续压着，队列不前进
+                    report.DelayStalled++;
+                    continue;
+                }
+
+                gate.Queue.RemoveAt(0);
+
+                // 不能走 SpawnBit：那个入口会把"元件格里的位"标成待裁决，
+                // 结果刚放出来的位又被延迟器收回去。它是"离开"，不是"进入"。
+                RuntimeBit bit = new RuntimeBit
+                {
+                    Id = nextBitId++,
+                    Value = front.Value,
+                    Coord = gate.Def.Coord,
+                    Facing = front.ExitDir,
+                    PendingResolve = false,
+                };
+                bits.Add(bit);
+                occupancy[bit.Coord] = bit;
+
+                BitSpawned spawned = new BitSpawned(bit.Id, bit.Value, bit.Coord, bit.Facing, gate.Def.Id);
+                report.Spawns.Add(spawned);
+                report.DelayReleased.Add(spawned);
+            }
         }
 
         // ---------------------------------------------------------------- 阶段 1：发射
@@ -458,6 +562,27 @@ namespace ShiftGo.BitFlow.Core
                         }
                         bit.Facing = filter.OutputDir;
                         break;
+
+                    case DelayGateDefinition delayGate:
+                        // 进队 = 从场上撤下（不占格）。出口朝向沿用进入时的前进方向：
+                        // 位从左边进来就继续往右穿出，延迟器只按时间放行，不改路由。
+                        if (!delayGatesById.TryGetValue(delayGate.Id, out DelayGateState gateState)) break;
+
+                        if (gateState.Queue.Count >= DelayGateDefinition.Capacity)
+                        {
+                            report.DelayDropped++;
+                            DestroyBit(bit, DestroyReason.DelayOverflow, report);
+                            break;
+                        }
+
+                        // 第 T tick 吸入 → 第 T+1+N 个 tick 放行（"比直通多停 N 拍"；N=1 即晚 1 tick）
+                        int releaseTick = TickIndex + delayGate.SafeDelayTicks + 1;
+                        gateState.Queue.Add(new DelayQueuedBit(bit.Value, bit.Facing, releaseTick));
+
+                        bits.Remove(bit);
+                        occupancy.Remove(bit.Coord);
+                        report.DelayAbsorbed.Add(new DelayAbsorbed(bit.Id, bit.Value, delayGate.Id, bit.Coord, releaseTick));
+                        break;
                 }
             }
         }
@@ -527,6 +652,16 @@ namespace ShiftGo.BitFlow.Core
             return true;
         }
 
+        /// <summary>延迟器里还压着位就不算结束（否则会提前结算，漏掉后段波形）。</summary>
+        bool HasQueuedBits()
+        {
+            foreach (DelayGateState gate in delayGates)
+            {
+                if (gate.Queue.Count > 0) return true;
+            }
+            return false;
+        }
+
         // ---------------------------------------------------------------- 给 View / UI 的只读查询
 
         /// <summary>当前所有位的位置（每 tick 结束后 View 用它对齐表现）。</summary>
@@ -538,6 +673,18 @@ namespace ShiftGo.BitFlow.Core
                 snapshots.Add(new BitSnapshot(bit.Id, bit.Value, bit.Coord, bit.Facing));
             }
             return snapshots;
+        }
+
+        /// <summary>各延迟器的蓄水进度（队首还差几个 tick 放行）。</summary>
+        public List<DelayGateProgress> GetDelayGateProgress()
+        {
+            List<DelayGateProgress> progress = new List<DelayGateProgress>(delayGates.Count);
+            foreach (DelayGateState state in delayGates)
+            {
+                int nextRelease = state.Queue.Count > 0 ? state.Queue[0].ReleaseTick : -1;
+                progress.Add(new DelayGateProgress(state.Def.Id, state.Queue.Count, DelayGateDefinition.Capacity, nextRelease));
+            }
+            return progress;
         }
 
         /// <summary>各发射器的吐位进度（View 用来点亮/变暗元件上的序列点阵）。</summary>

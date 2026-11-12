@@ -81,6 +81,10 @@ namespace ShiftGo.BitFlow.Data
                     spec.dir = filter.OutputDir.ToString();
                     spec.pass = filter.PassValue == 0 ? 0 : 1;
                     break;
+
+                case DelayGateDefinition delayGate:
+                    spec.delay = delayGate.SafeDelayTicks;
+                    break;
             }
 
             return spec;
@@ -132,6 +136,10 @@ namespace ShiftGo.BitFlow.Data
                 spec.dir = filter.OutputDir.ToString();
                 spec.pass = filter.PassValue == 0 ? 0 : 1;
             }
+            else if (definition is DelayGateDefinition delayGate)
+            {
+                spec.delay = delayGate.SafeDelayTicks;
+            }
 
             return spec;
         }
@@ -144,6 +152,7 @@ namespace ShiftGo.BitFlow.Data
             {
                 CellKind.Wall, CellKind.Emitter, CellKind.Receiver,
                 CellKind.Splitter, CellKind.NotGate, CellKind.Filter,
+                CellKind.DelayGate,
             };
 
             List<LevelTypeSpec> specs = new List<LevelTypeSpec>();

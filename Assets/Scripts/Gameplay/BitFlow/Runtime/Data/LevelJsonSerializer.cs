@@ -130,6 +130,9 @@ namespace ShiftGo.BitFlow.Data
             /// <summary>过滤器放行的值（0/1）。-1 = 没写。</summary>
             public int pass = -1;
 
+            /// <summary>延迟器专用：延迟 tick 数（1~4）。-1 = 没写（默认 1）。</summary>
+            public int delay = -1;
+
             /// <summary>允许玩家搬动 / 拾回这一格。缺省 false = 关卡预设件。</summary>
             public bool playerEditable;
         }
@@ -266,6 +269,7 @@ namespace ShiftGo.BitFlow.Data
             if (placement.overrideCount) builder.Append(", \"count\": ").Append(Mathf.Max(0, placement.count));
             if (placement.overrideFace) builder.Append(", \"face\": ").Append(Quote(placement.acceptAnyFace ? "any" : "in"));
             if (placement.overridePassValue) builder.Append(", \"pass\": ").Append(placement.passValue == 0 ? 0 : 1);
+            if (placement.overrideDelayTicks) builder.Append(", \"delay\": ").Append(Mathf.Clamp(placement.delayTicks, 1, 4));
             if (placement.playerEditable) builder.Append(", \"playerEditable\": true");
 
             builder.Append(" }");
@@ -624,6 +628,20 @@ namespace ShiftGo.BitFlow.Data
                     {
                         result.Warnings.Add(where + " 写了 pass，但用 type 精确引用时改不了过滤器放行值；"
                             + "改用 kind=Filter 才能覆盖");
+                    }
+                }
+
+                if (cell.delay >= 0)
+                {
+                    if (string.IsNullOrEmpty(cell.type))
+                    {
+                        placement.overrideDelayTicks = true;
+                        placement.delayTicks = Mathf.Clamp(cell.delay, 1, 4);
+                    }
+                    else
+                    {
+                        result.Warnings.Add(where + " 写了 delay，但用 type 精确引用时改不了延迟器的延迟数；"
+                            + "改用 kind=DelayGate 才能覆盖");
                     }
                 }
 

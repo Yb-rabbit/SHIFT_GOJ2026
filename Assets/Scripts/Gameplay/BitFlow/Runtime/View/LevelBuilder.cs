@@ -180,6 +180,8 @@ namespace ShiftGo.BitFlow.View
                     return "NOT\nINVERT  OUT " + notGate.OutputDir.ToMark();
                 case FilterDefinition filter:
                     return "FILTER\nPASS " + filter.PassValue + "  OUT " + filter.OutputDir.ToMark();
+                case DelayGateDefinition delayGate:
+                    return "DELAY\nHOLD " + delayGate.SafeDelayTicks + " TICK  THROUGH";
                 default:
                     return "WALL";
             }
@@ -195,6 +197,7 @@ namespace ShiftGo.BitFlow.View
                 case CellKind.Splitter: return new Color(0.95f, 0.78f, 0.22f);
                 case CellKind.NotGate: return new Color(1f, 0.38f, 0.66f);
                 case CellKind.Filter: return new Color(0.30f, 0.95f, 0.55f);
+                case CellKind.DelayGate: return new Color(0.42f, 0.62f, 0.80f); // 钢蓝：冷、钝、像一块配重
                 default: return new Color(0.30f, 0.33f, 0.40f);
             }
         }
@@ -208,6 +211,7 @@ namespace ShiftGo.BitFlow.View
                 case CellKind.Splitter: return 1.2f;
                 case CellKind.NotGate: return 1.3f;
                 case CellKind.Filter: return 1.2f;
+                case CellKind.DelayGate: return 1.1f;
                 default: return 0.15f;
             }
         }

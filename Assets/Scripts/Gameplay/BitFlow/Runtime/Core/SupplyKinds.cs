@@ -22,6 +22,7 @@ namespace ShiftGo.BitFlow.Core
                 case CellKind.Splitter:
                 case CellKind.NotGate:
                 case CellKind.Filter:
+                case CellKind.DelayGate:
                     return true;
 
                 default:

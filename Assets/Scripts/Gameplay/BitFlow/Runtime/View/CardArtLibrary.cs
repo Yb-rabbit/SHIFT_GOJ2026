@@ -47,6 +47,7 @@ namespace ShiftGo.BitFlow.View
                 case CellKind.NotGate: return "Card_NoGate";
                 case CellKind.Filter: return "Card_filt";
                 case CellKind.Wall: return "Card_Wall";
+                case CellKind.DelayGate: return "Card_Delay";
                 default: return string.Empty;
             }
         }
