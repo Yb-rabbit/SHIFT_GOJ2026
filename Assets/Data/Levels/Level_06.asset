@@ -76,6 +76,6 @@ MonoBehaviour:
   wallType: {fileID: 0}
   wallMap: 
   supplies:
-  - type: {fileID: 11400000, guid: 4b8e2d6c9a1f47e3b5d0c8a26f3e9d71, type: 2}
+  - type: {fileID: 11400000, guid: b4c2cd21390fe8646be936660d0001b6, type: 2}
     count: 1
   allowBuild: 0

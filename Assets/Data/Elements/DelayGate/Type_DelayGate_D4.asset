@@ -12,5 +12,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9f3c2a71b48d4e6f8a0c5d7e2b1f4c63, type: 3}
   m_Name: Type_DelayGate_D4
   m_EditorClassIdentifier: 
-  label: D3
-  delayTicks: 3
+  label: D4
+  delayTicks: 4
