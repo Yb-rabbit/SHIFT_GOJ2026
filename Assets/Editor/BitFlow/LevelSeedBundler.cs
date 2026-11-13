@@ -179,6 +179,15 @@ namespace ShiftGo.EditorTools
         }
 
         /// <summary>
+        /// 自检用：这一版「源里应该进包」的文件名 → 绝对路径。
+        /// 和 <see cref="Bundle"/> 共用同一个收集函数，自检和打包不会各长一套规则。
+        /// </summary>
+        internal static Dictionary<string, string> CollectSourceFiles()
+        {
+            return CollectSources();
+        }
+
+        /// <summary>
         /// 收集「文件名 → 绝对路径」。同名以<b>先出现的目录</b>为准（根目录优先于 incoming），
         /// 和 <see cref="LevelJsonRuntimeSetup.SyncRuntimeLevels"/> 的语义一致。
         /// </summary>

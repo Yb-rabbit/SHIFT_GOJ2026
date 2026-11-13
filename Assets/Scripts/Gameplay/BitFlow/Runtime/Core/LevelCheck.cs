@@ -26,6 +26,19 @@ namespace ShiftGo.BitFlow.Core
         /// <summary>跑一遍并给出报告。success = 是否通关。</summary>
         public static string Run(LevelDefinition definition, out bool success)
         {
+            return Run(definition, definition != null && definition.HasSupplies, out success);
+        }
+
+        /// <summary>
+        /// 同上，但由调用方告诉这里「这一关有没有给玩家手牌」。
+        ///
+        /// 为什么要单独传：<c>LevelSO.ToDefinition()</c> 只转 placements + 墙，<b>不转 supplies</b>
+        /// （手牌是玩家局的素材，不是逻辑关卡的一部分），所以从关卡资产来的 definition 里
+        /// <c>HasSupplies</c> 永远是 false。报告措辞要区分「题还没解」和「数据错了」就得知道这件事，
+        /// 而从资产来的调用方手里正好有 <c>LevelSO.HasSupplies</c>。
+        /// </summary>
+        public static string Run(LevelDefinition definition, bool hasSupplies, out bool success)
+        {
             success = false;
             if (definition == null) return "关卡定义是空的";
 
@@ -40,15 +53,24 @@ namespace ShiftGo.BitFlow.Core
 
             LevelResult result = simulation.BuildResult();
             success = result.IsSuccess;
-            return Describe(definition, result, ticks, safety);
+            return Describe(definition, hasSupplies, result, ticks, safety);
         }
 
-        static string Describe(LevelDefinition definition, LevelResult result, int ticks, int safety)
+        static string Describe(LevelDefinition definition, bool hasSupplies, LevelResult result, int ticks, int safety)
         {
             StringBuilder builder = new StringBuilder();
 
-            builder.Append(result.IsSuccess ? "✅ 通关 " : "❌ 未通过 ");
+            // 有手牌的关，预设布局跑不通才是对的（规则见 RunForSave：跑通了说明手牌是摆设）。
+            // 这里用 ❌ 会把正常的关卡设计报成事故，作者会以为导入坏了 ——
+            // 措辞必须能一眼区分「题还没解」和「数据错了」。
+            bool puzzle = hasSupplies && !result.IsSuccess;
+
+            if (result.IsSuccess) builder.Append("✅ 通关 ");
+            else if (puzzle) builder.Append("📝 预设布局未通关 ");
+            else builder.Append("❌ 未通过 ");
+
             builder.Append(result.TickCount).Append(" ticks");
+            if (puzzle) builder.Append("（有手牌的关，这是预期：玩家要自己用牌解开）");
 
             if (!result.IsSuccess && ticks >= safety)
             {

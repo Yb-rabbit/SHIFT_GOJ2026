@@ -1311,8 +1311,9 @@ namespace ShiftGo.EditorTools
 
             LevelDefinition definition = level.ToDefinition();
 
-            // 和批量自检菜单、"玩家真通关"共用同一份实现，报告口径不会走偏
-            string report = LevelCheck.Run(definition, out bool _);
+            // 和批量自检菜单、"玩家真通关"共用同一份实现，报告口径不会走偏。
+            // 手牌要单独传：definition 是 ToDefinition() 出来的，里面没有 supplies。
+            string report = LevelCheck.Run(definition, level.HasSupplies, out bool _);
 
             status = report;
             Debug.Log("[BitFlow] 试跑 " + definition.DisplayName + "\n" + report);

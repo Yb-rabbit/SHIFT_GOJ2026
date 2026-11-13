@@ -119,8 +119,8 @@
 玩家之间传关卡只看一个目录：
 
 ```
-Windows 独立版: <游戏 exe 所在目录>\LevelJson\share\
-Unity 编辑器:   <工程根目录>\LevelJson\share\
+Windows 独立版: <游戏 exe 所在目录>\Levels\share\
+Unity 编辑器:   <工程根目录>\Levels\share\
 ```
 
 如果游戏装在 `Program Files` 这类不可写的位置，会自动改用 `文档\SHIFT GO\Levels\`。

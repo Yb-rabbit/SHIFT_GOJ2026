@@ -1,13 +1,19 @@
 # 关卡 JSON（外部手写 ↔ Unity 关卡资产）
 
+> 只想知道「我的 JSON 怎么进包、进没进」，看 `LEVELS_QUICKSTART.md`（30 行）。本文是字段与机制全量说明。
+
 `LevelSO` 仍是唯一真源；JSON 只是**双向通道**：导出给人改，改完再导入/覆盖。
 
 ```
 LevelJson/
-├── exported/    Unity 侧导出（含 Level_01.json 样例、catalog.json 顺序表）
+├── exported/    Unity 侧导出（「导出全部关卡」另写 catalog.json 顺序表）；只是参照，**不进包**
 ├── incoming/    设计侧提交，等「批量导入」
 └── reports/     每次校验/导入的诊断（设计侧看不到 Console，看这里）
 ```
+
+打包只认根目录 `LevelJson/*.json` 和 `incoming/*.json` 两处（`LevelSeedSources.Folders`），
+`exported/` 不在里面 —— 想让玩家玩到某一关，得把它放进这两处之一，再跑 `生成内置关卡包`
+（见 `LEVELS_QUICKSTART.md`）。
 
 ## 流程
 
@@ -22,7 +28,7 @@ LevelJson/
 | 角色 | 落点 |
 |---|---|
 | 运行时关卡目录 | `Application.persistentDataPath/LevelJson/*.json`（内部存储，玩家不需要手动翻） |
-| 玩家分享 / 导入目录 | 程序旁边 `LevelJson/share/`（独立版 = exe 同级；编辑器 = 工程根目录）；不可写时退到 `文档/SHIFT GO/Levels`。目录说明 `README.txt` 首行带版本戳、**不写绝对路径**，旧版说明会在下次启动时自动改写 |
+| 玩家分享 / 导入目录 | 程序旁边 `Levels/share/`（独立版 = exe 同级；编辑器 = 工程根目录）；不可写时退到 `文档/SHIFT GO/Levels`。目录说明 `README.txt` 首行带版本戳、**不写绝对路径**，旧版说明会在下次启动时自动改写 |
 | 类型注册表 | `Assets/Resources/BitFlow/LevelTypeRegistry.asset`（进包，运行时 `Resources.Load`） |
 | 内置关卡包（作者关卡） | `Assets/Resources/BitFlow/Levels/*.json`（**生成物但要提交**；首次启动由 `BundledLevels` 播种进运行时关卡目录） |
 
@@ -35,7 +41,7 @@ LevelJson/
 - 选关面板（游戏里按 `L` 打开）的 `MY LEVELS` 分区列出运行时关卡目录里的关卡；`_` 开头的草稿不列出，读不通的文件只在 Console 报原因
 - 面板顶部的 `FILES` 组是玩家侧的文件入口：
   - `IMPORT · FROM FILE` 弹系统文件对话框（Windows：编辑器 + 独立版）挑任意位置的 json；
-  - `IMPORT · FROM SHARE FOLDER · BATCH IMPORT` 把玩家可见的分享目录（以及旧版 `LevelJson/incoming/`、程序旁边 `LevelJson/`）里能读通的 json 一次性导进来；
+  - `IMPORT · FROM SHARE FOLDER · BATCH IMPORT` 把玩家可见的分享目录（以及旧版 `LevelJson/incoming/`、程序旁边 `Levels/`）里能读通的 json 一次性导进来；
   - `IMPORT · FROM CLIPBOARD` 走剪贴板原文；
   - `MY LEVELS` 每一行 `...` 里的 `EDIT` / `SHARE · SAVE COPY` / `DELETE · JSON FILE` 负责编辑、复制到分享目录、删除；
   - `SHARE FOLDER` / `COPY SHARE FOLDER PATH` 打开 / 复制玩家可见的分享目录。
@@ -70,6 +76,10 @@ persistentDataPath/LevelJson/*.json            ← 和玩家自己造的关躺�
 `exported/` 是导出参照，**不参与**打包；`_` 开头、`catalog.json`、`typeCatalog.json` 会被跳过；
 源里删掉的关卡会连文件带 `.meta` 一起从包里清掉。运行时不做「内置关」的特殊分支 ——
 它们就是普通 JSON 关卡，列表 / 进关 / 编辑 / 导出 / 删除全都一样。
+
+> **运行时目录不在打包范围**：`persistentDataPath/LevelJson/`（`%AppData%Low/...`）里出现的关，
+> 来自「同步到运行时目录」或玩家自己导入，`生成内置关卡包` 看不到它们。想让玩家开箱就有的关，
+> 必须先落成工程里的 `LevelJson/*.json`。跑一次 `打包前自检（关卡）` 就能看出差的是哪一份。
 
 覆盖规则（清单 `PlayerPrefs("BitFlow.Seeds.Manifest")` 记「上次播种的内容摘要」）：
 
@@ -155,7 +165,8 @@ persistentDataPath/LevelJson/*.json            ← 和玩家自己造的关躺�
 | `坐标重复` | 同一格写了两条，后一条被跳过 |
 | `墙层和 elements 有 N 格重叠` | 那几格的墙会被元件盖掉（placements 优先） |
 | `将新建类型变体` | `kind` 写法没匹配到现成资产，导入时会新建一份新类型资产（想复用就改 `type`） |
-| 试跑 `❌ 未通过` | 路由/序列对不上，报告里会指出第几位不匹配 |
+| 试跑 `📝 预设布局未通关` | **不是错误**：这一关发了手牌，预设布局本来就该跑不通（跑得通反而说明手牌是摆设）。玩家要自己用牌解 |
+| 试跑 `❌ 未通过` | 没发手牌的关跑不通 —— 路由/序列对不上，报告里会指出第几位不匹配 |
 
 ## 菜单
 
@@ -165,7 +176,7 @@ persistentDataPath/LevelJson/*.json            ← 和玩家自己造的关躺�
 
 运行时（打包后也要能跑的那一半）：
 
-刷新类型注册表 · 同步到运行时目录 · 打开运行时关卡目录 · 一键：刷新注册表并同步 · **生成内置关卡包** · 导出类型目录（给外部编辑器）· 打开外部关卡编辑器
+刷新类型注册表 · 同步到运行时目录 · 打开运行时关卡目录 · 一键：刷新注册表并同步 · **生成内置关卡包** · **打包前自检（关卡）** · 导出类型目录（给外部编辑器）· 打开外部关卡编辑器
 
 实现：
 - `Runtime/Data/LevelJsonSerializer.cs`（序列化核心，EditMode 测试覆盖）

@@ -69,8 +69,16 @@ namespace ShiftGo.BitFlow.Data
     /// </summary>
     public static class LevelJsonLibrary
     {
-        /// <summary>persistentDataPath 下的关卡目录名。</summary>
+        /// <summary>persistentDataPath 下的关卡目录名（内部库，玩家不需要手动翻）。</summary>
         public const string FolderName = "LevelJson";
+
+        /// <summary>
+        /// 程序旁边那个「玩家看得见」的目录名，故意<b>不</b>叫 <see cref="FolderName"/>：
+        /// 工程根的 <c>LevelJson/</c> 是设计侧交接站，AppData 下的 <c>LevelJson/</c> 是运行时库，
+        /// 这两个同名已经够容易混；程序旁边再叫一次，grep「LevelJson/incoming」会同时命中三处。
+        /// 用 <c>Levels</c> 之后：玩家看到的是 Levels，作者看到的是 LevelJson，互不干扰。
+        /// </summary>
+        public const string PlayerFolderName = "Levels";
 
         /// <summary>关卡 JSON 目录的绝对路径（可能还不存在）。</summary>
         public static string Folder => System.IO.Path.Combine(Application.persistentDataPath, FolderName);
@@ -154,7 +162,7 @@ namespace ShiftGo.BitFlow.Data
         public static string IncomingFolder => System.IO.Path.Combine(Folder, IncomingFolderName);
 
         /// <summary>
-        /// 玩家可见的分享 / 导入目录名。放在程序旁边的 <c>LevelJson/share</c>，
+        /// 玩家可见的分享 / 导入目录名。放在程序旁边的 <c>Levels/share</c>，
         /// 而不是 <see cref="Folder"/> 那个 Windows 默认隐藏的 AppData 目录。
         /// </summary>
         public const string ShareFolderName = "share";
@@ -162,7 +170,7 @@ namespace ShiftGo.BitFlow.Data
         static string shareFolder;
 
         /// <summary>
-        /// 玩家可见的分享目录（可能还没建）。优先程序旁边的 <c>LevelJson/share</c>；
+        /// 玩家可见的分享目录（可能还没建）。优先程序旁边的 <c>Levels/share</c>；
         /// 程序目录不可写时，<see cref="EnsureShareFolder"/> 会改用「文档/SHIFT GO/Levels」。
         /// </summary>
         public static string ShareFolder
@@ -174,7 +182,7 @@ namespace ShiftGo.BitFlow.Data
                 string program = ProgramFolder;
                 if (!string.IsNullOrEmpty(program))
                 {
-                    return System.IO.Path.Combine(program, FolderName, ShareFolderName);
+                    return System.IO.Path.Combine(program, PlayerFolderName, ShareFolderName);
                 }
 
                 return System.IO.Path.Combine(Folder, ShareFolderName);
@@ -280,7 +288,7 @@ namespace ShiftGo.BitFlow.Data
         /// 会在下次 <see cref="EnsureFolder"/> / <see cref="EnsureShareFolder"/> 时被重写，
         /// 免得发出去的包里那份旧说明永远留在玩家机器上。
         /// </summary>
-        public const string ReadmeStamp = "SHIFT GO README v2";
+        public const string ReadmeStamp = "SHIFT GO README v3";
 
         /// <summary>
         /// 目录说明文件名。以 <c>README</c> 开头、不是 <c>.json</c>，所以绝不会被
@@ -547,24 +555,32 @@ namespace ShiftGo.BitFlow.Data
         /// <summary>
         /// 「外部投放目录」：按优先级排列的、玩家可以自己找到并丢文件的目录。
         ///
-        /// 第一个是**玩家可见**的 <see cref="ShareFolder"/>（程序旁边 <c>LevelJson/share</c>），
-        /// 然后是正式目录下的 <see cref="IncomingFolder"/>（旧版收件箱），
-        /// 最后是程序旁边的 <c>LevelJson</c> / <c>LevelJson\incoming</c>：
-        /// 独立版里那是 exe 同级目录（完全不隐藏），编辑器里就是工程根目录的 <c>LevelJson\</c>
-        /// （和 <c>Tools/LevelStudio</c> 存盘、Unity 同步菜单用的是同一处）。
+        /// 第一个是**玩家可见**的 <see cref="ShareFolder"/>（程序旁边 <c>Levels/share</c>），
+        /// 然后是正式目录下的 <see cref="IncomingFolder"/>（旧版收件箱，保留兼容），
+        /// 最后是程序旁边的 <c>Levels</c> 本体：
+        /// 独立版里那是 exe 同级目录（完全不隐藏），编辑器里就是工程根目录的 <c>Levels\</c>。
+        ///
+        /// 以前这里还多扫一层 <c>Levels\incoming</c>：父目录已经被扫，那一层纯属冗余，
+        /// 玩家也从来不知道它存在，删掉少一个概念。
         /// </summary>
         public static List<string> DropFolders()
         {
             // 浏览器里没有「玩家能自己丢文件的目录」，批量导入无从谈起
             if (BrowserFileSystem.IsActive) return new List<string>();
 
+            // 扫描前必须先把分享目录解析到「真实落点」：ShareFolder 只读属性给的是
+            // 首选路径，而 exe 装在 Program Files 时真实落点已经换到「文档/SHIFT GO/Levels」。
+            // 不先解析就会去扫一个不存在的地方 → 批量导入假报 SHARE FOLDER IS EMPTY。
+            // 这里确实有建目录的副作用（探测可写性必须真写一次探针），但它幂等、
+            // 失败也只记日志，下次再扫还是同一个答案。
+            EnsureShareFolder(out _);
+
             List<string> folders = new List<string> { ShareFolder, IncomingFolder };
 
             string program = ProgramFolder;
             if (!string.IsNullOrEmpty(program))
             {
-                folders.Add(System.IO.Path.Combine(program, FolderName));
-                folders.Add(System.IO.Path.Combine(program, FolderName, IncomingFolderName));
+                folders.Add(System.IO.Path.Combine(program, PlayerFolderName));
             }
 
             List<string> unique = new List<string>();

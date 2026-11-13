@@ -73,3 +73,8 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# SHIFT GO：编辑器里运行时会把「玩家可见的分享目录」建在工程根（打包后是 exe 同级）。
+# 里面是随手丢的 json 和自动生成的 README，不属于源码；LevelJson/ 则是刻意跟踪的设计侧交接站，别加进来。
+/[Ll]evels/
+

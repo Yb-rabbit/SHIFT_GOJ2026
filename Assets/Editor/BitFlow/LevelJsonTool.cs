@@ -32,6 +32,12 @@ namespace ShiftGo.EditorTools
         internal const string ReportFolder = RootFolder + "/reports";
         internal const string TemplateFile = RootFolder + "/_template.json";
 
+        /// <summary>
+        /// 导出之后的固定提醒。<c>exported/</c> 只是给人看的参照，不在
+        /// <c>LevelSeedSources.Folders</c> 里 —— 不说明白，作者会以为导完就等于进包了。
+        /// </summary>
+        const string ExportHint = "（只是参照，不进包；要让玩家玩到，把它放进 LevelJson/ 或 LevelJson/incoming/，再跑「生成内置关卡包」）";
+
         // ------------------------------------------------------------------ 导出
 
         [MenuItem("SHIFT GO/BitFlow/关卡 JSON/导出选中关卡", false, 25)]
@@ -46,7 +52,7 @@ namespace ShiftGo.EditorTools
             }
 
             string path = ExportLevel(level);
-            Debug.Log("[BitFlow] 已导出关卡 JSON：" + path);
+            Debug.Log("[BitFlow] 已导出关卡 JSON：" + path + ExportHint);
             EditorUtility.RevealInFinder(path);
         }
 
@@ -76,7 +82,8 @@ namespace ShiftGo.EditorTools
             // 顺带记一份关卡顺序：设计侧看这张表就知道哪一关先上，不用问 Unity 侧
             File.WriteAllText(Path.GetFullPath(ExportedFolder + "/catalog.json"), builder.ToString());
 
-            Debug.Log("[BitFlow] 已导出 " + levels.Count + " 个关卡 JSON 到 " + Path.GetFullPath(ExportedFolder));
+            Debug.Log("[BitFlow] 已导出 " + levels.Count + " 个关卡 JSON 到 "
+                + Path.GetFullPath(ExportedFolder) + ExportHint);
             EditorUtility.RevealInFinder(Path.GetFullPath(ExportedFolder));
         }
 
@@ -482,7 +489,9 @@ namespace ShiftGo.EditorTools
 
                 if (run.Result.HasLevel)
                 {
-                    run.CheckText = LevelCheck.Run(run.Result.Level.ToDefinition(), out bool success);
+                    // 手牌是 LevelSO 上的字段，ToDefinition() 不转 —— 得显式告诉自检这一关有没有发牌
+                    run.CheckText = LevelCheck.Run(run.Result.Level.ToDefinition(),
+                        run.Result.Level.HasSupplies, out bool success);
                     run.Success = success;
                 }
             }

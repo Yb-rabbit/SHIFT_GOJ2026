@@ -141,8 +141,10 @@ namespace ShiftGo.BitFlow.Data
                 if (string.Equals(current, text, StringComparison.Ordinal)) continue;
 
                 // 本地仍是上次播种的那一份（没人动过）→ 跟着新版本更新
+                // 注意清单里存的是 hash，不是原文：拿 hash 去和文件内容比永远不相等，
+                // 会让每一条内置关卡更新都被误判成「玩家改过」而永远发不出去。
                 if (seeded.TryGetValue(fileName, out string planted)
-                    && string.Equals(current, planted, StringComparison.Ordinal))
+                    && string.Equals(HashOf(current), planted, StringComparison.OrdinalIgnoreCase))
                 {
                     if (Write(path, text)) written++;
                     continue;

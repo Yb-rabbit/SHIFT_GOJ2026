@@ -1100,7 +1100,7 @@ namespace ShiftGo.BitFlow.View
         }
 
         /// <summary>
-        /// 在资源管理器里打开「玩家可见的分享目录」（程序旁边 <c>LevelJson/share</c>，
+        /// 在资源管理器里打开「玩家可见的分享目录」（程序旁边 <c>Levels/share</c>，
         /// 程序目录不可写时是「文档/SHIFT GO/Levels」）。
         ///
         /// 为什么不做系统文件对话框：那要引 System.Windows.Forms 或写一堆平台分支，

@@ -39,7 +39,7 @@ namespace ShiftGo.EditorTools
             }
             report.AppendLine();
             report.AppendLine("说明已刷新到 " + LevelJsonLibrary.ReadmeStamp + "（只写相对描述，不含绝对路径）。");
-            report.AppendLine("提醒：LevelJson 是玩家侧的中转目录，不要跟 exe 一起打包 / 压缩发布。");
+            report.AppendLine("提醒：Levels 是玩家侧的中转目录，不要跟 exe 一起打包 / 压缩发布。");
 
             Debug.Log("[BitFlow] 分享目录自检\n" + report);
 

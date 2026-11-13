@@ -55,6 +55,11 @@ powershell -ExecutionPolicy Bypass -File Tools/LevelStudio/build-web.ps1
 编辑、导入、导出、命名规则和桌面板**完全一样**：导出的 JSON 就是游戏 `IMPORT`
 直接吃的格式，文件名派生（`displayName` → `MY_LEVEL_01.json`）也走同一条规则。
 
+名字的规范化（`One only` → `ONE ONLY`，中文直接落回 `CUSTOM LEVEL`）由 Core 的
+`LevelNaming.Sanitize` 判定，本地服务写盘时用的就是这份规则。前端只在一处做镜像：
+`serializeDoc()` 里的 `displayName` —— 文件名、保存、导出、复制、下载因此**永远是
+同一个值**。读入一份名字不规范的文件不偷偷改名，但会立刻提示「它在游戏里会显示成什么」。
+
 为什么非得内联：`file://` 下浏览器拒绝 `fetch()` 本地文件，连 `catalog.json` 都读不到。
 所以样式、脚本、类型快照必须长在 HTML 里 —— 这也顺带解释了为什么没上 Blazor WASM
 （WASM 的加载同样要 `fetch`，一样被拦）。
@@ -125,7 +130,7 @@ Unity 菜单导一次 → 跑 `build-web.ps1` → 独立版里也能认出新类
 1. 编辑器里点「保存」，目录选 `LevelJson/incoming`（工程里的中转站）；
 2. 回 Unity 跑菜单 `同步到运行时目录`（或一键那个）；
    打包后的玩家则**直接点 `IMPORT · FROM FILE` 挑那个 json**（Windows 系统文件对话框），
-   或者把 json 丢进 `SHARE FOLDER`（程序旁边 `LevelJson\share\`）再点 `IMPORT · FROM SHARE FOLDER · BATCH IMPORT`；
+   或者把 json 丢进 `SHARE FOLDER`（程序旁边 `Levels\share\`）再点 `IMPORT · FROM SHARE FOLDER · BATCH IMPORT`；
 3. 选关面板（游戏里按 `L` 打开）的 `MY LEVELS` 分区里就会出现这一关，点一下进关。
 
 `MY LEVELS` 每一行右边有 `...`：展开后是 `EDIT` / `SHARE · SAVE COPY` / `DELETE · JSON FILE`，

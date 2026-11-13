@@ -163,11 +163,10 @@ namespace ShiftGo.BitFlow.Tests
         [Test]
         public void SeededLevel_ShowsUpInTheSameListAsPlayerLevels()
         {
-            string sample = Path.GetFullPath(Path.Combine(Application.dataPath, "..",
-                "LevelJson", "exported", "Level_01.json"));
-            if (!File.Exists(sample))
+            string sample = FindRealLevelJson();
+            if (sample == null)
             {
-                Assert.Ignore("没有 LevelJson/exported/Level_01.json，跳过：这里要用一份真关卡验证「进同一个列表」");
+                Assert.Ignore("LevelJson/ 里找不到任何现成关卡 JSON（根 / incoming / exported 都是空的），跳过");
             }
 
             string name = Prefix + "Scanned.json";
@@ -188,6 +187,43 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         // ------------------------------------------------------------------ 工具
+
+        /// <summary>
+        /// 找一份「真的关卡 JSON」当样本，按 <c>exported/</c> → <c>incoming/</c> → 根目录 的顺序取第一个。
+        ///
+        /// 以前这里硬编码 <c>exported/Level_01.json</c>，那份示例一删，用例就永远 <c>Ignore</c> ——
+        /// 「播种的关和玩家关卡进同一份列表」这条覆盖等于没有。改成扫描现存文件，
+        /// 作者关放在哪一支都能跑；一支都没有时仍然跳过，不会因为环境缺文件而误报红。
+        ///
+        /// 以 <c>_</c> 开头的（<c>_template.json</c> 之类）和 <c>*catalog.json</c> 跳过，
+        /// 规则与 <see cref="LevelJsonLibrary.Scan"/> 一致 —— 否则会拿模板当关卡播进去。
+        /// 再加一条内容护栏：文件里必须出现 <c>"wallRows"</c>，把 <c>typeCatalog.json</c>、
+        /// 配置文件这类「长得像关卡」的 json 也挡在外面（只凭文件名挡不干净）。
+        /// </summary>
+        static string FindRealLevelJson()
+        {
+            string root = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "LevelJson"));
+
+            string[] folders = { Path.Combine(root, "exported"), Path.Combine(root, "incoming"), root };
+            foreach (string folder in folders)
+            {
+                if (!Directory.Exists(folder)) continue;
+
+                string[] files = Directory.GetFiles(folder, "*.json");
+                System.Array.Sort(files, System.StringComparer.Ordinal);
+
+                foreach (string file in files)
+                {
+                    string fileName = Path.GetFileName(file);
+                    if (fileName.StartsWith("_", System.StringComparison.Ordinal)) continue;
+                    if (fileName.EndsWith("catalog.json", System.StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!File.ReadAllText(file).Contains("\"wallRows\"")) continue;
+                    return file;
+                }
+            }
+
+            return null;
+        }
 
         static string PathOf(string fileName)
         {

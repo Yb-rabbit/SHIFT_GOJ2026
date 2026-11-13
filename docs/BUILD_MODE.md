@@ -120,7 +120,7 @@ Application.persistentDataPath/ShiftGoLevels/custom_level.json
 Windows 编辑器下通常是：
 
 ```
-C:\Users\<用户名>\AppData\LocalLow\DefaultCompany\SHIFT_GO2026\ShiftGoLevels\custom_level.json
+C:\Users\<用户名>\AppData\LocalLow\ShiftGo\SHIFT_GO2026\ShiftGoLevels\custom_level.json
 ```
 
 文件是 `JsonUtility` 生成的缩进 JSON：

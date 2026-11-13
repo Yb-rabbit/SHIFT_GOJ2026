@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using UnityEditor;
 using UnityEngine;
 using ShiftGo.BitFlow.Data;
@@ -89,6 +90,149 @@ namespace ShiftGo.EditorTools
                 "好");
 
             EditorUtility.RevealInFinder(LevelJsonLibrary.Folder);
+        }
+
+        // ------------------------------------------------------------------ 目录迁移 / 总览
+
+        /// <summary>
+        /// 改过 ProjectSettings 的 companyName 之后，旧目录会留在原地：
+        /// persistentDataPath 是 <c>LocalLow/&lt;company&gt;/&lt;product&gt;</c>，公司名一换整棵树就换位置。
+        /// 这个菜单把旧树里的 <c>*.json</c>（关卡 / 存档 / 草稿）复制过来，<b>只复制、不删除</b>，
+        /// 同名一律跳过 —— 宁可少搬一个，也不覆盖新目录里已有的东西。
+        /// </summary>
+        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/迁移旧关卡目录（DefaultCompany → 当前公司名）", false, 44)]
+        static void MigrateOldCompanyFolder()
+        {
+            const string oldCompany = "DefaultCompany";
+
+            string current = Application.persistentDataPath;      // .../LocalLow/<company>/<product>
+            DirectoryInfo product = new DirectoryInfo(current);
+            DirectoryInfo company = product.Parent;
+            if (company == null || company.Parent == null)
+            {
+                EditorUtility.DisplayDialog("迁移旧关卡目录", "定位不到 LocalLow 目录：\n" + current, "好");
+                return;
+            }
+
+            string oldRoot = Path.Combine(company.Parent.FullName, oldCompany, product.Name);
+
+            if (string.Equals(oldRoot, current, StringComparison.OrdinalIgnoreCase))
+            {
+                EditorUtility.DisplayDialog("迁移旧关卡目录",
+                    "当前公司名就是 " + oldCompany + "，两个路径是同一个：\n" + current, "好");
+                return;
+            }
+
+            if (!Directory.Exists(oldRoot))
+            {
+                EditorUtility.DisplayDialog("迁移旧关卡目录", "没有旧目录可迁移（本来就没生成过）：\n" + oldRoot, "好");
+                return;
+            }
+
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(oldRoot, "*.json", SearchOption.AllDirectories);
+            }
+            catch (Exception exception)
+            {
+                EditorUtility.DisplayDialog("迁移旧关卡目录", "读不了旧目录：\n" + exception.Message, "好");
+                return;
+            }
+
+            List<string> copied = new List<string>();
+            List<string> skipped = new List<string>();
+            List<string> failed = new List<string>();
+
+            foreach (string source in files)
+            {
+                string relative = source.Substring(oldRoot.Length).TrimStart(Path.DirectorySeparatorChar);
+                string destination = Path.Combine(current, relative);
+
+                try
+                {
+                    if (File.Exists(destination))
+                    {
+                        skipped.Add(relative);
+                        continue;
+                    }
+
+                    string folder = Path.GetDirectoryName(destination);
+                    if (!string.IsNullOrEmpty(folder) && !Directory.Exists(folder)) Directory.CreateDirectory(folder);
+
+                    File.Copy(source, destination);
+                    copied.Add(relative);
+                }
+                catch (Exception exception)
+                {
+                    failed.Add(relative + "：" + exception.Message);
+                }
+            }
+
+            StringBuilder report = new StringBuilder();
+            report.AppendLine("旧目录（保留不动）：" + oldRoot);
+            report.AppendLine("新目录：" + current);
+            report.AppendLine("复制 " + copied.Count + " 个：");
+            foreach (string name in copied) report.AppendLine("  " + name);
+            if (skipped.Count > 0) report.AppendLine("跳过 " + skipped.Count + " 个（新目录已有同名）");
+            if (failed.Count > 0)
+            {
+                report.AppendLine("失败 " + failed.Count + " 个：");
+                foreach (string name in failed) report.AppendLine("  " + name);
+            }
+
+            Debug.Log("[BitFlow] 关卡目录迁移\n" + report);
+            EditorUtility.DisplayDialog("迁移旧关卡目录", report.ToString(), "好");
+            EditorUtility.RevealInFinder(current);
+        }
+
+        /// <summary>
+        /// 一次打印所有落点。路径分散在 AppData（运行时库）、程序旁边（分享）、文档（兜底）三处，
+        /// 光读代码或文档很容易记错 —— 这个菜单是唯一的事实来源。
+        /// </summary>
+        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/显示关卡目录总览", false, 45)]
+        static void ShowFolderOverview()
+        {
+            StringBuilder report = new StringBuilder();
+
+            report.AppendLine("[运行时库]     " + LevelJsonLibrary.Folder);
+            report.AppendLine("  可写状态     " + WriteState(LevelJsonLibrary.Folder));
+            report.AppendLine("[旧收件箱]     " + LevelJsonLibrary.IncomingFolder);
+
+            bool shareOk = LevelJsonLibrary.EnsureShareFolder(out string shareError);
+            report.AppendLine("[分享目录]     " + LevelJsonLibrary.ShareFolder);
+            report.AppendLine("  可写状态     " + (shareOk ? WriteState(LevelJsonLibrary.ShareFolder) : "✗ " + shareError));
+
+            List<string> drops = LevelJsonLibrary.DropFolders();
+            report.AppendLine("[批量导入扫描] " + drops.Count + " 个目录");
+            foreach (string folder in drops) report.AppendLine("               " + folder);
+
+            report.AppendLine("[草稿存档]     " + LevelDraftSerializer.DefaultPath);
+            report.AppendLine("  可写状态     " + WriteState(Path.GetDirectoryName(LevelDraftSerializer.DefaultPath)));
+            report.AppendLine("[通关存档]     " + SaveStore.FilePath);
+            report.AppendLine("  可写状态     " + WriteState(Path.GetDirectoryName(SaveStore.FilePath)));
+
+            Debug.Log("[BitFlow] 关卡目录总览\n" + report);
+            EditorUtility.DisplayDialog("关卡目录总览", report.ToString(), "好");
+        }
+
+        /// <summary>目录能不能写：真写一个探针文件再删掉，比看权限位靠谱（UAC 虚拟化会骗人）。</summary>
+        static string WriteState(string folder)
+        {
+            if (string.IsNullOrEmpty(folder)) return "—";
+            if (!Directory.Exists(folder)) return "✗ 不存在";
+
+            try
+            {
+                string probe = Path.Combine(folder, ".write_probe");
+                File.WriteAllText(probe, "SHIFT GO");
+                File.Delete(probe);
+                return "✓ 可写";
+            }
+            catch (Exception)
+            {
+                return "✗ 只读";
+            }
         }
 
         // ------------------------------------------------------------------ 注册表

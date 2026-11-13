@@ -598,7 +598,7 @@ namespace ShiftGo.BitFlow.Tests
             try
             {
                 // 不能断言“总导入数为 0”：ImportFromDropFolders 也会扫描真实分享目录，
-                // 玩家自己放在 LevelJson/share 里的文件会被正常导入，数量不是这个测试能控制的。
+                // 玩家自己放在 Levels/share 里的文件会被正常导入，数量不是这个测试能控制的。
                 // 本测试只关心同名碰撞：目标文件不能被覆盖，问题列表要点名它。
                 LevelJsonLibrary.ImportFromDropFolders(out List<string> problems, out _);
                 TrackNewLibraryFiles(libraryBefore);
@@ -644,6 +644,28 @@ namespace ShiftGo.BitFlow.Tests
                 if (File.Exists(inbox)) File.Delete(inbox);
                 if (File.Exists(destination)) File.Delete(destination);
             }
+        }
+
+        /// <summary>
+        /// 回归（Windows 打包版 bug）：批量导入不许依赖「玩家之前点过 SHARE 按钮」。
+        ///
+        /// 旧实现里 <c>DropFolders()</c> 直接读 <c>ShareFolder</c> 只读属性：exe 装在 Program Files 时
+        /// 那个属性还停在首选路径（程序旁边），真实落点（文档目录）根本没进扫描列表，
+        /// 于是 BATCH IMPORT 假报 SHARE FOLDER IS EMPTY。
+        /// 现在 <c>DropFolders()</c> 自己先把落点解析出来，所以「谁先调」都不影响结果。
+        ///
+        /// 局限：编辑器里程序目录总是可写的，造不出「首选路径 ≠ 真实落点」的场景；
+        /// 这条只能守住「DropFolders 负责把分享目录备好」这个契约 —— 它哪天红了，
+        /// 基本就是有人把那句 EnsureShareFolder 删了。
+        /// </summary>
+        [Test]
+        public void DropFolders_ResolvesShareFolderWithoutCallerEnsure()
+        {
+            List<string> folders = LevelJsonLibrary.DropFolders();
+
+            Assert.Contains(LevelJsonLibrary.ShareFolder, folders, "分享目录必须在扫描列表里");
+            Assert.IsTrue(Directory.Exists(LevelJsonLibrary.ShareFolder),
+                "DropFolders 应该顺手把分享目录解析/建出来：" + LevelJsonLibrary.ShareFolder);
         }
 
         [Test]

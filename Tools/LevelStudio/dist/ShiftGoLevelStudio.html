@@ -1629,8 +1629,12 @@ function serializeDoc() {
 
   const out = {
     schema: 2,
-    // 名字就是身份，不再拿文件名兜底 —— 文件名是它的派生品（见 fileNameOf），不是另一个真名。
-    displayName: doc.displayName || LEVEL_NAMING.fallback,
+    // 名字就是身份，文件名是它的派生品（见 fileNameOf）—— 但名字本身也得先过同一套规则：
+    // 像素字体只有 A-Z / 0-9 / - _ 和空格，小写和中文在游戏里根本画不出来。
+    // 以前这里写 doc.displayName 原文，于是 ONE_ONLY.json 里装着 "One only"：
+    // 文件名一个名字、内容另一个名字，存回去再打开像换了一关。
+    // 规范化只在 sanitizeName 里做一次，文件名 / 预览 / JSON / 下载全都从这儿走。
+    displayName: sanitizeName(doc.displayName) || LEVEL_NAMING.fallback,
     width: doc.width,
     height: doc.height,
     // 四舍五入到 3 位：float 存回来的 0.3499999940395355 这种残渣不该写进 JSON
@@ -2042,6 +2046,7 @@ async function openLevel(name) {
     state.fileName = name;
     // 老文件没写 displayName：用文件名当标题（Unity 侧也是这么兜底的），别留一个空标题给玩家看。
     if (!state.doc.displayName) state.doc.displayName = String(name).replace(/_/g, ' ');
+    noteNameNormalization();
     state.selectedKey = null;
     resetHistory();
     syncMetaInputs();
@@ -2188,6 +2193,24 @@ function showNotes() {
 }
 
 /**
+ * 名字里游戏显示不出来的写法，读入时就说，别等存完才发现变了。
+ *
+ * 不在这里改数据：打开 / 导入一份文件时「不偷偷改名」是既定原则，改名是保存那一刻的事。
+ * 但「One only 在游戏里会显示成 ONE ONLY」必须现在说 —— 否则作者存的瞬间会以为
+ * 编辑器擅自动了他的字。规范化本身只发生在 serializeDoc()，也就是所有出口的那一处。
+ */
+function noteNameNormalization() {
+  const typed = String(state.doc.displayName || '');
+  if (!typed) return;
+
+  const shown = sanitizeName(typed);
+  if (shown === typed) return;
+
+  state.notes.push('关卡名「' + typed + '」在游戏里显示成「' + (shown || LEVEL_NAMING.fallback)
+    + '」——像素字体只有大写字形，保存时会按后者写进 JSON');
+}
+
+/**
  * 把一份 json 文本读进编辑器。文本框粘贴、选文件、拖文件三条路都汇到这里 ——
  * 读入路径只有一份，不会出现「粘进来能过、拖进来过不了」的漂移。
  * 读入后不继承上一份的身份（fileName=null），保存时按新名字落盘，不会把刚打开的那一关按新名字搬走。
@@ -2205,6 +2228,7 @@ function adoptJsonText(text, source) {
 
     state.notes = [];
     state.doc = fromDocument(parsed);
+    noteNameNormalization();
     state.fileName = null;
     state.selectedKey = null;
     resetHistory();
@@ -2512,6 +2536,14 @@ async function saveLevel() {
 
     state.fileName = result.name;
     el.jsonBox.value = json;
+
+    // 后端按 Core 的规则把名字规范化了（'One only' → 'ONE ONLY'），把结果写回编辑器。
+    // 不写回的话：输入框还留着原始大小写，磁盘和游戏里却都是大写 —— 下次打开像另一关。
+    // syncMetaInputs 只重铺界面，不触碰撤销栈（规范化不是一次编辑动作）。
+    if (result.displayName && result.displayName !== state.doc.displayName) {
+      state.doc.displayName = result.displayName;
+      syncMetaInputs();
+    }
 
     // 「已改名 / 已覆盖 / 新写入」是三件不同的事，别糊成一句「已保存」。
     // 改名尤其要说 —— 磁盘上少了一个文件，作者得知道那是这里做掉的。
