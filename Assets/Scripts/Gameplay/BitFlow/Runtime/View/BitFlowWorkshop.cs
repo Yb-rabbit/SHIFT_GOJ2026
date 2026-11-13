@@ -84,7 +84,7 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         public static BitFlowWorkshop Ensure()
         {
-            BitFlowWorkshop existing = FindObjectOfType<BitFlowWorkshop>();
+            BitFlowWorkshop existing = FindFirstObjectByType<BitFlowWorkshop>();
             if (existing != null) return existing;
 
             GameObject root = new GameObject("BitFlowWorkshop");
@@ -101,12 +101,12 @@ namespace ShiftGo.BitFlow.View
 
         void Resolve()
         {
-            if (runner == null) runner = FindObjectOfType<BitFlowRunner>();
-            if (tray == null) tray = FindObjectOfType<BitFlowCardTray>();
-            if (hud == null) hud = FindObjectOfType<BitFlowHud>();
-            if (panel == null) panel = FindObjectOfType<LevelSelectPanel>();
-            if (flow == null) flow = FindObjectOfType<LevelFlow>();
-            if (setup == null) setup = FindObjectOfType<BitFlowSetupPanel>();
+            if (runner == null) runner = FindFirstObjectByType<BitFlowRunner>();
+            if (tray == null) tray = FindFirstObjectByType<BitFlowCardTray>();
+            if (hud == null) hud = FindFirstObjectByType<BitFlowHud>();
+            if (panel == null) panel = FindFirstObjectByType<LevelSelectPanel>();
+            if (flow == null) flow = FindFirstObjectByType<LevelFlow>();
+            if (setup == null) setup = FindFirstObjectByType<BitFlowSetupPanel>();
         }
 
         void OnDestroy()
@@ -600,6 +600,13 @@ namespace ShiftGo.BitFlow.View
         static bool SamePath(string a, string b)
         {
             if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+
+            // 浏览器里没有「当前目录」：Path.GetFullPath 给出的结果和别处不一致，
+            // 而两边路径都是 LevelJsonLibrary.Folder + 文件名 拼出来的，直接按字符串比更可靠。
+            if (BrowserFileSystem.IsActive)
+            {
+                return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+            }
 
             try
             {

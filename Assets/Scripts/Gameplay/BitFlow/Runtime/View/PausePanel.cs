@@ -48,7 +48,7 @@ namespace ShiftGo.BitFlow.View
         /// <summary>由 HUD 在 Start 里调用；场景里已经有就复用，不重复建 Canvas。</summary>
         public static PausePanel Ensure()
         {
-            PausePanel existing = FindObjectOfType<PausePanel>();
+            PausePanel existing = FindFirstObjectByType<PausePanel>();
             if (existing != null) return existing;
 
             GameObject go = new GameObject("PausePanel");
@@ -65,7 +65,7 @@ namespace ShiftGo.BitFlow.View
 
         void Start()
         {
-            flow = FindObjectOfType<LevelFlow>();
+            flow = FindFirstObjectByType<LevelFlow>();
         }
 
         void LateUpdate()
@@ -96,7 +96,7 @@ namespace ShiftGo.BitFlow.View
             if (open) return false;
             if (InputGate.Locked) return false;
 
-            BitFlowWorkshop workshop = FindObjectOfType<BitFlowWorkshop>();
+            BitFlowWorkshop workshop = FindFirstObjectByType<BitFlowWorkshop>();
             return workshop == null || !workshop.IsOpen;
         }
 
@@ -104,7 +104,7 @@ namespace ShiftGo.BitFlow.View
         {
             if (open) return;
 
-            if (flow == null) flow = FindObjectOfType<LevelFlow>();
+            if (flow == null) flow = FindFirstObjectByType<LevelFlow>();
 
             open = true;
             previousTimeScale = Time.timeScale;
@@ -151,7 +151,7 @@ namespace ShiftGo.BitFlow.View
         {
             Close();
 
-            if (flow == null) flow = FindObjectOfType<LevelFlow>();
+            if (flow == null) flow = FindFirstObjectByType<LevelFlow>();
             if (flow == null || !flow.Retry())
             {
                 Debug.LogWarning("[BitFlow] 暂停面板：当前没有可重试的关卡");
@@ -162,7 +162,7 @@ namespace ShiftGo.BitFlow.View
         {
             Close();
 
-            LevelSelectPanel panel = FindObjectOfType<LevelSelectPanel>();
+            LevelSelectPanel panel = FindFirstObjectByType<LevelSelectPanel>();
             if (panel != null) panel.Open();
         }
 

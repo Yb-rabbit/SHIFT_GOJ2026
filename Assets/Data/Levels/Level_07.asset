@@ -1,0 +1,57 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 70be23a18564f99488f2111e20592de1, type: 3}
+  m_Name: Level_07
+  m_EditorClassIdentifier: 
+  displayName: One only
+  width: 9
+  height: 8
+  tickInterval: 0.35
+  placements:
+  - type: {fileID: 11400000, guid: ab1b2b510387cb84ba1ef1f2678a0898, type: 2}
+    coord: {x: 0, y: 4}
+    rotationSteps: 0
+    playerEditable: 0
+    overrideSequence: 1
+    sequence: 10110000
+    overrideCount: 1
+    count: 8
+    overrideFace: 0
+    acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 1
+    overrideDelayTicks: 0
+    delayTicks: 1
+  - type: {fileID: 11400000, guid: 69beb065ab3106e488858cd66bf902dd, type: 2}
+    coord: {x: 8, y: 6}
+    rotationSteps: 0
+    playerEditable: 0
+    overrideSequence: 1
+    sequence: 11111111
+    overrideCount: 1
+    count: 8
+    overrideFace: 1
+    acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 1
+    overrideDelayTicks: 0
+    delayTicks: 1
+  wallType: {fileID: 0}
+  wallMap: 
+  supplies:
+  - type: {fileID: 11400000, guid: cdae8e12b73a3f94787ad29d7c5d928d, type: 2}
+    count: 1
+  - type: {fileID: 11400000, guid: 7e3473b8ae100234aa994dd6ea61145f, type: 2}
+    count: 1
+  - type: {fileID: 11400000, guid: e25817d1fdcd78042ae44997f5900f44, type: 2}
+    count: 1
+  allowBuild: 1

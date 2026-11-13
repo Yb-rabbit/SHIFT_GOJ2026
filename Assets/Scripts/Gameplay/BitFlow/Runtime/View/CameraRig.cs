@@ -46,7 +46,7 @@ namespace ShiftGo.BitFlow.View
 
         void Awake()
         {
-            runner = FindObjectOfType<BitFlowRunner>();
+            runner = FindFirstObjectByType<BitFlowRunner>();
 
             // 默认不自动演：先把镜头冻住，等黑幕调 Prepare（摆到开场机位）和 Play（真正开始推）。
             // 用 enabled 而不是一个「等会儿再推」的标志位 —— LateUpdate 一行都不跑，最省也最不会抢戏。
@@ -61,7 +61,7 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         public void Prepare()
         {
-            if (runner == null) runner = FindObjectOfType<BitFlowRunner>();
+            if (runner == null) runner = FindFirstObjectByType<BitFlowRunner>();
 
             elapsed = 0f;
             enabled = false;
@@ -80,7 +80,7 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         public void Play()
         {
-            if (runner == null) runner = FindObjectOfType<BitFlowRunner>();
+            if (runner == null) runner = FindFirstObjectByType<BitFlowRunner>();
 
             configured = false;
             elapsed = 0f;
@@ -130,7 +130,7 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         public void Frame(LevelDefinition level = null)
         {
-            if (runner == null) runner = FindObjectOfType<BitFlowRunner>();
+            if (runner == null) runner = FindFirstObjectByType<BitFlowRunner>();
 
             LevelDefinition target = level;
             if (target == null && runner != null) target = runner.Definition;

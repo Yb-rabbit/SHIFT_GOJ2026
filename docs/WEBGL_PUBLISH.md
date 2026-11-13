@@ -1,4 +1,4 @@
-﻿# WebGL 发布手册（itch.io）
+# WebGL 发布手册（itch.io）
 
 > 目标编辑器：**Unity 2023.2.20f1**（`D:\UnityHubNocn\Unity2023.2.20f1\Unity 2023.2.20f1`，模块自洽）
 > 构建目录：`Builds/WebGL/` ｜ 体检：`Tools/check-webgl-module.ps1` ｜ 打包：`Tools/pack-webgl.ps1`
@@ -193,6 +193,54 @@ console 里还剩两类**无害**刷屏，认识一下就不会误判：
 - `ERROR: Shader Hidden/Universal Render Pipeline/... is not supported on this GPU`：
   URP 的调试用 shader 在无 GPU 的 headless 或部分集显上不可用，跟游戏画面无关。
 
+## 关卡导入 / 导出（浏览器里没有文件夹）
+
+WebGL 里 `System.IO` 只有 Emscripten 的 IndexedDB 虚拟盘（`PlayerPrefs` 就落在那里），
+`Application.persistentDataPath` 不是一个玩家能翻到的目录；`LevelJsonLibrary.EnsureShareFolder` 必然失败，
+`FilePicker.IsSupported` 也是 `false`。所以浏览器走另一条最小的桥：
+
+- 导入：页面里插一个 `<input type="file" accept=".json,application/json">`，`FileReader` 读成文本后
+  用 `SendMessage('BitFlowWebGLBridge', 'OnJsonPicked', 文件名 + '\u0001' + 正文)` 交回 C#。
+- 导出 / 分享副本：`Blob` + `a[download]`，文件名取关卡 `displayName`（非法字符换成 `_`）。
+- 实现：`Assets/Plugins/WebGL/BitFlowBrowserIo.jslib`（只做弹控件 / 收文本）
+  + `Assets/Scripts/Gameplay/BitFlow/Runtime/Data/BrowserJsonImport.cs`（回调、桥对象、DllImport）。
+
+约定（以后加浏览器能力照这个来）：
+
+- 验货、重名、落盘全在 C#：`LevelJsonLibrary.TryImportJson` 和桌面那条 `TryImportFile`
+  共用同一份 `WriteImport`，不会一边宽松一边严格。
+- `SendMessage` 只接受一个参数，所以文件名与正文用 `\u0001` 拼起来，C# 按第一个 `\u0001` 拆开。
+- jslib 里 `SendMessage` 的目标对象名固定 `BitFlowWebGLBridge`，改名字必须两边一起改。
+- 弹文件选择器靠浏览器的「瞬时用户激活」：Unity 在自己的输入循环里处理点击（仍是同一个事件循环），
+  Chrome / Edge / Firefox 实测都能弹。某个浏览器没反应时，先查是不是无头模式，或嵌在 iframe 里被
+  `allow` 策略挡了。
+- 浏览器里的关卡就是站点存储：清站点数据 / 换浏览器 / 换设备 = 关卡没了，要留就 `EXPORT` 成 `.json` 发出去。
+- 作者关卡已经进包了：`Assets/Resources/BitFlow/Levels/*.json` 由 `BundledLevels` 在首次启动时播种进同一份站点存储，
+  所以 `MY LEVELS` 里既有内置关、也有玩家自己造的关（怎么生成见下一节）。
+
+### 内置关卡（作者关）怎么进浏览器
+
+```
+LevelJson/*.json + LevelJson/incoming/*.json
+   │  SHIFT GO/BitFlow/关卡 JSON/生成内置关卡包（出包前也会自动跑）
+   ▼
+Assets/Resources/BitFlow/Levels/*.json        ← 生成物，要提交
+   │  首次启动：LevelJsonLibrary.EnsureFolder() → BundledLevels.InstallIfNeeded()
+   ▼
+PlayerPrefs（IndexedDB）里的 LevelJson/*.json  ← 和玩家自己造的关同一份存储
+```
+
+- **生成**：菜单 `SHIFT GO/BitFlow/关卡 JSON/生成内置关卡包`。出包前 `IPreprocessBuildWithReport` 会自动再跑一次，
+  Console 里会出现 `[BitFlow] 出包前已刷新内置关卡包：N 关 → ...`；源里删掉的关会连 `.meta` 一起从包里清掉。
+  `exported/` 不参与打包（那是导出参照）。
+- **为什么浏览器也能用**：播种只调 `LevelJsonLibrary` 的 `FileExists / ReadAllText / WriteAllText`，
+  在 WebGL 上这些自动落到 `BrowserFileSystem`（PlayerPrefs → IndexedDB），不需要另写一套浏览器代码。
+- **覆盖规则**：清单 `BitFlow.Seeds.Manifest` 记「上次播种时的内容摘要」——
+  没人动过的内置关跟着新版更新；玩家改过 / 删掉的关永远以玩家为准（删了不复活）。
+  详见 `LEVEL_JSON.md`。
+- **加一关**：json 放进 `LevelJson/`（或 `incoming/`）→ 跑菜单 → 重新出包。
+- **验证**：浏览器 `MY LEVELS` 能看到内置关 → 通关 / `EDIT` / `EXPORT` 都正常 → 删掉后刷新页面不再出现。
+
 ## 上传前检查清单
 
 - [ ] `check-webgl-module.ps1` 输出 `status : OK`
@@ -201,6 +249,9 @@ console 里还剩两类**无害**刷屏，认识一下就不会误判：
 - [ ] 本地 `http://127.0.0.1:8099/` 能进主菜单、能开一关
 - [ ] zip 体积 12~13 MB（未压缩产物 ~42 MB；~60 MB 说明 Development Build 忘了关）
 - [ ] itch：Kind = HTML、勾了浏览器运行、嵌入尺寸 960x600
+- [ ] 浏览器里 `+ NEW LEVEL` 造一关 → `EXPORT` 能下载 `.json` → `IMPORT · FROM FILE` 能把同一份导回来
+- [ ] `Assets/Resources/BitFlow/Levels/` 里就是要内置的作者关（出包日志有 `出包前已刷新内置关卡包`），
+      浏览器 `MY LEVELS` 能看到它们，且删掉后刷新不复活
 - [ ] 上传后 Ctrl+F5 强刷再看（itch 会缓存旧包）
 
 ## 清理记录（2026-11-13）

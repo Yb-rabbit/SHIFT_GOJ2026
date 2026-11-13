@@ -1,0 +1,6 @@
+关卡 JSON：ONE_ONLY.json
+  · 新建类型变体：Type_Emitter_Auto1
+  · 新建类型变体：Type_Receiver_Auto2
+9×8，元件 2 个，墙 0 面，手牌 3 摞
+试跑：❌ 未通过 15 ticks
+  R2   0/8 少收  ✗   实收 （空）

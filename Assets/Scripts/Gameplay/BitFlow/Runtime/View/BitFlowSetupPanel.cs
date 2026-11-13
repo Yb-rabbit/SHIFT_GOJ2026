@@ -94,7 +94,7 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         public static BitFlowSetupPanel Ensure(BitFlowCardTray cardTray, IReadOnlyList<ElementTypeSO> types, LevelDraft target)
         {
-            BitFlowSetupPanel existing = FindObjectOfType<BitFlowSetupPanel>();
+            BitFlowSetupPanel existing = FindFirstObjectByType<BitFlowSetupPanel>();
             if (existing == null)
             {
                 GameObject root = new GameObject("BitFlowSetupPanel");
@@ -576,7 +576,7 @@ namespace ShiftGo.BitFlow.View
             string current = draft != null ? draft.DisplayName : string.Empty;
 
             RectTransform info = BeginRow(30f, 6f);
-            BitFlowWorkshop workshop = FindObjectOfType<BitFlowWorkshop>();
+            BitFlowWorkshop workshop = FindFirstObjectByType<BitFlowWorkshop>();
             bool editing = workshop != null && workshop.IsEditingExisting;
             AddLabel(info, editing ? "EDITING AN EXISTING LEVEL  ·  DONE SAVES IN PLACE" : "NEW LEVEL  ·  DONE SAVES A NEW FILE",
                 0f, InnerWidth, TextAnchor.MiddleLeft, MutedColor, PixelFont.Small);
@@ -633,7 +633,7 @@ namespace ShiftGo.BitFlow.View
             if (draft == null || nameField == null) return;
 
             string raw = nameField.text;
-            BitFlowWorkshop workshop = FindObjectOfType<BitFlowWorkshop>();
+            BitFlowWorkshop workshop = FindFirstObjectByType<BitFlowWorkshop>();
             if (workshop == null)
             {
                 nameError = "WORKSHOP NOT FOUND";

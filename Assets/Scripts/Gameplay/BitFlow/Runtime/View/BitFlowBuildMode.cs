@@ -72,7 +72,7 @@ namespace ShiftGo.BitFlow.View
 
         void Start()
         {
-            runner = FindObjectOfType<BitFlowRunner>();
+            runner = FindFirstObjectByType<BitFlowRunner>();
             mainCamera = Camera.main;
             // 作者模式<b>故意</b>不换像素字体：这里的文案是中文（调色板、状态行、快捷键说明），
             // 而像素字体没有中文字形，打包后会变成方块。它是开发工具、不面向玩家，
@@ -101,7 +101,7 @@ namespace ShiftGo.BitFlow.View
 
         static void EnsureEventSystem()
         {
-            if (FindObjectOfType<EventSystem>() != null) return;
+            if (FindFirstObjectByType<EventSystem>() != null) return;
             GameObject go = new GameObject("EventSystem");
             go.AddComponent<EventSystem>();
             go.AddComponent<StandaloneInputModule>();

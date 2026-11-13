@@ -24,6 +24,13 @@ LevelJson/
 | 运行时关卡目录 | `Application.persistentDataPath/LevelJson/*.json`（内部存储，玩家不需要手动翻） |
 | 玩家分享 / 导入目录 | 程序旁边 `LevelJson/share/`（独立版 = exe 同级；编辑器 = 工程根目录）；不可写时退到 `文档/SHIFT GO/Levels`。目录说明 `README.txt` 首行带版本戳、**不写绝对路径**，旧版说明会在下次启动时自动改写 |
 | 类型注册表 | `Assets/Resources/BitFlow/LevelTypeRegistry.asset`（进包，运行时 `Resources.Load`） |
+| 内置关卡包（作者关卡） | `Assets/Resources/BitFlow/Levels/*.json`（**生成物但要提交**；首次启动由 `BundledLevels` 播种进运行时关卡目录） |
+
+> **浏览器（WebGL / itch）**：上表里的「目录」一个都不存在 —— 浏览器只有 `PlayerPrefs`（落在 IndexedDB）
+> 这一块存储，`EnsureShareFolder` 永远失败，`FilePicker.IsSupported` 是 `false`。
+> 浏览器里：`MY LEVELS` 存在同一个浏览器的站点存储里（换浏览器 / 清站点数据 = 没了）；
+> 导入走浏览器自己的文件选择器（`Assets/Plugins/WebGL/BitFlowBrowserIo.jslib` + `BrowserJsonImport.cs`）；
+> 导出 / 分享变成浏览器下载的 `.json`。详见 `WEBGL_PUBLISH.md`。
 
 - 选关面板（游戏里按 `L` 打开）的 `MY LEVELS` 分区列出运行时关卡目录里的关卡；`_` 开头的草稿不列出，读不通的文件只在 Console 报原因
 - 面板顶部的 `FILES` 组是玩家侧的文件入口：
@@ -33,6 +40,9 @@ LevelJson/
   - `MY LEVELS` 每一行 `...` 里的 `EDIT` / `SHARE · SAVE COPY` / `DELETE · JSON FILE` 负责编辑、复制到分享目录、删除；
   - `SHARE FOLDER` / `COPY SHARE FOLDER PATH` 打开 / 复制玩家可见的分享目录。
   导入前一律先验货（和进关同一个 `Parse`），读不通的不落盘。分享目录里的文件必须先导入，不会自动出现在列表。详见 `PLAYER_GUIDE.md`
+  - **浏览器构建**里只剩 `IMPORT · FROM FILE`（浏览器文件选择器）、`EXPORT`（下载 `.json`）
+    和行内的 `SHARE · SAVE COPY`（也是下载）；分享目录 / 剪贴板 / 复制路径这些按钮不会出现。
+    下载文件的默认名 = 关卡的 `displayName`，导回来时按这个文件名落盘，重名规则和桌面完全一样。
 - 点一条 → `LevelFlow.LoadJson` → `LevelJsonLibrary.TryLoad` → 临时 `LevelSO` → `BitFlowRunner.LoadLevel`。
   读盘/解析失败不盖黑幕，停在面板上；临时资产由 `LevelFlow` / 面板负责回收
 - 类型解析只查注册表、不碰 `AssetDatabase`，所以**编辑器 Play / EditMode 测试 / 打包 Player 跑的是同一段代码**
@@ -43,6 +53,35 @@ LevelJson/
 （根目录 `LevelJson/` + `incoming/` 单向复制；`exported/` 不参与，那是导出参照。
 同名先到先得、目录里已有文件不删，玩家自己扔的关不会被动掉）。
 复制完会用运行时那套代码现场读一遍，读不通的当场在 Console 点名。
+
+**作者关卡预置打包（桌面 / 浏览器都要有）**：菜单 `SHIFT GO/BitFlow/关卡 JSON/生成内置关卡包`
+（出包前 `IPreprocessBuildWithReport` 也会自动跑一遍，忘了点也不会打出旧包）。
+
+```
+LevelJson/*.json + LevelJson/incoming/*.json
+        │  原文照搬（复制前用运行时 Parse 验货，坏文件只在这里报一次）
+        ▼
+Assets/Resources/BitFlow/Levels/*.json        ← 生成物，但要提交进版本库
+        │  首次启动：LevelJsonLibrary.EnsureFolder() → BundledLevels.InstallIfNeeded()
+        ▼
+persistentDataPath/LevelJson/*.json            ← 和玩家自己造的关躺在同一个目录
+```
+
+`exported/` 是导出参照，**不参与**打包；`_` 开头、`catalog.json`、`typeCatalog.json` 会被跳过；
+源里删掉的关卡会连文件带 `.meta` 一起从包里清掉。运行时不做「内置关」的特殊分支 ——
+它们就是普通 JSON 关卡，列表 / 进关 / 编辑 / 导出 / 删除全都一样。
+
+覆盖规则（清单 `PlayerPrefs("BitFlow.Seeds.Manifest")` 记「上次播种的内容摘要」）：
+
+| 本地状态 | 结果 |
+|---|---|
+| 没有这个文件，清单里也没有 | 播种 |
+| 没有这个文件，清单里有（玩家删过） | **不复活** |
+| 内容 == 包内内容 | 不动（已经是最新） |
+| 内容 == 上次播种的内容（没人动过） | 跟着新版本覆盖 |
+| 内容被改过（或玩家自己导入过同名关） | **玩家赢**，一个字节都不动 |
+
+一句话：作者改版能到老玩家手里，玩家的改动和删除永远优先。
 
 **新增或改名元件类型资产后**必须再跑一次 `刷新类型注册表`，否则 JSON 里的 `type` 会断链。
 
@@ -126,13 +165,15 @@ LevelJson/
 
 运行时（打包后也要能跑的那一半）：
 
-刷新类型注册表 · 同步到运行时目录 · 打开运行时关卡目录 · 一键：刷新注册表并同步 · 导出类型目录（给外部编辑器）· 打开外部关卡编辑器
+刷新类型注册表 · 同步到运行时目录 · 打开运行时关卡目录 · 一键：刷新注册表并同步 · **生成内置关卡包** · 导出类型目录（给外部编辑器）· 打开外部关卡编辑器
 
 实现：
 - `Runtime/Data/LevelJsonSerializer.cs`（序列化核心，EditMode 测试覆盖）
 - `Editor/BitFlow/LevelJsonTool.cs`（资产解析与菜单）
 - `Runtime/Data/LevelTypeRegistrySO.cs` / `LevelTypeRegistryResolver.cs` / `LevelJsonLibrary.cs`（运行时读取，EditMode 测试覆盖）
 - `Editor/BitFlow/LevelJsonRuntimeSetup.cs`（注册表刷新与单向同步）
+- `Editor/BitFlow/LevelSeedBundler.cs`（作者关卡 → `Resources/BitFlow/Levels`，菜单 + 出包前钩子）
+- `Runtime/Data/BundledLevels.cs`（首次启动把内置关卡播进关卡目录，内含覆盖规则，EditMode 测试覆盖）
 - `Runtime/Core/LevelDocument.cs` / `LevelDocumentBuilder.cs` / `LevelDocumentWriter.cs` / `LevelTypeCatalog.cs`（纯 C# 数据层，Unity 之外也能编译 —— 见 `docs/LEVEL_STUDIO.md`）
 - `Tools/LevelStudio/`（Unity 之外的关卡编辑器：放元件、看朝向、跑真引擎自测、存 JSON）
 

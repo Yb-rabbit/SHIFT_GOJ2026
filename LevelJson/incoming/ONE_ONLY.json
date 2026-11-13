@@ -1,0 +1,47 @@
+{
+  "schema": 2,
+  "displayName": "One only",
+  "width": 9,
+  "height": 8,
+  "tickInterval": 0.35,
+  "wallType": "Type_Wall",
+  "elements": [
+    {
+      "kind": "Emitter",
+      "x": 0,
+      "y": 4,
+      "dir": "Right",
+      "sequence": "10110000",
+      "count": 8,
+      "playerEditable": false
+    },
+    {
+      "kind": "Receiver",
+      "x": 8,
+      "y": 6,
+      "dir": "Down",
+      "sequence": "11111111",
+      "count": 8,
+      "face": "any",
+      "playerEditable": false
+    }
+  ],
+  "supplies": [
+    {
+      "kind": "Splitter",
+      "type": "Type_Splitter_L1",
+      "count": 1
+    },
+    {
+      "kind": "NotGate",
+      "type": "Type_NotGate_N1",
+      "count": 1
+    },
+    {
+      "kind": "Filter",
+      "type": "Type_Filter_F1",
+      "count": 1
+    }
+  ],
+  "allowBuild": true
+}

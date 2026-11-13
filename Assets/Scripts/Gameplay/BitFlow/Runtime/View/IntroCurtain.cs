@@ -110,9 +110,9 @@ namespace ShiftGo.BitFlow.View
 
         void Start()
         {
-            flow = FindObjectOfType<LevelFlow>();
-            runner = FindObjectOfType<BitFlowRunner>();
-            cameraRig = FindObjectOfType<CameraRig>();
+            flow = FindFirstObjectByType<LevelFlow>();
+            runner = FindFirstObjectByType<BitFlowRunner>();
+            cameraRig = FindFirstObjectByType<CameraRig>();
 
             // 有外部演出（开场终端）盖在前面时，先把镜头摆到开场远景：
             // 终端是半透明的，背景里的机器和网格必须已经是"开场机位"，

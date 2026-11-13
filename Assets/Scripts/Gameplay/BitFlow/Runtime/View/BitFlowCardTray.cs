@@ -351,8 +351,8 @@ namespace ShiftGo.BitFlow.View
 
         void Start()
         {
-            runner = FindObjectOfType<BitFlowRunner>();
-            flow = FindObjectOfType<LevelFlow>();
+            runner = FindFirstObjectByType<BitFlowRunner>();
+            flow = FindFirstObjectByType<LevelFlow>();
             mainCamera = Camera.main;
             font = PixelFont.Get();
 
@@ -396,7 +396,7 @@ namespace ShiftGo.BitFlow.View
 
         static void EnsureEventSystem()
         {
-            if (FindObjectOfType<EventSystem>() != null) return;
+            if (FindFirstObjectByType<EventSystem>() != null) return;
             GameObject go = new GameObject("EventSystem");
             go.AddComponent<EventSystem>();
             go.AddComponent<StandaloneInputModule>();

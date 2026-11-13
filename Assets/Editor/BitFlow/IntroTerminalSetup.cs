@@ -21,7 +21,9 @@ namespace ShiftGo.EditorTools
         {
             Scene scene = SceneManager.GetActiveScene();
 
-            IntroTerminal existing = Object.FindObjectOfType<IntroTerminal>();
+            // FindFirstObjectByType 默认只找激活对象（FindObjectsInactive.Exclude），
+            // 和旧的 FindObjectOfType 行为一致；后者在 2023.2 已标记过时。
+            IntroTerminal existing = Object.FindFirstObjectByType<IntroTerminal>();
             if (existing != null)
             {
                 Selection.activeGameObject = existing.gameObject;
@@ -39,7 +41,7 @@ namespace ShiftGo.EditorTools
 
             if (!scene.isDirty) EditorSceneManager.MarkSceneDirty(scene);
 
-            if (Object.FindObjectOfType<IntroCurtain>() == null)
+            if (Object.FindFirstObjectByType<IntroCurtain>() == null)
             {
                 Debug.LogWarning("[BitFlow] 已挂上 IntroTerminal，但当前场景里没有 IntroCurtain —— " +
                     "终端演完之后没人接场，会直接放开输入进关卡。想要「终端 → 关卡黑幕」的完整衔接，" +

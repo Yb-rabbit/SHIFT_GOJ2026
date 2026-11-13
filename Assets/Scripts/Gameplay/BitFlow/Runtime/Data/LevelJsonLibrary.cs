@@ -191,6 +191,10 @@ namespace ShiftGo.BitFlow.Data
             if (!DirectoryExists(incoming)) CreateDirectory(incoming);
 
             WriteReadmeIfMissing(folder);
+
+            // 内置的作者关卡：走的是和玩家导入完全相同的写盘路径（同一个目录、同一份文件格式），
+            // 所以第一次开面板时它们就已经躺在 MY LEVELS 里，没有任何「特殊关卡」分支。
+            BundledLevels.InstallIfNeeded();
         }
 
         /// <summary>
@@ -646,6 +650,58 @@ namespace ShiftGo.BitFlow.Data
                 return ImportOutcome.Failed;
             }
 
+            // 正式目录里已有同一份文件 = 已经导入过，不再造第二份
+            if (IsInsideLibrary(sourcePath))
+            {
+                path = NormalizePath(sourcePath);
+                return ImportOutcome.AlreadyInLibrary;
+            }
+
+            return WriteImport(sourceName, json, overwrite, out path, out error);
+        }
+
+        /// <summary>
+        /// 同 <see cref="TryImportFile"/>，但源是按文本给的。
+        /// 浏览器里没有可读的路径：文件选择器只交回「文件名 + 正文」，
+        /// 所以落盘规则必须和文件那条路共用一份实现（<see cref="WriteImport"/>）；
+        /// 「是不是已经在正式目录里」这个问题浏览器答不了，一律当作新导入。
+        /// </summary>
+        public static ImportOutcome TryImportJson(string fileName, string json, bool overwrite, out string path, out string error)
+        {
+            path = null;
+            error = null;
+
+            string sourceName = System.IO.Path.GetFileName(fileName ?? string.Empty);
+            if (string.IsNullOrEmpty(sourceName)) sourceName = "IMPORT.json";
+            if (!sourceName.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) sourceName += ".json";
+
+            if (IsReservedLevelFileName(sourceName))
+            {
+                error = sourceName.StartsWith("_", StringComparison.Ordinal)
+                    ? "文件名不能以下划线开头（这类文件不会显示在选关列表里）"
+                    : "catalog.json 是目录索引，不是关卡";
+                return ImportOutcome.Invalid;
+            }
+
+            return WriteImport(sourceName, json, overwrite, out path, out error);
+        }
+
+        /// <summary>
+        /// 验货 + 落盘。文件名规则、重名规则、「不覆盖」规则只写在这里一份，
+        /// 文件导入（<see cref="TryImportFile"/>）和浏览器导入（<see cref="TryImportJson"/>）共用，
+        /// 免得两边慢慢长出不一样的语义。
+        /// </summary>
+        static ImportOutcome WriteImport(string fileName, string json, bool overwrite, out string path, out string error)
+        {
+            path = null;
+            error = null;
+
+            if (string.IsNullOrEmpty(json))
+            {
+                error = "文件是空的";
+                return ImportOutcome.Invalid;
+            }
+
             // 读不通的东西一个字节都不落盘：否则列表里会多一关，点进去是黑的
             if (!TryParseJson(json, out LevelSO probe, out List<string> problems))
             {
@@ -654,16 +710,10 @@ namespace ShiftGo.BitFlow.Data
             }
             DestroyLevel(probe);
 
-            if (IsInsideLibrary(sourcePath))
-            {
-                path = NormalizePath(sourcePath);
-                return ImportOutcome.AlreadyInLibrary;
-            }
-
             EnsureFolder();
 
             // 目标名 = 源文件名：重复导入同一份文件就是覆盖它自己，不会在列表里长出 _02、_03
-            string destination = System.IO.Path.Combine(Folder, System.IO.Path.GetFileName(sourcePath));
+            string destination = System.IO.Path.Combine(Folder, fileName);
 
             if (FileExists(destination))
             {
@@ -688,7 +738,7 @@ namespace ShiftGo.BitFlow.Data
                 if (!overwrite)
                 {
                     path = destination;
-                    error = "正式目录里已有同名但内容不同的关卡：" + System.IO.Path.GetFileName(destination);
+                    error = "正式目录里已有同名但内容不同的关卡：" + fileName;
                     return ImportOutcome.NameTaken;
                 }
             }

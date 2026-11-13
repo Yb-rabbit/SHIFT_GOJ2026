@@ -39,6 +39,9 @@ namespace ShiftGo.BitFlow.Tests
             // 注册表是缓存单例：别的测试可能刷过，这里强制重新从 Resources 取一次
             LevelTypeRegistrySO.ClearCache();
             BrowserFileSystem.ClearAll();
+
+            // 现有断言按「目录里只有我写的这几关」计数：内置关卡不许来搅局
+            BundledLevels.SetSuppressedForTests(true);
         }
 
         [TearDown]
@@ -51,6 +54,7 @@ namespace ShiftGo.BitFlow.Tests
             loadedLevels.Clear();
 
             BrowserFileSystem.ClearAll();
+            BundledLevels.SetSuppressedForTests(false);
             BrowserFileSystem.SetForcedForTests(previousForced);
         }
 

@@ -139,11 +139,11 @@ namespace ShiftGo.BitFlow.View
 
         void Start()
         {
-            runner = FindObjectOfType<BitFlowRunner>();
+            runner = FindFirstObjectByType<BitFlowRunner>();
             mainCamera = Camera.main;
             font = PixelFont.Get();
-            flow = FindObjectOfType<LevelFlow>();
-            levelSelect = FindObjectOfType<LevelSelectPanel>();
+            flow = FindFirstObjectByType<LevelFlow>();
+            levelSelect = FindFirstObjectByType<LevelSelectPanel>();
 
             EnsureEventSystem();
             BuildUi();
@@ -161,7 +161,7 @@ namespace ShiftGo.BitFlow.View
             // 演出期间四角必须收起来（终端和黑幕都是半透明的，角落挂着读数会毁掉黑场）。
             // 这个判断放在 Start 而不是 Awake：BuildUi 刚建完，离第一帧还有整段 Start 阶段，
             // 在这里收起来玩家一帧都看不到它。
-            curtain = FindObjectOfType<IntroCurtain>();
+            curtain = FindFirstObjectByType<IntroCurtain>();
             if (curtain != null)
             {
                 curtain.Finished += OnCurtainFinished;
@@ -203,7 +203,7 @@ namespace ShiftGo.BitFlow.View
 
         static void EnsureEventSystem()
         {
-            if (FindObjectOfType<EventSystem>() != null) return;
+            if (FindFirstObjectByType<EventSystem>() != null) return;
             GameObject go = new GameObject("EventSystem");
             go.AddComponent<EventSystem>();
             go.AddComponent<StandaloneInputModule>();
@@ -854,7 +854,7 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         void OnLevelsClicked()
         {
-            if (levelSelect == null) levelSelect = FindObjectOfType<LevelSelectPanel>();
+            if (levelSelect == null) levelSelect = FindFirstObjectByType<LevelSelectPanel>();
             if (levelSelect != null) levelSelect.Open();
         }
 

@@ -294,7 +294,7 @@ namespace ShiftGo.BitFlow.View
             {
                 if (!rigSearched)
                 {
-                    rig = FindObjectOfType<CameraRig>();
+                    rig = FindFirstObjectByType<CameraRig>();
                     rigSearched = true;
                 }
                 return rig;

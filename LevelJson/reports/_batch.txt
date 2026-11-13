@@ -1,0 +1,7 @@
+批量导入 D:\UnityHubLab\SHIFT_GO2026\LevelJson\incoming
+
+✓ ONE_ONLY.json → Assets/Data/Levels/Level_07.asset（9×8，元件 2 个，墙 0 面，手牌 3 摞）
+  ❌ 未通过 15 ticks
+    R2   0/8 少收  ✗   实收 （空）
+
+合计：导入 1 个，失败 0 个

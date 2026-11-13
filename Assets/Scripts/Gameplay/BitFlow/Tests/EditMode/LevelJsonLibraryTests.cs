@@ -41,6 +41,9 @@ namespace ShiftGo.BitFlow.Tests
         {
             // 注册表是缓存单例：别的测试或菜单可能刷过，这里强制重新从 Resources 取一次
             LevelTypeRegistrySO.ClearCache();
+
+            // 这个类操作的是开发机真实的 persistentDataPath：内置关卡不许被顺手播进来
+            BundledLevels.SetSuppressedForTests(true);
         }
 
         [TearDown]
@@ -63,6 +66,8 @@ namespace ShiftGo.BitFlow.Tests
                 if (File.Exists(file)) File.Delete(file);
             }
             externalFiles.Clear();
+
+            BundledLevels.SetSuppressedForTests(false);
         }
 
         // ------------------------------------------------------------------ 类型注册表

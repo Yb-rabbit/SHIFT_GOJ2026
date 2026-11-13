@@ -27,11 +27,12 @@ namespace ShiftGo.EditorTools
         /// <summary>
         /// 同步来源：根目录 = 当前在做的关；incoming = 设计侧交上来的批次。
         /// <c>exported/</c> 不同步 —— 那是 Unity 侧导出的参照样例，重复进选关列表只会更乱。
+        /// 「哪些文件算关卡」这套规则和内置关卡包（<see cref="LevelSeedBundler"/>）共用一份。
         /// </summary>
-        static readonly string[] SourceFolders = { LevelJsonTool.RootFolder, LevelJsonTool.IncomingFolder };
+        static readonly string[] SourceFolders = LevelSeedSources.Folders;
 
-        /// <summary>不是关卡的文件：模板与关卡顺序表，同步过去只会让面板报错。</summary>
-        static readonly string[] NotLevels = { "_template.json", "catalog.json" };
+        /// <summary>不是关卡的文件：模板、关卡顺序表、类型快照，同步过去只会让面板报错。</summary>
+        static readonly string[] NotLevels = LevelSeedSources.NotLevels;
 
         // ------------------------------------------------------------------ 菜单
 

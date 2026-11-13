@@ -127,8 +127,8 @@ namespace ShiftGo.BitFlow.View
 
         void Start()
         {
-            flow = FindObjectOfType<LevelFlow>();
-            curtain = FindObjectOfType<IntroCurtain>();
+            flow = FindFirstObjectByType<LevelFlow>();
+            curtain = FindFirstObjectByType<IntroCurtain>();
 
             if (flow == null) Debug.LogWarning("[BitFlow] 没找到 LevelFlow，选关面板不会列出任何关卡");
         }
@@ -153,7 +153,7 @@ namespace ShiftGo.BitFlow.View
         /// <summary>工坊开着时不接管 L（工坊有自己的 DONE / HOME，是唯一一处改动草稿的地方）。</summary>
         static bool WorkshopOpen()
         {
-            BitFlowWorkshop workshop = FindObjectOfType<BitFlowWorkshop>();
+            BitFlowWorkshop workshop = FindFirstObjectByType<BitFlowWorkshop>();
             return workshop != null && workshop.IsOpen;
         }
 
@@ -309,7 +309,13 @@ namespace ShiftGo.BitFlow.View
             {
                 CreateCaption("FILES", ref y);
                 CreateAction("IMPORT", BeginImportPick, ref y);
-                CreateAction("SHARE FOLDER", OpenJsonFolder, ref y);
+
+                // 浏览器里没有「exe 旁边的分享目录」：按钮留着只会点出 SHARE FOLDER UNAVAILABLE
+                if (LevelJsonLibrary.HasLocalFiles)
+                {
+                    CreateAction("SHARE FOLDER", OpenJsonFolder, ref y);
+                }
+
                 CreateAction("REFRESH", RefreshList, ref y);
                 CreateAction(ProgressResetLabel(), RequestResetProgress, ref y);
             }
@@ -388,13 +394,24 @@ namespace ShiftGo.BitFlow.View
             float y = 0f;
             CreateCaption("IMPORT LEVEL JSON", ref y);
 
+            // 浏览器里只有「选文件」这条真能用（靠 jslib 弹 <input type="file">）；
+            // 分享目录和系统剪贴板在 WebGL 里都不存在，摆出来只会点出 EMPTY。
             CreateAction("FROM FILE  ·  PICK A .JSON", ImportFromFile, ref y);
-            CreateAction("FROM SHARE FOLDER  ·  BATCH IMPORT", ImportFromInbox, ref y);
-            CreateAction("FROM CLIPBOARD", ImportFromClipboard, ref y);
 
-            CreateCaption("SHARE FOLDER", ref y);
-            CreateAction("COPY SHARE FOLDER PATH", CopyFolderPath, ref y);
-            CreateHint("FILES IN THE SHARE FOLDER ARE IMPORTED, NOT PLAYED IN PLACE", ref y);
+            if (LevelJsonLibrary.HasLocalFiles)
+            {
+                CreateAction("FROM SHARE FOLDER  ·  BATCH IMPORT", ImportFromInbox, ref y);
+                CreateAction("FROM CLIPBOARD", ImportFromClipboard, ref y);
+
+                CreateCaption("SHARE FOLDER", ref y);
+                CreateAction("COPY SHARE FOLDER PATH", CopyFolderPath, ref y);
+                CreateHint("FILES IN THE SHARE FOLDER ARE IMPORTED, NOT PLAYED IN PLACE", ref y);
+            }
+            else
+            {
+                CreateHint("BROWSER BUILD  ·  LEVELS LIVE IN THIS BROWSER", ref y);
+                CreateHint("EXPORT MAKES A .JSON YOU CAN SEND", ref y);
+            }
 
             CreateAction("BACK", BackToLevels, ref y);
 
@@ -472,6 +489,15 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         void ImportFromFile()
         {
+            // 浏览器：没有系统对话框，也没有分享目录，走 jslib 的 <input type="file">。
+            // 文件读完才回传，所以这里只负责把对话框弹出去，结果在 ImportPickedJson 里收。
+            if (BrowserJsonImport.IsSupported)
+            {
+                Flash("PICK A .JSON FILE  ·  BROWSER DIALOG");
+                BrowserJsonImport.PickJson(ImportPickedJson);
+                return;
+            }
+
             // 分享目录只是对话框的「落脚点」，建不出来也不该挡住这条最常用的导入路：
             // FilePicker 会在目录不存在时退回「我的文档」。
             if (!LevelJsonLibrary.EnsureShareFolder(out string folderError))
@@ -512,6 +538,52 @@ namespace ShiftGo.BitFlow.View
 
                 default:
                     Debug.LogWarning("[BitFlow] 导入关卡 JSON 失败：" + picked + " → " + error);
+                    Flash("NOT A LEVEL  ·  SEE CONSOLE");
+                    return;
+            }
+        }
+
+        /// <summary>
+        /// 浏览器文件选择器的回传（异步：点完之后过几帧才到）。
+        ///
+        /// 这条路只有「文件名 + 正文」，没有可读路径，所以落盘交给
+        /// <see cref="LevelJsonLibrary.TryImportJson"/> —— 它和桌面那条路共用同一份验货与重名规则。
+        /// 玩家取消时回调收到 (null, null)：要说「已取消」，不是「导入失败」。
+        /// </summary>
+        void ImportPickedJson(string fileName, string json)
+        {
+            // 对话框打开期间面板可能已经被关掉：那时不能再往已经收起来的 UI 上写结果
+            if (this == null || !open) return;
+
+            if (string.IsNullOrEmpty(json))
+            {
+                Flash(string.IsNullOrEmpty(BrowserJsonImport.LastError)
+                    ? "IMPORT CANCELLED"
+                    : "CANNOT READ THAT FILE  ·  SEE CONSOLE");
+                return;
+            }
+
+            ImportOutcome outcome = LevelJsonLibrary.TryImportJson(fileName, json, false, out string path, out string error);
+
+            switch (outcome)
+            {
+                case ImportOutcome.Imported:
+                    Debug.Log("[BitFlow] 已导入关卡 JSON：" + fileName + " → " + path);
+                    FinishImport("IMPORTED  " + System.IO.Path.GetFileNameWithoutExtension(path));
+                    return;
+
+                case ImportOutcome.AlreadyInLibrary:
+                case ImportOutcome.Unchanged:
+                    FinishImport("ALREADY IN MY LEVELS  ·  " + System.IO.Path.GetFileNameWithoutExtension(path));
+                    return;
+
+                case ImportOutcome.NameTaken:
+                    Debug.LogWarning("[BitFlow] 导入关卡 JSON 重名，未覆盖：" + fileName + " → " + error);
+                    Flash("NAME TAKEN  ·  RENAME THE FILE FIRST");
+                    return;
+
+                default:
+                    Debug.LogWarning("[BitFlow] 导入关卡 JSON 失败：" + fileName + " → " + error);
                     Flash("NOT A LEVEL  ·  SEE CONSOLE");
                     return;
             }
@@ -626,6 +698,22 @@ namespace ShiftGo.BitFlow.View
                 return;
             }
 
+            // 浏览器：没有分享目录，「导出」= 让浏览器下载一份 .json
+            if (BrowserJsonImport.IsSupported)
+            {
+                string downloadName = DownloadNameOf(level.displayName);
+                if (!BrowserJsonImport.DownloadJson(downloadName, json))
+                {
+                    Debug.LogWarning("[BitFlow] 浏览器下载关卡 JSON 失败：" + downloadName);
+                    Flash("EXPORT FAILED  ·  SEE CONSOLE");
+                    return;
+                }
+
+                Debug.Log("[BitFlow] 已下载关卡 JSON：" + downloadName);
+                Flash("DOWNLOADED  " + downloadName);
+                return;
+            }
+
             if (!LevelJsonLibrary.TryWriteShare(LevelJsonLibrary.ExportPrefix, json, out string path, out string error))
             {
                 Debug.LogWarning("[BitFlow] 导出失败：" + error);
@@ -635,6 +723,23 @@ namespace ShiftGo.BitFlow.View
 
             Debug.Log("[BitFlow] 已导出关卡到分享目录：" + path);
             Flash("EXPORTED  " + System.IO.Path.GetFileName(path) + "  ·  IN SHARE FOLDER");
+        }
+
+        /// <summary>
+        /// 把 displayName 变成一个能安全下载的文件名。
+        /// 浏览器里带 <c>: \ / * ? " &lt; &gt; |</c> 的 download 名会被直接丢掉，
+        /// 所以不指望 <see cref="System.IO.Path.GetInvalidFileNameChars"/> 在每个平台都列全。
+        /// </summary>
+        static string DownloadNameOf(string displayName)
+        {
+            string name = string.IsNullOrEmpty(displayName) ? "LEVEL" : displayName;
+
+            foreach (char bad in System.IO.Path.GetInvalidFileNameChars()) name = name.Replace(bad, '_');
+            foreach (char bad in "<>:\"/\\|?*") name = name.Replace(bad, '_');
+
+            name = name.Trim();
+            if (string.IsNullOrEmpty(name)) name = "LEVEL";
+            return name + ".json";
         }
 
         /// <summary>把结果行留给下一次 <see cref="Rebuild"/> 显示（顺带刷一遍列表）。</summary>
@@ -889,6 +994,33 @@ namespace ShiftGo.BitFlow.View
         void ShareEntry(LevelJsonEntry entry)
         {
             if (entry == null) return;
+
+            // 浏览器：没有分享目录，「SAVE COPY」= 下载这一关的 .json
+            if (BrowserJsonImport.IsSupported)
+            {
+                string downloadName = System.IO.Path.GetFileName(entry.Path);
+                string json;
+                try
+                {
+                    json = LevelJsonLibrary.ReadAllText(entry.Path);
+                }
+                catch (System.Exception exception)
+                {
+                    Debug.LogWarning("[BitFlow] 分享关卡失败：" + entry.Path + " → " + exception.Message);
+                    Flash("SHARE FAILED  ·  SEE CONSOLE");
+                    return;
+                }
+
+                if (!BrowserJsonImport.DownloadJson(downloadName, json))
+                {
+                    Flash("SHARE FAILED  ·  SEE CONSOLE");
+                    return;
+                }
+
+                Debug.Log("[BitFlow] 已下载关卡分享副本：" + downloadName);
+                Flash("DOWNLOADED  " + downloadName);
+                return;
+            }
 
             if (!LevelJsonLibrary.TryCopyToShare(entry.Path, out string path, out string error))
             {

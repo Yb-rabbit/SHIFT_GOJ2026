@@ -54,7 +54,7 @@ namespace ShiftGo.BitFlow.View
 
         void Awake()
         {
-            runner = FindObjectOfType<BitFlowRunner>();
+            runner = FindFirstObjectByType<BitFlowRunner>();
             if (runner == null)
             {
                 Debug.LogWarning("[BitFlow] LevelFlow 没找到 BitFlowRunner，已自动禁用");

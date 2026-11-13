@@ -48,16 +48,16 @@ namespace ShiftGo.BitFlow.View
         void Awake()
         {
             // 先把黑幕按住：它 Awake 时会把自己盖满，那样终端就演在它后面了
-            curtain = FindObjectOfType<IntroCurtain>();
+            curtain = FindFirstObjectByType<IntroCurtain>();
             if (curtain != null) curtain.WaitForCue = true;
 
             // 再把关卡按住：演出要在空场上播。两个入口都得堵 ——
             // LevelFlow 的 Start 会加载第一关，BitFlowRunner 的 Start 自己也会建关。
             // 它们的 Start 都还在后面（这一帧的 Awake 全部先于所有 Start），所以来得及。
-            flow = FindObjectOfType<LevelFlow>();
+            flow = FindFirstObjectByType<LevelFlow>();
             if (flow != null) flow.HoldAutoStart();
 
-            runner = FindObjectOfType<BitFlowRunner>();
+            runner = FindFirstObjectByType<BitFlowRunner>();
             if (runner != null) runner.HoldStart();
 
             HoldGate();

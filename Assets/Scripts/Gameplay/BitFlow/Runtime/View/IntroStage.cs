@@ -255,7 +255,8 @@ namespace ShiftGo.BitFlow.View
                 cameraBackground = camera.backgroundColor;
             }
 
-            Light[] all = Object.FindObjectsOfType<Light>();
+            // FindObjectsByType + InstanceID 排序 = 旧 FindObjectsOfType 的返回顺序（这里靠下标对应快照）
+            Light[] all = Object.FindObjectsByType<Light>(FindObjectsSortMode.InstanceID);
             int count = 0;
             for (int i = 0; i < all.Length; i++)
             {
