@@ -21,38 +21,44 @@ MonoBehaviour:
     coord: {x: 0, y: 2}
     rotationSteps: 0
     playerEditable: 0
-    overrideSequence: 0
-    sequence: 1
-    overrideCount: 0
-    count: 1
+    overrideSequence: 1
+    sequence: 1011
+    overrideCount: 1
+    count: 8
     overrideFace: 0
     acceptAnyFace: 1
     overridePassValue: 0
     passValue: 1
+    overrideDelayTicks: 0
+    delayTicks: 1
   - type: {fileID: 11400000, guid: 4edbf1f17ac4aba48ae636d09ea1e8ae, type: 2}
     coord: {x: 3, y: 5}
     rotationSteps: 0
     playerEditable: 0
-    overrideSequence: 0
+    overrideSequence: 1
     sequence: 1
-    overrideCount: 0
-    count: 1
-    overrideFace: 0
+    overrideCount: 1
+    count: 6
+    overrideFace: 1
     acceptAnyFace: 1
     overridePassValue: 0
     passValue: 1
-  - type: {fileID: 11400000, guid: c2ab3d2e4a2c4ff429144184df4d4348, type: 2}
+    overrideDelayTicks: 0
+    delayTicks: 1
+  - type: {fileID: 11400000, guid: 4edbf1f17ac4aba48ae636d09ea1e8ae, type: 2}
     coord: {x: 7, y: 2}
-    rotationSteps: 0
+    rotationSteps: 1
     playerEditable: 0
-    overrideSequence: 0
-    sequence: 1
-    overrideCount: 0
-    count: 1
-    overrideFace: 0
+    overrideSequence: 1
+    sequence: 0
+    overrideCount: 1
+    count: 2
+    overrideFace: 1
     acceptAnyFace: 1
     overridePassValue: 0
     passValue: 1
+    overrideDelayTicks: 0
+    delayTicks: 1
   wallType: {fileID: 0}
   wallMap: 
   supplies:

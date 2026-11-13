@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dcec970e4aceb1346895675e001ab536, type: 3}
-  m_Name: Type_Emitter_E1
+  m_Name: Type_Emitter
   m_EditorClassIdentifier: 
-  label: E1
+  label: E
   facing: 1
   sequence: 1011
   repeatCount: 2

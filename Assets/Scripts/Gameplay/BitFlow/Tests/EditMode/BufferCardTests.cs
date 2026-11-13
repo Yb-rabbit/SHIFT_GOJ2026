@@ -109,7 +109,7 @@ namespace ShiftGo.BitFlow.Tests
         {
             LevelDraft draft = new LevelDraft(9, 7);
             EditableElement emitter = EditableElement.CreateDefault(CellKind.Emitter, new GridPoint(0, 3));
-            emitter.TypeKey = "Type_Emitter_E1";
+            emitter.TypeKey = "Type_Emitter";
             draft.Place(emitter, true);
             draft.SetStock(BufferKey, CellKind.Wall, 1);
             draft.ClearHistory();

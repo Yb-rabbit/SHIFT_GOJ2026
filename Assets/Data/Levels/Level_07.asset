@@ -17,21 +17,21 @@ MonoBehaviour:
   height: 7
   tickInterval: 0.35
   placements:
-  - type: {fileID: 11400000, guid: 0b014c0396d18ab4da3ce17560739d63, type: 2}
+  - type: {fileID: 11400000, guid: 4edbf1f17ac4aba48ae636d09ea1e8ae, type: 2}
     coord: {x: 8, y: 3}
-    rotationSteps: 0
+    rotationSteps: 1
     playerEditable: 0
-    overrideSequence: 0
+    overrideSequence: 1
     sequence: 1
-    overrideCount: 0
-    count: 1
-    overrideFace: 0
+    overrideCount: 1
+    count: 4
+    overrideFace: 1
     acceptAnyFace: 1
     overridePassValue: 0
     passValue: 1
     overrideDelayTicks: 0
     delayTicks: 1
-  - type: {fileID: 11400000, guid: 01efc6dfa94b1e94ba59a2c1c60913d4, type: 2}
+  - type: {fileID: 11400000, guid: 138adae525524314b98d514e68781fb3, type: 2}
     coord: {x: 0, y: 3}
     rotationSteps: 0
     playerEditable: 0
@@ -46,9 +46,9 @@ MonoBehaviour:
     overrideDelayTicks: 0
     delayTicks: 1
   wallType: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
-  wallMap: '.........
+  wallMap: '....#....
 
-    .........
+    ....#....
 
     .........
 

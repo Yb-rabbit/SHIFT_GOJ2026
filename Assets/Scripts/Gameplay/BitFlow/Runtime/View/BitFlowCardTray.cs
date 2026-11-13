@@ -166,6 +166,13 @@ namespace ShiftGo.BitFlow.View
         const float CountTextSize = 0.11f;
 
         /// <summary>
+        /// 张数数字的字号（像素），只在数字改用轮廓字体后有意义：字体本身是 16 号的动态字库，
+        /// <c>fontSize</c> 决定 Unity 按多大像素烘字形，跟 <see cref="CountTextSize"/>(世界高度) 分开。
+        /// 取 64 是给"卡被拿到镜头前（屏幕上约 26px）"留余量 —— 按 16 烘的字贴到 26px 就会糊。
+        /// </summary>
+        const int CountGlyphPx = 64;
+
+        /// <summary>
         /// 张数文字压在卡面哪条线上（占卡高的比例，卡本地 Y；负值 = 卡心往下）。
         /// 卡面原稿是 500×500，底部那条浅灰槽实测落在 y 335..449px，中心 392px（从上往下 0.784），
         /// 换成本地坐标就是卡心往下 0.284 个卡高 —— 早先按"下方 25%"猜的 0.375，所以数字整体偏低了。
@@ -175,16 +182,21 @@ namespace ShiftGo.BitFlow.View
         /// <summary>
         /// 变体角标（"D3" / "F1"）的世界高度 = 张数文字再小一号：
         /// 它是给"我知道自己在找哪一张"的人看的一眼确认，不该跟张数抢视线。
+        ///
+        /// 0.065 是在 0.085 上再收一档：0.085 时 "D*4" 连底板差不多占掉卡宽的三分之一，
+        /// 平躺在卡排里像半张卡那么大；收到 0.065 只占约四分之一，一眼找得到又不抢卡面美术。
+        /// 再往下（0.05 以下）像素字体的笔画会糊成一团，读不出是 D 还是 F。
         /// </summary>
-        const float BadgeTextSize = 0.085f;
+        const float BadgeTextSize = 0.065f;
 
         /// <summary>
-        /// 角标底板压在卡面顶部内侧（占卡高的比例，卡本地 Y）。
+        /// 角标离卡面上边缘、右边缘的余量（世界单位，按满尺寸卡面算，随卡面等比缩）。
         ///
-        /// 卡面美术的顶部是图标区，字直接压上去会被亮色图标吃掉，所以角标总带一块深色底板，
-        /// 底板宽度按字数算（见 <see cref="CreateBadge"/>），高一点的卡面也不会露出半截字。
+        /// 角标压在卡面<b>右上角内侧</b>，不再挂在卡顶中线上（早先是 y = 0.30 个卡高、x 居中）：
+        /// 居中会让底板浮在卡边外面，看着像一张贴歪的标签；
+        /// 贴右上角才像卡面自带的编号。底板宽度按字宽算，右对齐才不会顶出卡边。
         /// </summary>
-        const float BadgeSlotCenter = 0.30f;
+        const float BadgeEdgeInset = 0.07f;
 
         /// <summary>角标文字色：暖白。深色底板 + 亮字在任何卡面美术上都能读。</summary>
         static readonly Color BadgeTextColor = new Color(0.98f, 0.94f, 0.82f, 1f);
@@ -195,11 +207,11 @@ namespace ShiftGo.BitFlow.View
         /// <summary>底板在文字后面多远（卡本地 +z = 远离相机，因为卡面朝向 -z）。</summary>
         const float BadgePlateDepth = 0.0015f;
 
-        /// <summary>底板左右各留出的余量（世界单位，满尺寸卡面时）。</summary>
-        const float BadgePlatePadding = 0.05f;
+        /// <summary>底板比文字宽出的总量（世界单位，满尺寸卡面时），左右各一半。跟着角标一起收小，别让板比字胖一圈。</summary>
+        const float BadgePlatePadding = 0.035f;
 
-        /// <summary>底板高度相对角标字号：1.9 倍字高，上下都留得出气。</summary>
-        const float BadgePlateHeight = 1.9f;
+        /// <summary>底板高度相对角标字号：1.8 倍字高，上下都留得出气。</summary>
+        const float BadgePlateHeight = 1.8f;
 
         // ---------------------------------------------------------------- 排版
 
@@ -245,6 +257,13 @@ namespace ShiftGo.BitFlow.View
             public Material MarkMaterial;
             public bool HasArt;
 
+            /// <summary>Label 是不是变体角标（"D3" / "F1" / "D*4"）：角标要按右上角对齐，
+            /// 而退路文字（无美术时的类型名）保持居中，靠这个分。</summary>
+            public bool LabelIsBadge;
+
+            /// <summary>角标底板的宽度（卡本地单位，未乘卡面缩放）：右上角对齐要靠它算右边界。</summary>
+            public float BadgeWidth;
+
             /// <summary>平躺时的落点。可用宽度跟画面比例有关，所以每次重排版都可能变。</summary>
             public Vector3 SlotPosition;
             public float SlotWidth = CardWidth;
@@ -269,6 +288,9 @@ namespace ShiftGo.BitFlow.View
         LevelFlow flow;
         Camera mainCamera;
         Font font;
+
+        /// <summary>卡面张数数字的字体（Agency FB），见 <see cref="PixelFont.GetNumber"/>。</summary>
+        Font numberFont;
 
         LevelSO level;
         LevelDraft draft;
@@ -414,6 +436,7 @@ namespace ShiftGo.BitFlow.View
             flow = FindFirstObjectByType<LevelFlow>();
             mainCamera = Camera.main;
             font = PixelFont.Get();
+            numberFont = PixelFont.GetNumber();
 
             if (runner == null)
             {
@@ -874,7 +897,8 @@ namespace ShiftGo.BitFlow.View
                 //
                 // 以前按类型 Key 一张卡平铺，D1~D4 / F0~F1 全挤在一排，作者得挨个读角标才找得到
                 // 自己要的那一张。现在同 Kind 的变体先折成一张大类卡（角标 D*4），点开才铺开变体；
-                // 发射器 / 接收器 / 非门 / 墙 / 分流器不折（见 FoldsVariants），保持一张一张的旧样子。
+                // 发射器 / 接收器已各归一成一份模板，非门 / 墙 / 分流器本来就只有一张，
+                // 都不折（见 FoldsVariants），保持一张一张的样子。
                 //
                 // 排序规则在 PlanWorkshopCards（纯数据、可单测），这里只负责把计划画出来。
                 foreach (CardPlan plan in PlanWorkshopCards(workshopPalette, foldedKind))
@@ -1007,7 +1031,11 @@ namespace ShiftGo.BitFlow.View
 
             entry.Count = CreateCountText(root.transform);
             if (art == null) entry.Label = CreateFallbackLabel(root.transform, LabelOf(type));
-            else if (!string.IsNullOrEmpty(badge)) entry.Label = CreateBadge(root.transform, badge);
+            else if (!string.IsNullOrEmpty(badge))
+            {
+                entry.Label = CreateBadge(root.transform, badge, out entry.BadgeWidth);
+                entry.LabelIsBadge = true;
+            }
 
             return entry;
         }
@@ -1025,7 +1053,8 @@ namespace ShiftGo.BitFlow.View
             if (plan.IsGroup && !entry.HasArt && entry.Label != null)
             {
                 Destroy(entry.Label.gameObject);
-                entry.Label = CreateBadge(entry.Root, plan.Badge);
+                entry.Label = CreateBadge(entry.Root, plan.Badge, out entry.BadgeWidth);
+                entry.LabelIsBadge = true;
             }
 
             entry.IsGroup = plan.IsGroup;
@@ -1034,10 +1063,15 @@ namespace ShiftGo.BitFlow.View
         }
 
         /// <summary>
-        /// 同种类的变体角标（"D3" / "F1"）。位置和字号由 <see cref="PoseDecor"/> 按卡面尺寸摆，
+        /// 同种类的变体角标（"D3" / "F1" / "D*4"）。位置和字号由 <see cref="PoseDecor"/> 按卡面尺寸摆，
         /// 这里把「深色底板 + 亮字」一起挂上去：卡面是任意美术，纯文字压上去常常看不清。
+        ///
+        /// 字体走 <see cref="PixelFont.GetNumber"/>（和张数同一个轮廓字体）：
+        /// 角标只有 0.065 个卡宽那么高，9×9 像素字缩到屏幕上 6~7px 时笔画会糊成一块，
+        /// 而它正是"这张是哪一摞"的唯一标记 —— 糊了就等于没有。
         /// </summary>
-        Transform CreateBadge(Transform parent, string text)
+        /// <param name="width">底板宽度（卡本地单位）：<see cref="PoseDecor"/> 靠它把角标右对齐到卡面右上角。</param>
+        Transform CreateBadge(Transform parent, string text, out float width)
         {
             GameObject go = new GameObject("Badge");
             go.transform.SetParent(parent, false);
@@ -1055,24 +1089,39 @@ namespace ShiftGo.BitFlow.View
             plateRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             plateRenderer.receiveShadows = false;
 
-            // 像素字体是等宽的，字数 × 字号就是文字宽度；左右各留一点余量，别让字贴到板边上
+            // 兜底宽度：字宽量不出来时按"字数 × 字号"估（退回像素字体时正好是等宽，估得准）
             int chars = Mathf.Max(1, text != null ? text.Length : 1);
-            plate.transform.localScale = new Vector3(
-                chars * BadgeTextSize + BadgePlatePadding,
-                BadgeTextSize * BadgePlateHeight,
-                1f);
 
             TextMesh mesh = go.AddComponent<TextMesh>();
             mesh.text = text;
-            mesh.font = font;
-            mesh.fontSize = 0;
-            mesh.characterSize = BadgeTextSize;
+            // 和张数同一个字体，加载失败时同样退回像素字体（见 CreateCountText）
+            Font glyphFont = numberFont != null ? numberFont : font;
+            mesh.font = glyphFont;
+
+            // 和张数同一个字体、同一套字号换算（见 CreateCountText / GlyphScale）：
+            // 同一个卡面上两种字体混排，一眼就能看出角标比数字"细一档"，所以角标也走轮廓字体。
+            bool outline = glyphFont != null && glyphFont != font;
+            mesh.fontSize = outline ? CountGlyphPx : 0;
+            mesh.characterSize = outline ? BadgeTextSize * GlyphScale(glyphFont) : BadgeTextSize;
             mesh.anchor = TextAnchor.MiddleCenter;
             mesh.alignment = TextAlignment.Center;
             mesh.color = BadgeTextColor;
 
+            // 轮廓字体不是等宽的（"*" 比 "D" 窄一半），按字数估板宽会留出一道歪边，
+            // 所以直接量 TextMesh 生成的网格宽度：Renderer.bounds 是世界 AABB，
+            // 除以父链的世界缩放就回到卡本地单位（卡根只绕 X 转 90°，x 方向不受影响）。
             MeshRenderer renderer = go.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = font.material;
+            float worldWidth = renderer != null ? renderer.bounds.size.x : 0f;
+            float worldScale = Mathf.Abs(go.transform.lossyScale.x);
+            float textWidth = worldScale > 0.0001f ? worldWidth / worldScale : worldWidth;
+
+            width = (textWidth > 0.0001f ? textWidth : chars * BadgeTextSize) + BadgePlatePadding;
+            plate.transform.localScale = new Vector3(
+                width,
+                BadgeTextSize * BadgePlateHeight,
+                1f);
+
+            renderer.sharedMaterial = glyphFont.material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
             return go.transform;
@@ -1147,37 +1196,71 @@ namespace ShiftGo.BitFlow.View
         }
 
         /// <summary>
+        /// 折叠规则的一条：哪种 Kind 折成一张大类卡，角标短码和状态行名字各是什么。
+        /// </summary>
+        readonly struct FoldInfo
+        {
+            public readonly CellKind Kind;
+            public readonly string Code;
+            public readonly string Name;
+
+            public FoldInfo(CellKind kind, string code, string name)
+            {
+                Kind = kind;
+                Code = code;
+                Name = name;
+            }
+        }
+
+        /// <summary>
         /// 哪些 Kind 的变体在卡排上折成一张大类卡。
         ///
         /// 只折“卡面完全一样、只能靠角标区分”的两类（延迟器 D1~D4、过滤器 F0~F1）。
-        /// 发射器 / 接收器 / 非门 / 墙 / 分流器按作者要求保持平铺 —— 它们的卡面自己就分得清，
-        /// 再折一层只会让平时最常用的那几张多一次点击。
+        /// 发射器 / 接收器现在各自只有一份模板（节奏参数存在 <see cref="ElementPlacement"/> 上），
+        /// 非门 / 墙 / 分流器卡面自己就分得清 —— 这些都不折，保持一张一张的样子。
         /// </summary>
-        public static bool FoldsVariants(CellKind kind)
+        static readonly FoldInfo[] Folds =
         {
-            return kind == CellKind.DelayGate || kind == CellKind.Filter;
+            new FoldInfo(CellKind.DelayGate, "D", "DELAY"),
+            new FoldInfo(CellKind.Filter, "F", "FILTER"),
+        };
+
+        static FoldInfo? FoldOf(CellKind kind)
+        {
+            foreach (FoldInfo fold in Folds)
+            {
+                if (fold.Kind == kind) return fold;
+            }
+            return null;
         }
 
-        /// <summary>大类卡角标上的短码（“D” / “F”）。像素字体只有 ASCII，所以不用 ×。</summary>
-        static string FoldCode(CellKind kind)
-        {
-            switch (kind)
-            {
-                case CellKind.DelayGate: return "D";
-                case CellKind.Filter: return "F";
-                default: return "?";
-            }
-        }
+        /// <summary>这个 Kind 的变体要不要折成大类卡。</summary>
+        public static bool FoldsVariants(CellKind kind) => FoldOf(kind).HasValue;
 
-        /// <summary>状态行里的大类名（ASCII 大写，位图字体没有中文字形）。</summary>
-        static string FoldName(CellKind kind)
+        /// <summary>已经提醒过，就别每次重画卡排都刷屏。</summary>
+        static bool warnedDuplicateTemplates;
+
+        /// <summary>
+        /// 发射器 / 接收器各自只该有一份模板（<c>Type_Emitter</c> / <c>Type_Receiver</c>）：
+        /// 序列与次数现在属于放置（<see cref="ElementPlacement"/>），多出来的模板只会让作者选错。
+        /// 这里只提醒、不阻止出卡 —— 万一有人临时加了变体也不至于连界面都开不出来。
+        /// </summary>
+        static void WarnOnDuplicateTemplates(Dictionary<CellKind, List<ElementTypeSO>> groups)
         {
-            switch (kind)
-            {
-                case CellKind.DelayGate: return "DELAY";
-                case CellKind.Filter: return "FILTER";
-                default: return kind.ToString().ToUpperInvariant();
-            }
+            if (warnedDuplicateTemplates) return;
+
+            groups.TryGetValue(CellKind.Emitter, out List<ElementTypeSO> emitters);
+            groups.TryGetValue(CellKind.Receiver, out List<ElementTypeSO> receivers);
+
+            int emitterCount = emitters != null ? emitters.Count : 0;
+            int receiverCount = receivers != null ? receivers.Count : 0;
+            if (emitterCount <= 1 && receiverCount <= 1) return;
+
+            warnedDuplicateTemplates = true;
+            Debug.LogWarning("[BitFlow] 工坊调色板里有 " + emitterCount + " 个发射器、"
+                + receiverCount + " 个接收器类型。序列 / 次数已经存在关卡放置上，"
+                + "模板只该留 Type_Emitter / Type_Receiver 各一份 —— 多出来的请在 "
+                + "SHIFT GO/BitFlow/数据迁移 里归一，否则作者会分不清该选哪个。");
         }
 
         /// <summary>
@@ -1216,6 +1299,8 @@ namespace ShiftGo.BitFlow.View
                 list.Add(type);
             }
 
+            WarnOnDuplicateTemplates(groups);
+
             if (expanded.HasValue)
             {
                 if (!FoldsVariants(expanded.Value)) return plans;
@@ -1234,11 +1319,11 @@ namespace ShiftGo.BitFlow.View
                 // 折叠组：一张大类卡，角标写“D*4”（* 而不是 ×：位图字体只有 ASCII）。
                 if (FoldsVariants(kind) && list.Count > 1)
                 {
-                    plans.Add(new CardPlan(list[0], FoldCode(kind) + "*" + list.Count, true, kind));
+                    plans.Add(new CardPlan(list[0], FoldOf(kind).Value.Code + "*" + list.Count, true, kind));
                     continue;
                 }
 
-                // 其它 Kind 保持原来的平铺；同 Kind 多张才打角标（发射器 E1~E5 就靠这个分）。
+                // 其它 Kind 保持原来的平铺；同 Kind 多张才打角标（延迟器 / 过滤器展开时靠这个分）。
                 bool badge = list.Count > 1;
                 foreach (ElementTypeSO type in list)
                     plans.Add(new CardPlan(type, badge ? LabelOf(type) : null, false, kind));
@@ -1249,7 +1334,10 @@ namespace ShiftGo.BitFlow.View
 
         /// <summary>
         /// 张数文字：TextMesh 直接躺在卡面上（本地轴和卡面同向），所以卡被拿起来时会跟着一起转正。
-        /// 字号交给 characterSize（fontSize = 0），世界单位直接可控。
+        /// 字号交给 characterSize（fontSize 只管烘字形用的像素密度），世界单位直接可控。
+        ///
+        /// 字体是 Agency FB（<see cref="PixelFont.GetNumber"/>）而不是全局的 9×9 像素字体：
+        /// 卡面在屏幕上只有 100px 出头，像素字缩到十来像素时数字会糊成一团。
         /// </summary>
         TextMesh CreateCountText(Transform parent)
         {
@@ -1257,18 +1345,36 @@ namespace ShiftGo.BitFlow.View
             go.transform.SetParent(parent, false);
 
             TextMesh mesh = go.AddComponent<TextMesh>();
-            mesh.font = font;
-            mesh.fontSize = 0;
-            mesh.characterSize = CountTextSize;
+            // numberFont 万一加载不到就退回像素字体，至少不会把 TextMesh 的 font 置空
+            Font glyphFont = numberFont != null ? numberFont : font;
+            mesh.font = glyphFont;
+
+            // 退回像素字体时（资源缺失）没有"自带字号"可换算，按老写法 fontSize = 0 处理。
+            bool outline = glyphFont != null && glyphFont != font;
+            mesh.fontSize = outline ? CountGlyphPx : 0;
+            // 轮廓字体（动态字库）的世界字高 = characterSize × fontSize ÷ 字体自带字号：
+            // 用大字号烘字形（清晰），characterSize 必须同比缩回去，卡面上的数字才还是 CountTextSize 那么大。
+            mesh.characterSize = outline ? CountTextSize * GlyphScale(glyphFont) : CountTextSize;
             mesh.anchor = TextAnchor.MiddleCenter;
             mesh.alignment = TextAlignment.Center;
             mesh.color = CountTextColor;
 
             MeshRenderer renderer = go.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = font.material;
+            renderer.sharedMaterial = glyphFont.material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
             return mesh;
+        }
+
+        /// <summary>
+        /// 张数字形尺寸的换算系数：TextMesh 的世界字高 = characterSize × fontSize ÷ 字体自带字号，
+        /// 按 <see cref="CountGlyphPx"/> 烘字形后要同比缩 characterSize，字才不会跟着字号一起放大。
+        /// 位图字体的 <c>font.fontSize</c> 是 0，那时不做换算（characterSize 本身就是世界单位）。
+        /// </summary>
+        static float GlyphScale(Font glyphFont)
+        {
+            int basePx = glyphFont != null ? glyphFont.fontSize : 0;
+            return basePx > 0 ? basePx / (float)CountGlyphPx : 1f;
         }
 
         /// <summary>没有卡面美术时的退路：一块类型色的板 + 名字，至少能玩。</summary>
@@ -1415,11 +1521,18 @@ namespace ShiftGo.BitFlow.View
             {
                 entry.Label.localScale = Vector3.one * k;
 
-                // 有美术的卡：Label 是变体角标，得贴着卡面顶部走（无美术时 Label 是退路文字，
-                // 位置由 CreateFallbackLabel 定，别在这里挪它）
-                if (entry.HasArt)
+                // 有美术的卡：Label 是变体角标，得贴在卡面右上角内侧（底板按字宽右对齐，
+                // 见 CreateBadge / BadgeEdgeInset）；无美术时 Label 是退路文字，位置由
+                // CreateFallbackLabel 定，别在这里挪它
+                if (entry.LabelIsBadge)
                 {
-                    entry.Label.localPosition = new Vector3(0f, height * BadgeSlotCenter, -FaceLift);
+                    float badgeWidth = entry.BadgeWidth * k;
+                    float badgeHeight = BadgeTextSize * BadgePlateHeight * k;
+                    float inset = BadgeEdgeInset * k;
+                    entry.Label.localPosition = new Vector3(
+                        width * 0.5f - badgeWidth * 0.5f - inset,
+                        height * 0.5f - badgeHeight * 0.5f - inset,
+                        -FaceLift);
                 }
             }
 
@@ -1846,7 +1959,7 @@ namespace ShiftGo.BitFlow.View
                     // 大类卡：点它是展开这一组，不是把卡拿在手里
                     if (hovered.IsGroup)
                     {
-                        statusMessage = FoldName(hovered.GroupKind) + " - PICK ONE";
+                        statusMessage = FoldOf(hovered.GroupKind).Value.Name + " - PICK ONE";
                         SetFoldedKind(hovered.GroupKind);
                     }
                     else Arm(hovered.Type);

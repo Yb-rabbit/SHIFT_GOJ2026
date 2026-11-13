@@ -9,7 +9,7 @@
 const KINDS = [
   { kind: 'Emitter',   glyph: 'E', label: '发射器', params: ['dir', 'sequence', 'count'] },
   { kind: 'Receiver',  glyph: 'R', label: '接收器', params: ['dir', 'sequence', 'count', 'face'] },
-  { kind: 'Splitter',  glyph: 'S', label: '分流器', params: ['dir', 'dir2'] },
+  { kind: 'Splitter',  glyph: 'L', label: '分流器', params: ['dir', 'dir2'] },
   { kind: 'NotGate',   glyph: 'N', label: '非门',   params: ['dir'] },
   { kind: 'Filter',    glyph: 'F', label: '过滤器', params: ['dir', 'pass'] },
   { kind: 'DelayGate', glyph: 'D', label: '延迟器', params: ['delay'] },

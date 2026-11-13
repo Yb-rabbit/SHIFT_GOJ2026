@@ -20,7 +20,7 @@ namespace ShiftGo.EditorTools
     ///             -executeMethod ShiftGo.EditorTools.BitFlowPlayerSetup.BuildAll -logFile "&lt;日志&gt;"
     ///
     /// 产出：
-    ///   Assets/Data/Elements/Receiver/Type_Receiver_R4.asset —— 左侧进料的「六个 1」接收器（教学关专用）
+    ///   Assets/Data/Elements/Receiver/Type_Receiver.asset  —— 接收器模板（进料面基准朝下，节奏随放置）
     ///   Assets/Data/Elements/Filter/Type_Filter_F0.asset     —— 只放行 0 的过滤器（教学关专用）
     ///   Assets/Data/Levels/Level_02~04.asset        —— 三关教学（过滤器 / 分流器 / 分流+旋转）
     ///   Assets/Data/Levels/LevelCatalog.asset       —— 关卡顺序表（02 → 03 → 04）
@@ -158,9 +158,10 @@ namespace ShiftGo.EditorTools
         {
             Dictionary<string, ElementTypeSO> types = new Dictionary<string, ElementTypeSO>();
 
-            EmitterTypeSO emitter1 = EnsureAsset<EmitterTypeSO>(EmitterFolder + "/Type_Emitter_E1.asset");
-            if (string.IsNullOrEmpty(emitter1.label)) ConfigureEmitter(emitter1, "E1", Dir.Right, "1011", 2);
-            types["E1"] = emitter1;
+            // 序列 / 次数现在属于放置（ElementPlacement）：发射器只留一份模板，具体节奏由每一格自己带。
+            EmitterTypeSO emitter = EnsureAsset<EmitterTypeSO>(EmitterFolder + "/Type_Emitter.asset");
+            if (string.IsNullOrEmpty(emitter.label)) ConfigureEmitter(emitter, "E", Dir.Right, "1011", 2);
+            types["E"] = emitter;
 
             SplitterTypeSO splitter1 = EnsureAsset<SplitterTypeSO>(SplitterFolder + "/Type_Splitter_L1.asset");
             if (string.IsNullOrEmpty(splitter1.label)) ConfigureSplitter(splitter1, "L1", Dir.Up, Dir.Right);
@@ -170,18 +171,10 @@ namespace ShiftGo.EditorTools
             if (string.IsNullOrEmpty(filter1.label)) ConfigureFilter(filter1, "F1", Dir.Right, 1);
             types["F1"] = filter1;
 
-            ReceiverTypeSO receiver1 = EnsureAsset<ReceiverTypeSO>(ReceiverFolder + "/Type_Receiver_R1.asset");
-            if (string.IsNullOrEmpty(receiver1.label)) ConfigureReceiver(receiver1, "R1", Dir.Down, "1", 6);
-            types["R1"] = receiver1;
-
-            ReceiverTypeSO receiver2 = EnsureAsset<ReceiverTypeSO>(ReceiverFolder + "/Type_Receiver_R2.asset");
-            if (string.IsNullOrEmpty(receiver2.label)) ConfigureReceiver(receiver2, "R2", Dir.Left, "0", 2);
-            types["R2"] = receiver2;
-
-            // 教学关需要的两个新类型：左侧进料的六位 1 接收器、只放行 0 的过滤器
-            ReceiverTypeSO receiver4 = EnsureAsset<ReceiverTypeSO>(ReceiverFolder + "/Type_Receiver_R4.asset");
-            if (string.IsNullOrEmpty(receiver4.label)) ConfigureReceiver(receiver4, "R4", Dir.Left, "1", 6);
-            types["R4"] = receiver4;
+            // 接收器同样只留一份模板：基准进料面是 Down，左侧进料的格子靠 rotationSteps 转出来。
+            ReceiverTypeSO receiver = EnsureAsset<ReceiverTypeSO>(ReceiverFolder + "/Type_Receiver.asset");
+            if (string.IsNullOrEmpty(receiver.label)) ConfigureReceiver(receiver, "R", Dir.Down, "1", 4);
+            types["R"] = receiver;
 
             FilterTypeSO filter0 = EnsureAsset<FilterTypeSO>(FilterFolder + "/Type_Filter_F0.asset");
             if (string.IsNullOrEmpty(filter0.label)) ConfigureFilter(filter0, "F0", Dir.Right, 0);
@@ -247,6 +240,46 @@ namespace ShiftGo.EditorTools
             return new ElementSupply { type = type, count = count };
         }
 
+        /// <summary>
+        /// 发射器放置：节奏（序列 + 总位数）写在这一格上，模板只提供外观与默认值。
+        /// 这样同一关里想放两个节奏不同的发射器，不用再新建类型资产。
+        /// </summary>
+        static ElementPlacement EmitterAt(ElementTypeSO type, int x, int y, string sequence, int emitCount, int rotationSteps = 0)
+        {
+            return new ElementPlacement
+            {
+                type = type,
+                coord = new Vector2Int(x, y),
+                rotationSteps = rotationSteps,
+                playerEditable = false,
+                overrideSequence = true,
+                sequence = sequence,
+                overrideCount = true,
+                count = emitCount,
+            };
+        }
+
+        /// <summary>
+        /// 接收器放置：期望序列 + 个数写在这一格上。进料面由模板基准朝向 + <paramref name="rotationSteps"/>
+        /// 决定（模板基准是 Down，要朝左就转 1 次），四面可收照旧走 <c>overrideFace</c>。
+        /// </summary>
+        static ElementPlacement ReceiverAt(ElementTypeSO type, int x, int y, string sequence, int targetCount, int rotationSteps = 0)
+        {
+            return new ElementPlacement
+            {
+                type = type,
+                coord = new Vector2Int(x, y),
+                rotationSteps = rotationSteps,
+                playerEditable = false,
+                overrideSequence = true,
+                sequence = sequence,
+                overrideCount = true,
+                count = targetCount,
+                overrideFace = true,
+                acceptAnyFace = true,
+            };
+        }
+
         static LevelSO EnsureLevel(string fileName, string displayName, int width, int height, float tickInterval)
         {
             LevelSO level = EnsureAsset<LevelSO>(LevelFolder + "/" + fileName + ".asset");
@@ -291,8 +324,8 @@ namespace ShiftGo.EditorTools
 
             level.placements = new List<ElementPlacement>
             {
-                Placement(types["E1"], 0, 2), // 发射器：六个 1 + 两个 0
-                Placement(types["R4"], 6, 2), // 接收器：左侧进料，只收六个 1
+                EmitterAt(types["E"], 0, 2, "1011", 8),   // 六个 1 + 两个 0
+                ReceiverAt(types["R"], 6, 2, "1", 6, 1),  // 左侧进料（模板基准朝下，转一次），只收六个 1
             };
 
             level.supplies = new List<ElementSupply>
@@ -319,9 +352,9 @@ namespace ShiftGo.EditorTools
 
             level.placements = new List<ElementPlacement>
             {
-                Placement(types["E1"], 0, 2), // 发射器：六个 1 + 两个 0
-                Placement(types["R1"], 3, 5), // 上方：进料面朝下，只收六个 1
-                Placement(types["R2"], 6, 2), // 右侧：进料面朝左，只收两个 0
+                EmitterAt(types["E"], 0, 2, "1011", 8),    // 六个 1 + 两个 0
+                ReceiverAt(types["R"], 3, 5, "1", 6),      // 上方：进料面朝下（模板基准），只收六个 1
+                ReceiverAt(types["R"], 6, 2, "0", 2, 1),   // 右侧：进料面朝左（转一次），只收两个 0
             };
 
             level.supplies = new List<ElementSupply>
@@ -350,9 +383,9 @@ namespace ShiftGo.EditorTools
 
             level.placements = new List<ElementPlacement>
             {
-                Placement(types["E1"], 0, 2), // 发射器：六个 1 + 两个 0
-                Placement(types["R4"], 7, 2), // 上面那条：只收六个 1
-                Placement(types["R2"], 7, 0), // 下面那条：只收两个 0
+                EmitterAt(types["E"], 0, 2, "1011", 8),   // 六个 1 + 两个 0
+                ReceiverAt(types["R"], 7, 2, "1", 6, 1),  // 上面那条：左侧进料，只收六个 1
+                ReceiverAt(types["R"], 7, 0, "0", 2, 1),  // 下面那条：左侧进料，只收两个 0
             };
 
             level.supplies = new List<ElementSupply>

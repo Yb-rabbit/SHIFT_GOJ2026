@@ -24,6 +24,9 @@ namespace ShiftGo.BitFlow.View
         /// <summary>Resources 下的相对路径（不带扩展名）。改字体只改这一行。</summary>
         public const string ResourcePath = "Text/BOUTIQUEBITMAP9X9_1.9";
 
+        /// <summary>卡面张数数字的字体（Agency FB）在 Resources 下的相对路径，不带扩展名。</summary>
+        public const string NumberResourcePath = "Text/AGENCYR";
+
         /// <summary>小字档：面板标题、状态行、图例。16 号 = 每字符 10px。</summary>
         public const int Small = 16;
 
@@ -34,6 +37,7 @@ namespace ShiftGo.BitFlow.View
         public const int Large = 32;
 
         static Font cached;
+        static Font numberCached;
         static bool pointFilterInstalled;
 
         /// <summary>
@@ -61,6 +65,29 @@ namespace ShiftGo.BitFlow.View
             cached = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             if (cached == null) cached = Resources.GetBuiltinResource<Font>("Arial.ttf");
             return cached;
+        }
+
+        /// <summary>
+        /// 卡面下方「还剩几张」那个数字专用字体：Agency FB
+        /// （<c>Assets/Arts/Resources/Text/AGENCYR.TTF</c>）。
+        ///
+        /// 只给这一处用，不替换 <see cref="Get"/>：其余 UI（HUD / 面板 / 终端）仍走 9×9 像素字体，
+        /// 而卡面在屏幕上只有 100px 出头，那位图字缩下来每一笔都只剩 1px，数字比字母更认不出
+        /// （6 和 8、3 和 5 直接糊成一块）；窄体的轮廓字在同样高度下笔画更干净。
+        ///
+        /// 注意这里<b>不</b>套 <see cref="ApplyPointFilter"/>：Point 采样是给像素字的，
+        /// 轮廓字钉成 Point 只会长锯齿。
+        /// </summary>
+        public static Font GetNumber()
+        {
+            if (numberCached != null) return numberCached;
+
+            numberCached = Resources.Load<Font>(NumberResourcePath);
+            if (numberCached != null) return numberCached;
+
+            Debug.LogWarning("[BitFlow] 找不到数字字体 Resources/" + NumberResourcePath +
+                             "，退回像素字体。张数数字会变小一号。");
+            return Get();
         }
 
         /// <summary>

@@ -10,10 +10,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0dbfd110d954e1440b917a4dade11871, type: 3}
-  m_Name: Type_Receiver_Auto2
+  m_Name: Type_Receiver
   m_EditorClassIdentifier: 
-  label: R2
+  label: R
   acceptAnyFace: 1
   feedFace: 2
-  targetSequence: 11111111
-  targetCount: 8
+  targetSequence: 1
+  targetCount: 4

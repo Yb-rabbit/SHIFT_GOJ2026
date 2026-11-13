@@ -160,27 +160,19 @@ namespace ShiftGo.EditorTools
 
             // 守卫：类型资产只在「还没初始化」（label 为空）时写默认配置。
             // 已经配置过的一律不碰 —— 作者可能改过序列、朝向、目标个数，重跑菜单不该打回去。
-            EmitterTypeSO emitter1 = EnsureAsset<EmitterTypeSO>(EmitterFolder + "/Type_Emitter_E1.asset");
-            if (string.IsNullOrEmpty(emitter1.label))
+            //
+            // 归一后只有一份发射器模板：序列 / 总位数属于关卡放置（ElementPlacement），
+            // 想在同一关里放两个节奏不同的发射器，直接在格子上填，不用再复制类型资产。
+            EmitterTypeSO emitter = EnsureAsset<EmitterTypeSO>(EmitterFolder + "/Type_Emitter.asset");
+            if (string.IsNullOrEmpty(emitter.label))
             {
-                emitter1.label = "E1";
-                emitter1.facing = Dir.Right;
-                emitter1.sequence = "1011";
-                emitter1.repeatCount = 2;
-                EditorUtility.SetDirty(emitter1);
+                emitter.label = "E";
+                emitter.facing = Dir.Right;
+                emitter.sequence = "1011";
+                emitter.repeatCount = 2;
+                EditorUtility.SetDirty(emitter);
             }
-            types["E1"] = emitter1;
-
-            EmitterTypeSO emitter2 = EnsureAsset<EmitterTypeSO>(EmitterFolder + "/Type_Emitter_E2.asset");
-            if (string.IsNullOrEmpty(emitter2.label))
-            {
-                emitter2.label = "E2";
-                emitter2.facing = Dir.Right;
-                emitter2.sequence = "100";
-                emitter2.repeatCount = 1;
-                EditorUtility.SetDirty(emitter2);
-            }
-            types["E2"] = emitter2;
+            types["E"] = emitter;
 
             SplitterTypeSO splitter = EnsureAsset<SplitterTypeSO>(SplitterFolder + "/Type_Splitter_L1.asset");
             if (string.IsNullOrEmpty(splitter.label))
@@ -220,38 +212,17 @@ namespace ShiftGo.EditorTools
             }
             types["D1"] = delayGate;
 
-            ReceiverTypeSO receiver1 = EnsureAsset<ReceiverTypeSO>(ReceiverFolder + "/Type_Receiver_R1.asset");
-            if (string.IsNullOrEmpty(receiver1.label))
+            // 接收器同样只留一份模板：基准进料面朝下，要朝左的格子填 rotationSteps = 1。
+            ReceiverTypeSO receiver = EnsureAsset<ReceiverTypeSO>(ReceiverFolder + "/Type_Receiver.asset");
+            if (string.IsNullOrEmpty(receiver.label))
             {
-                receiver1.label = "R1";
-                receiver1.feedFace = Dir.Down;
-                receiver1.targetSequence = "1";
-                receiver1.targetCount = 6;
-                EditorUtility.SetDirty(receiver1);
+                receiver.label = "R";
+                receiver.feedFace = Dir.Down;
+                receiver.targetSequence = "1";
+                receiver.targetCount = 4;
+                EditorUtility.SetDirty(receiver);
             }
-            types["R1"] = receiver1;
-
-            ReceiverTypeSO receiver2 = EnsureAsset<ReceiverTypeSO>(ReceiverFolder + "/Type_Receiver_R2.asset");
-            if (string.IsNullOrEmpty(receiver2.label))
-            {
-                receiver2.label = "R2";
-                receiver2.feedFace = Dir.Left;
-                receiver2.targetSequence = "0";
-                receiver2.targetCount = 2;
-                EditorUtility.SetDirty(receiver2);
-            }
-            types["R2"] = receiver2;
-
-            ReceiverTypeSO receiver3 = EnsureAsset<ReceiverTypeSO>(ReceiverFolder + "/Type_Receiver_R3.asset");
-            if (string.IsNullOrEmpty(receiver3.label))
-            {
-                receiver3.label = "R3";
-                receiver3.feedFace = Dir.Left;
-                receiver3.targetSequence = "1";
-                receiver3.targetCount = 2;
-                EditorUtility.SetDirty(receiver3);
-            }
-            types["R3"] = receiver3;
+            types["R"] = receiver;
 
             WallTypeSO wall = EnsureAsset<WallTypeSO>(WallFolder + "/Type_Wall.asset");
             if (string.IsNullOrEmpty(wall.label))
@@ -289,14 +260,15 @@ namespace ShiftGo.EditorTools
             level.tickInterval = 0.35f;
             level.placements = new List<ElementPlacement>();
 
-            Add(level, types["E1"], 0, 5);
-            Add(level, types["E2"], 0, 1);
+            // 发射器 / 接收器：节奏写在这一格上（模板只提供外观与默认值）。
+            AddEmitter(level, types["E"], 0, 5, "1011", 8);
+            AddEmitter(level, types["E"], 0, 1, "100", 3);
             Add(level, types["L1"], 3, 5);
             Add(level, types["N1"], 2, 1);
             Add(level, types["F1"], 5, 1);
-            Add(level, types["R1"], 3, 7);
-            Add(level, types["R2"], 8, 5);
-            Add(level, types["R3"], 8, 1);
+            AddReceiver(level, types["R"], 3, 7, "1", 6);      // 进料面朝下（模板基准）
+            AddReceiver(level, types["R"], 8, 5, "0", 2, 1);   // 进料面朝左（转一次）
+            AddReceiver(level, types["R"], 8, 1, "1", 2, 1);   // 进料面朝左（转一次）
 
             // 墙：与 DemoLevels 中的装饰墙完全一致
             Vector2Int[] walls =
@@ -321,6 +293,38 @@ namespace ShiftGo.EditorTools
                 type = type,
                 coord = new Vector2Int(x, y),
                 rotationSteps = rotation,
+            });
+        }
+
+        /// <summary>发射器放置：序列 + 总位数写在这一格上（模板只提供外观与默认值）。</summary>
+        static void AddEmitter(LevelSO level, ElementTypeSO type, int x, int y, string sequence, int emitCount, int rotation = 0)
+        {
+            level.placements.Add(new ElementPlacement
+            {
+                type = type,
+                coord = new Vector2Int(x, y),
+                rotationSteps = rotation,
+                overrideSequence = true,
+                sequence = sequence,
+                overrideCount = true,
+                count = emitCount,
+            });
+        }
+
+        /// <summary>接收器放置：期望序列 + 个数写在这一格上；进料面由模板基准朝向 + rotation 决定。</summary>
+        static void AddReceiver(LevelSO level, ElementTypeSO type, int x, int y, string sequence, int targetCount, int rotation = 0)
+        {
+            level.placements.Add(new ElementPlacement
+            {
+                type = type,
+                coord = new Vector2Int(x, y),
+                rotationSteps = rotation,
+                overrideSequence = true,
+                sequence = sequence,
+                overrideCount = true,
+                count = targetCount,
+                overrideFace = true,
+                acceptAnyFace = true,
             });
         }
 

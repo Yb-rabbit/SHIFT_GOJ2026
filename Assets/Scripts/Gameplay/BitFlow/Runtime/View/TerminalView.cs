@@ -475,6 +475,10 @@ namespace ShiftGo.BitFlow.View
         ///
         /// 装饰符一律用 ASCII（<c>&gt;</c>、<c>_</c>）：位图字体只覆盖 ASCII + 少量符号，
         /// 用 <c>›</c> / <c>▌</c> 这类在编辑器里会被系统字体悄悄顶替，打包后变成方块。
+        ///
+        /// 分隔符要写字面的 <c>&gt;</c>，<b>不能</b>写成 HTML 实体（<c>&amp;gt;</c>）：uGUI 的 Text
+        /// 只认 <c>&lt;b&gt;</c> / <c>&lt;color&gt;</c> 这类富文本标签，<b>不</b>解析实体，
+        /// 那五个字符会原样画在屏幕上，末尾的分号还会被读成标点错误。
         /// </summary>
         static string Compose(TerminalSpeaker speaker, string shown, bool cursor)
         {
@@ -484,7 +488,7 @@ namespace ShiftGo.BitFlow.View
             string label = TerminalPalette.SpeakerLabel(speaker).PadRight(TerminalPalette.SpeakerCols);
             string body = cursor ? shown + "<color=#" + speakerHex + ">_</color>" : shown;
 
-            return "<color=#" + speakerHex + ">" + label + "&gt;</color>"
+            return "<color=#" + speakerHex + ">" + label + "></color>"
                  + "<color=#" + bodyHex + "> " + body + "</color>";
         }
 
@@ -513,7 +517,7 @@ namespace ShiftGo.BitFlow.View
             string hex = ColorUtility.ToHtmlStringRGB(TerminalPalette.AlarmColor);
             string label = TerminalPalette.SpeakerLabel(TerminalSpeaker.Sys).PadRight(TerminalPalette.SpeakerCols);
 
-            slot.text = "<color=#" + hex + ">" + label + "&gt;</color>"
+            slot.text = "<color=#" + hex + ">" + label + "></color>"
                       + "<color=#" + hex + "> CONNECTION LOST.</color>";
         }
 

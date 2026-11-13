@@ -21,22 +21,30 @@ MonoBehaviour:
     coord: {x: 0, y: 5}
     rotationSteps: 0
     playerEditable: 0
-    overrideSequence: 0
-    sequence: 1
-    overrideCount: 0
-    count: 1
+    overrideSequence: 1
+    sequence: 1011
+    overrideCount: 1
+    count: 8
     overrideFace: 0
     acceptAnyFace: 1
-  - type: {fileID: 11400000, guid: b2417d6239246d54c837fe94a1f836e9, type: 2}
+    overridePassValue: 0
+    passValue: 1
+    overrideDelayTicks: 0
+    delayTicks: 1
+  - type: {fileID: 11400000, guid: 138adae525524314b98d514e68781fb3, type: 2}
     coord: {x: 0, y: 1}
     rotationSteps: 0
     playerEditable: 0
-    overrideSequence: 0
-    sequence: 1
-    overrideCount: 0
-    count: 1
+    overrideSequence: 1
+    sequence: 100
+    overrideCount: 1
+    count: 3
     overrideFace: 0
     acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 1
+    overrideDelayTicks: 0
+    delayTicks: 1
   - type: {fileID: 11400000, guid: cdae8e12b73a3f94787ad29d7c5d928d, type: 2}
     coord: {x: 3, y: 5}
     rotationSteps: 0
@@ -47,6 +55,10 @@ MonoBehaviour:
     count: 1
     overrideFace: 0
     acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 1
+    overrideDelayTicks: 0
+    delayTicks: 1
   - type: {fileID: 11400000, guid: 7e3473b8ae100234aa994dd6ea61145f, type: 2}
     coord: {x: 2, y: 1}
     rotationSteps: 0
@@ -57,6 +69,10 @@ MonoBehaviour:
     count: 1
     overrideFace: 0
     acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 1
+    overrideDelayTicks: 0
+    delayTicks: 1
   - type: {fileID: 11400000, guid: e25817d1fdcd78042ae44997f5900f44, type: 2}
     coord: {x: 5, y: 1}
     rotationSteps: 0
@@ -67,36 +83,52 @@ MonoBehaviour:
     count: 1
     overrideFace: 0
     acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 1
+    overrideDelayTicks: 0
+    delayTicks: 1
   - type: {fileID: 11400000, guid: 4edbf1f17ac4aba48ae636d09ea1e8ae, type: 2}
     coord: {x: 3, y: 7}
     rotationSteps: 0
     playerEditable: 0
-    overrideSequence: 0
+    overrideSequence: 1
     sequence: 1
-    overrideCount: 0
-    count: 1
-    overrideFace: 0
+    overrideCount: 1
+    count: 6
+    overrideFace: 1
     acceptAnyFace: 1
-  - type: {fileID: 11400000, guid: c2ab3d2e4a2c4ff429144184df4d4348, type: 2}
+    overridePassValue: 0
+    passValue: 1
+    overrideDelayTicks: 0
+    delayTicks: 1
+  - type: {fileID: 11400000, guid: 4edbf1f17ac4aba48ae636d09ea1e8ae, type: 2}
     coord: {x: 8, y: 5}
-    rotationSteps: 0
+    rotationSteps: 1
     playerEditable: 0
-    overrideSequence: 0
-    sequence: 1
-    overrideCount: 0
-    count: 1
-    overrideFace: 0
+    overrideSequence: 1
+    sequence: 0
+    overrideCount: 1
+    count: 2
+    overrideFace: 1
     acceptAnyFace: 1
-  - type: {fileID: 11400000, guid: aec08a74b095c1d459f9dff533e70879, type: 2}
+    overridePassValue: 0
+    passValue: 1
+    overrideDelayTicks: 0
+    delayTicks: 1
+  - type: {fileID: 11400000, guid: 4edbf1f17ac4aba48ae636d09ea1e8ae, type: 2}
     coord: {x: 8, y: 1}
-    rotationSteps: 0
+    rotationSteps: 1
     playerEditable: 0
-    overrideSequence: 0
+    overrideSequence: 1
     sequence: 1
-    overrideCount: 0
-    count: 1
-    overrideFace: 0
+    overrideCount: 1
+    count: 2
+    overrideFace: 1
     acceptAnyFace: 1
+    overridePassValue: 0
+    passValue: 1
+    overrideDelayTicks: 0
+    delayTicks: 1
   wallType: {fileID: 11400000, guid: 5e0007412a0dbd6419836c231bca6c7d, type: 2}
   wallMap: '#.......#
 
@@ -114,3 +146,4 @@ MonoBehaviour:
 
     #....####'
   supplies: []
+  allowBuild: 0

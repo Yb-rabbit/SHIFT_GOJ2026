@@ -1,0 +1,32 @@
+BitFlow 发射器 / 接收器参数迁移预览
+生成时间：2026-11-14 01:31:29
+模板：发射器沿用它原本的参数，接收器 targetCount = 4
+
+序号 | 关卡 | 格 | 旧类型 | 旧参数 | 新参数 | rotationSteps | 等价
+-----|------|----|--------|--------|--------|---------------|-----
+1 | Level_01 | (0,5) | Type_Emitter_E1 | SEQ 1011 / EMIT 8 / FACE Right / ROT 0 | SEQ 1011 / EMIT 8 / FACE Right / ROT 0 | 0 → 0 | OK
+2 | Level_01 | (0,1) | Type_Emitter_E2 | SEQ 100 / EMIT 3 / FACE Right / ROT 0 | SEQ 100 / EMIT 3 / FACE Right / ROT 0 | 0 → 0 | OK
+3 | Level_01 | (3,7) | Type_Receiver_R1 | SEQ 1 / NEED 6 / FACE Down ANY / ROT 0 | SEQ 1 / NEED 6 / FACE Down ANY / ROT 0 | 0 → 0 | OK
+4 | Level_01 | (8,5) | Type_Receiver_R2 | SEQ 0 / NEED 2 / FACE Left ANY / ROT 0 | SEQ 0 / NEED 2 / FACE Left ANY / ROT 1 | 0 → 1 | OK
+5 | Level_01 | (8,1) | Type_Receiver_R3 | SEQ 1 / NEED 2 / FACE Left ANY / ROT 0 | SEQ 1 / NEED 2 / FACE Left ANY / ROT 1 | 0 → 1 | OK
+6 | Level_02 | (1,4) | Type_Emitter_E1 | SEQ 1 / EMIT 6 / FACE Right / ROT 0 | SEQ 1 / EMIT 6 / FACE Right / ROT 0 | 0 → 0 | OK
+7 | Level_02 | (7,4) | Type_Receiver_R4 | SEQ 1 / NEED 6 / FACE Left ANY / ROT 0 | SEQ 1 / NEED 6 / FACE Left ANY / ROT 1 | 0 → 1 | OK
+8 | Level_03 | (0,2) | Type_Emitter_E1 | SEQ 1011 / EMIT 8 / FACE Right / ROT 0 | SEQ 1011 / EMIT 8 / FACE Right / ROT 0 | 0 → 0 | OK
+9 | Level_03 | (3,5) | Type_Receiver_R1 | SEQ 1 / NEED 6 / FACE Down ANY / ROT 0 | SEQ 1 / NEED 6 / FACE Down ANY / ROT 0 | 0 → 0 | OK
+10 | Level_03 | (7,2) | Type_Receiver_R2 | SEQ 0 / NEED 2 / FACE Left ANY / ROT 0 | SEQ 0 / NEED 2 / FACE Left ANY / ROT 1 | 0 → 1 | OK
+11 | Level_04 | (0,4) | Type_Emitter_E1 | SEQ 1011 / EMIT 8 / FACE Right / ROT 0 | SEQ 1011 / EMIT 8 / FACE Right / ROT 0 | 0 → 0 | OK
+12 | Level_04 | (7,4) | Type_Receiver_R4 | SEQ 1 / NEED 6 / FACE Left ANY / ROT 0 | SEQ 1 / NEED 6 / FACE Left ANY / ROT 1 | 0 → 1 | OK
+13 | Level_04 | (7,1) | Type_Receiver_R2 | SEQ 0 / NEED 2 / FACE Left ANY / ROT 0 | SEQ 0 / NEED 2 / FACE Left ANY / ROT 1 | 0 → 1 | OK
+14 | Level_05 | (0,6) | Type_Emitter_E3 | SEQ 0001 / EMIT 4 / FACE Down / ROT 0 | SEQ 0001 / EMIT 4 / FACE Down / ROT 1 | 0 → 1 | OK
+15 | Level_05 | (8,3) | Type_Receiver_R5 | SEQ 1 / NEED 1 / FACE Left ANY / ROT 0 | SEQ 1 / NEED 1 / FACE Left ANY / ROT 1 | 0 → 1 | OK
+16 | Level_05 | (4,6) | Type_Receiver_R5 | SEQ 111 / NEED 3 / FACE Left ANY / ROT 0 | SEQ 111 / NEED 3 / FACE Left ANY / ROT 1 | 0 → 1 | OK
+17 | Level_05 | (4,0) | Type_Emitter_E4 | SEQ 000 / EMIT 3 / FACE Up / ROT 0 | SEQ 000 / EMIT 3 / FACE Up / ROT 3 | 0 → 3 | OK
+18 | Level_05 | (8,6) | Type_Emitter_E4 | SEQ 1 / EMIT 3 / FACE Left / ROT 3 | SEQ 1 / EMIT 3 / FACE Left / ROT 2 | 3 → 2 | OK
+19 | Level_06 | (8,3) | Type_Receiver_R6 | SEQ 1 / NEED 4 / FACE Left ANY / ROT 0 | SEQ 1 / NEED 4 / FACE Left ANY / ROT 1 | 0 → 1 | OK
+20 | Level_06 | (4,6) | Type_Receiver_R6 | SEQ 1 / NEED 4 / FACE Left ANY / ROT 0 | SEQ 1 / NEED 4 / FACE Left ANY / ROT 1 | 0 → 1 | OK
+21 | Level_06 | (0,3) | Type_Emitter_E5 | SEQ 1111 / EMIT 4 / FACE Right / ROT 0 | SEQ 1111 / EMIT 4 / FACE Right / ROT 0 | 0 → 0 | OK
+22 | Level_06 | (4,0) | Type_Emitter_E5 | SEQ 1111 / EMIT 4 / FACE Up / ROT 3 | SEQ 1111 / EMIT 4 / FACE Up / ROT 3 | 3 → 3 | OK
+23 | Level_07 | (8,3) | Type_Receiver_R6 | SEQ 1 / NEED 4 / FACE Left ANY / ROT 0 | SEQ 1 / NEED 4 / FACE Left ANY / ROT 1 | 0 → 1 | OK
+24 | Level_07 | (0,3) | Type_Emitter_E5 | SEQ 1111 / EMIT 4 / FACE Right / ROT 0 | SEQ 1111 / EMIT 4 / FACE Right / ROT 0 | 0 → 0 | OK
+
+合计 24 处，等价 24 处，不等价 0 处。

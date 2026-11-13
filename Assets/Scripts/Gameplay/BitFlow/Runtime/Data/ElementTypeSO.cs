@@ -13,7 +13,7 @@ namespace ShiftGo.BitFlow.Data
         public string label = string.Empty;
 
         /// <summary>
-        /// 稳定标识：默认取资产名（Type_Emitter_E1 之类），写进 <see cref="ElementDefinition.TypeKey"/>。
+        /// 稳定标识：默认取资产名（Type_Emitter 之类），写进 <see cref="ElementDefinition.TypeKey"/>。
         /// 想改名又不破坏存档/手牌对应关系时，在子类里覆写成固定字符串。
         /// </summary>
         public virtual string Key => string.IsNullOrEmpty(name) ? GetType().Name : name;
