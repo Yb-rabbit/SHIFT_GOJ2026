@@ -17,7 +17,7 @@ LevelJson/
 
 ## 流程
 
-1. Unity：`SHIFT GO/BitFlow/关卡 JSON/导出选中关卡` → `LevelJson/exported/*.json`
+1. Unity：`SHIFT GO/BitFlow/关卡 JSON 中心` → 「做关」→ `导出选中关卡` → `LevelJson/exported/*.json`
 2. 设计侧：手改 / 手写 JSON，丢进 `LevelJson/incoming/`
 3. Unity：`校验 JSON` 看报告 → `导入为新关卡` 或 `覆盖选中关卡`（自动试跑并在报告里给结论）
 
@@ -55,12 +55,12 @@ LevelJson/
 - 进关后重开面板、或 `REPLAY` 会重新读盘 → 改了文件立刻生效
 - JSON 关卡没有「下一关」（面板里也没有），因为它不属于关卡表顺序
 
-**把工程里的关搬进运行时目录**：菜单 `SHIFT GO/BitFlow/关卡 JSON/同步到运行时目录`
+**把工程里的关搬进运行时目录**：菜单 `SHIFT GO/BitFlow/关卡 JSON/同步到运行时目录`（或 `一键：刷新注册表并同步`）
 （根目录 `LevelJson/` + `incoming/` 单向复制；`exported/` 不参与，那是导出参照。
 同名先到先得、目录里已有文件不删，玩家自己扔的关不会被动掉）。
 复制完会用运行时那套代码现场读一遍，读不通的当场在 Console 点名。
 
-**作者关卡预置打包（桌面 / 浏览器都要有）**：菜单 `SHIFT GO/BitFlow/关卡 JSON/生成内置关卡包`
+**作者关卡预置打包（桌面 / 浏览器都要有）**：`SHIFT GO/BitFlow/关卡 JSON 中心` → 「出包」→ `生成内置关卡包`
 （出包前 `IPreprocessBuildWithReport` 也会自动跑一遍，忘了点也不会打出旧包）。
 
 ```
@@ -165,20 +165,48 @@ persistentDataPath/LevelJson/*.json            ← 和玩家自己造的关躺�
 | `坐标重复` | 同一格写了两条，后一条被跳过 |
 | `墙层和 elements 有 N 格重叠` | 那几格的墙会被元件盖掉（placements 优先） |
 | `将新建类型变体` | `kind` 写法没匹配到现成资产，导入时会新建一份新类型资产（想复用就改 `type`） |
-| 试跑 `📝 预设布局未通关` | **不是错误**：这一关发了手牌，预设布局本来就该跑不通（跑得通反而说明手牌是摆设）。玩家要自己用牌解 |
-| 试跑 `❌ 未通过` | 没发手牌的关跑不通 —— 路由/序列对不上，报告里会指出第几位不匹配 |
+| 模拟器参考 `📝 预设布局未通关` | **不是错误、也不影响出 json**：这一关发了手牌，预设布局本来就该跑不通（跑得通反而说明手牌是摆设）。玩家要自己用牌解 |
+| 模拟器参考 `❌ 未通过` | 没发手牌的关跑不通 —— 路由/序列对不上，报告里会指出第几位不匹配。同样不影响 json 能否交付 |
 
 ## 菜单
 
-`SHIFT GO/BitFlow/关卡 JSON/`
+高频的两个动作在窗口里：`SHIFT GO/BitFlow/关卡 JSON 中心`。只有两个页签，
+按钮名和菜单项一字不差；窗口本身不含业务逻辑 —— 每个按钮调的就是原来那个方法（日志、弹窗没改）。
 
-导出选中关卡 · 导出全部关卡 · 导出空白模板 · 校验 JSON（不落盘）· 导入为新关卡 · 覆盖选中关卡（可 Ctrl+Z 撤回）· 批量导入 incoming 目录 · 检查 type 断链
+| 页签 | 能做什么 |
+|---|---|
+| 做关 | 打开关卡编辑器（浏览器版）· 导出选中 / 全部 / 空白模板 · 导出类型目录（给外部编辑器）· 校验 JSON（不落盘）· 检查 type 断链 · 导入为新关卡 · 覆盖选中关卡（可 Ctrl+Z 撤回）· 批量导入 incoming 目录 |
+| 出包 | **生成内置关卡包** · **打包前自检（关卡）** · 发布前自检：本机分享目录 |
 
-运行时（打包后也要能跑的那一半）：
+窗口顶部常驻一行 `① 作者源 N 关 · ② 内置包 N 关`，点一下直接打开对应目录。
 
-刷新类型注册表 · 同步到运行时目录 · 打开运行时关卡目录 · 一键：刷新注册表并同步 · **生成内置关卡包** · **打包前自检（关卡）** · 导出类型目录（给外部编辑器）· 打开外部关卡编辑器
+其余动作都不是「每次做关都要点」的，全部回到菜单栏：
+
+| 菜单项 | 什么时候用 |
+|---|---|
+| `SHIFT GO/BitFlow/导入 custom_level.json 为关卡资产` | 把游戏内 BUILD MODE 存的草稿转成 LevelSO |
+| `SHIFT GO/BitFlow/试跑关卡表` | 按关卡表逐关跑一遍模拟器 |
+| `SHIFT GO/BitFlow/试跑所有关卡（扫全盘）` | 不看关卡表，扫全部 LevelSO |
+| `SHIFT GO/BitFlow/清理关卡表空引用` | 删掉的关卡在表里留下的洞 |
+| `SHIFT GO/BitFlow/清空本轮存档（通关打勾 + 元件首见）` | 自测完想验「新玩家看到的样子」 |
+| `SHIFT GO/BitFlow/在资源管理器里显示存档` | 打开存档目录 |
+| `SHIFT GO/BitFlow/关卡 JSON/刷新类型注册表` | 改了 / 加了类型资产之后 |
+| `SHIFT GO/BitFlow/关卡 JSON/同步到运行时目录` | 工程 JSON → `persistentDataPath` |
+| `SHIFT GO/BitFlow/关卡 JSON/打开运行时关卡目录` | 打开 `persistentDataPath/LevelJson` |
+| `SHIFT GO/BitFlow/关卡 JSON/一键：刷新注册表并同步` | 新拉一份工程，跑这一个就够 |
+| `SHIFT GO/BitFlow/关卡 JSON/迁移旧关卡目录（DefaultCompany → 当前公司名）` | 改过公司名，搬旧日志目录 |
+| `SHIFT GO/BitFlow/关卡 JSON/显示关卡目录总览` | 四处目录 + 可写性一张表 |
+
+`生成内置关卡包` / `打包前自检（关卡）` / `打开关卡编辑器（浏览器版）` 在菜单和窗口里各有一个入口：
+重复的只是入口，逻辑只有一份。
+
+| 菜单项 | 什么时候用 |
+|---|---|
+| `SHIFT GO/BitFlow/关卡编辑器` | **做关的主入口**：拉起源码里那份浏览器版编辑器（`Tools/LevelStudio`）。已经编译过就直接起 exe（秒开），源码 / 界面改过才退回 `.bat` 重编一次 |
+| `SHIFT GO/BitFlow/关卡 JSON 中心` | 导 JSON、导入、出包前自检 —— 和浏览器版是两条路：这条处理**资产 ↔ JSON**，浏览器版负责**从零摆一关** |
 
 实现：
+- `Editor/BitFlow/LevelJsonCenterWindow.cs`（两个页签的窗口；仅调用下面这些方法，不含业务逻辑）
 - `Runtime/Data/LevelJsonSerializer.cs`（序列化核心，EditMode 测试覆盖）
 - `Editor/BitFlow/LevelJsonTool.cs`（资产解析与菜单）
 - `Runtime/Data/LevelTypeRegistrySO.cs` / `LevelTypeRegistryResolver.cs` / `LevelJsonLibrary.cs`（运行时读取，EditMode 测试覆盖）
@@ -186,5 +214,5 @@ persistentDataPath/LevelJson/*.json            ← 和玩家自己造的关躺�
 - `Editor/BitFlow/LevelSeedBundler.cs`（作者关卡 → `Resources/BitFlow/Levels`，菜单 + 出包前钩子）
 - `Runtime/Data/BundledLevels.cs`（首次启动把内置关卡播进关卡目录，内含覆盖规则，EditMode 测试覆盖）
 - `Runtime/Core/LevelDocument.cs` / `LevelDocumentBuilder.cs` / `LevelDocumentWriter.cs` / `LevelTypeCatalog.cs`（纯 C# 数据层，Unity 之外也能编译 —— 见 `docs/LEVEL_STUDIO.md`）
-- `Tools/LevelStudio/`（Unity 之外的关卡编辑器：放元件、看朝向、跑真引擎自测、存 JSON）
+- `Tools/LevelStudio/`（Unity 之外的关卡编辑器：摆元件、看朝向、自查「引擎读不读得懂」、存 JSON —— 见 `docs/LEVEL_STUDIO.md`）
 

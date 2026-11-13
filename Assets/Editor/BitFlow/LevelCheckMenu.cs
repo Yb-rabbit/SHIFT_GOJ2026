@@ -21,7 +21,7 @@ namespace ShiftGo.EditorTools
         const string CatalogPath = "Assets/Data/Levels/LevelCatalog.asset";
 
         [MenuItem("SHIFT GO/BitFlow/试跑关卡表", false, 22)]
-        static void CheckCatalog()
+        internal static void CheckCatalog()
         {
             LevelCatalogSO catalog = AssetDatabase.LoadAssetAtPath<LevelCatalogSO>(CatalogPath);
             if (catalog == null)
@@ -58,7 +58,7 @@ namespace ShiftGo.EditorTools
         }
 
         [MenuItem("SHIFT GO/BitFlow/试跑所有关卡（扫全盘）", false, 23)]
-        static void CheckEveryLevelOnDisk()
+        internal static void CheckEveryLevelOnDisk()
         {
             List<LevelSO> levels = new List<LevelSO>();
             foreach (string guid in AssetDatabase.FindAssets("t:LevelSO"))
@@ -82,7 +82,7 @@ namespace ShiftGo.EditorTools
 
         /// <summary>把关卡表里指向已删资产的那些洞吃掉（否则遍历关卡表会撞 null）。</summary>
         [MenuItem("SHIFT GO/BitFlow/清理关卡表空引用", false, 24)]
-        static void RemoveNullEntries()
+        internal static void RemoveNullEntries()
         {
             LevelCatalogSO catalog = AssetDatabase.LoadAssetAtPath<LevelCatalogSO>(CatalogPath);
             if (catalog == null)

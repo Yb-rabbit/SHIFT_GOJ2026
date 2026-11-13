@@ -170,13 +170,41 @@ main {
 .inspector-body .dir-row button.active { border-color: var(--accent); color: var(--accent); }
 
 .result { margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 4px; white-space: pre-wrap; font-size: 12px; max-height: 320px; overflow: auto; }
-/* 这里刻意没有「绿框」这一档。
-   检查面板只陈述引擎证明得了的三件事，能不能通关要作者进游戏按玩家身份试 ——
-   一个绿色的「全部通过」等于替作者背书，是过度承诺。红只留给「引擎读不了这份 JSON」。 */
-.result.warn { border-color: #6b5730; color: var(--warn); }
+/* 这里刻意没有「通过」这一档。
+   引擎检查只回答「这份 JSON 引擎读不读得懂」，读得懂是中性事实，不是成绩 ——
+   一个绿色的「全部通过」等于替作者背书「这关能过」，是过度承诺。
+   红只留给「引擎读不了这份 JSON」。 */
 .result.fail { border-color: #6b2b2b; color: var(--bad); }
 
+/* 「本关清单」：网格下方那几行事实（尺寸 / 元件 / 各格参数 / 墙 / 手牌）。
+   一行一个事实，不打分、不标红 —— 作者要的是「我到底摆了些什么」。
+   pre-line：\n 要能换行，长行还得自己折回来。 */
+.inventory {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
 .problems { margin-top: 8px; font-size: 12px; color: var(--warn); white-space: pre-wrap; }
+
+/* 引擎的「额外意见」（会话前置条件等）收在这里，默认折叠：
+   它们不影响导出的 json，展开看即可，不该让作者以为这关被打回了。 */
+.problems .refs { white-space: normal; color: var(--dim); }
+.problems .refs summary { cursor: pointer; color: var(--dim); }
+.problems .refs pre {
+  margin: 6px 0 0;
+  padding: 0;
+  white-space: pre-wrap;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 12px;
+}
 
 .supply-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; max-height: 160px; overflow: auto; }
 .supply-list li { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); }
@@ -270,6 +298,7 @@ textarea {
       <button id="btnClear" title="清空所有元件和墙">清空</button>
     </div>
     <div id="grid" class="grid"></div>
+    <div id="inventory" class="inventory"></div>
     <div id="problems" class="problems"></div>
   </section>
 
@@ -286,9 +315,10 @@ textarea {
     <ul id="supplyList" class="supply-list"></ul>
     <p class="hint">手牌只能发「不改出题权」的件：墙 / 分流器 / 非门 / 过滤器 / 延迟器。有手牌时「允许玩家进关后自己改」会被强制打开并锁住 —— 发得出牌就得放得下。<br />尺寸只有游戏给的四档：9x8（主线标准板）/ 11x8 / 7x6 / 13x9，和玩家 NEW LEVEL 里能选的完全一致。</p>
 
-    <h2>自测</h2>
-    <button id="btnCheck" class="primary">跑一遍真引擎</button>
-    <div id="checkResult" class="result dim">还没测。</div>
+    <h2>引擎检查</h2>
+    <button id="btnCheck">这份 JSON 引擎读得懂吗</button>
+    <div id="checkResult" class="result dim">还没查。</div>
+    <p class="hint">这里只回答一件事实：引擎能不能把当前布局读成一份关卡。这关能不能解、玩家拿着手牌能不能过，得进游戏按玩家身份试 —— 编辑器不解题，也不替你下结论。</p>
   </section>
 
   <section class="panel files">
@@ -779,8 +809,8 @@ window.__CATALOG__ = {
       });
     },
 
-    /* 没接引擎时如实说"没跑"，不拿"结构看起来没问题"去冒充"能通关"。
-     * app.js 见到 pending 就只展示 report，不会拼那句「存档前置检查：没有发现硬伤」。 */
+    /* 没接引擎时如实说"没跑"，不拿"结构看起来没问题"去冒充"引擎读得懂"。
+     * app.js 见到 pending 就只展示 report。 */
     check() {
       return Promise.resolve({
         pending: true,
@@ -789,10 +819,10 @@ window.__CATALOG__ = {
         hasSupplies: false,
         pass: false,
         report: [
-          '⚠ 独立版没有内置引擎，这一项没跑。',
+          '⚠ 独立版没有内置引擎，「引擎读不读得懂」这一项没跑。',
           '',
-          '「跑一遍真引擎」跑的是 Runtime/Core 里的 BitFlowSimulation（C#，762 行），',
-          '纯浏览器版需要把它移植成 engine.js —— 那是下一步。',
+          '桌面板（ShiftGoLevelStudio.exe）里这一步走的是 Runtime/Core 的 LevelJsonSerializer，',
+          '纯浏览器版要把那份 C# 移植成 JS —— 那是下一步。',
           '',
           '现在能保证的：JSON 结构、关卡名规则、元件参数范围都在前端校验过；',
           '导出的文件就是游戏 IMPORT 直接吃的格式。',
@@ -1007,6 +1037,7 @@ const el = {
   allowBuild: document.getElementById('allowBuild'),
   palette: document.getElementById('palette'),
   grid: document.getElementById('grid'),
+  inventory: document.getElementById('inventory'),
   coordLabel: document.getElementById('coordLabel'),
   problems: document.getElementById('problems'),
   inspector: document.getElementById('inspector'),
@@ -1433,8 +1464,121 @@ function rotateCell(cell) {
   }
 }
 
+/**
+ * 「本关清单」：这一关里有什么、各有多少、每格参数是什么。
+ *
+ * 做关真正需要盯的就是这几行 —— 摆了什么、手牌发哪几种各几张。至于「这关能不能过」，
+ * 编辑器答不了（要玩家身份进游戏试），所以这里只陈述事实，不打分。
+ *
+ * 纯前端统计、不走 HOST：每次落笔都要立刻反映，等一次网络往返没有意义。
+ * 墙存在 wallRows 里（不是 elements），所以单独数。
+ */
+function renderInventory() {
+  if (!el.inventory) return;
+
+  const doc = state.doc;
+  const lines = [];
+
+  lines.push(doc.width + ' × ' + doc.height
+    + ' · tick ' + (Math.round((Number(doc.tickInterval) || 0.35) * 1000) / 1000)
+    + ' · ' + (doc.allowBuild ? '允许玩家进关后自己改' : '玩家不能改'));
+
+  const elements = doc.elements || [];
+  if (!elements.length) {
+    lines.push('元件：还没摆');
+  } else {
+    // 按种类归堆，同一种里再按「参数串」细分 —— 两个发射器一个 1011 一个 101，得分得清。
+    const groups = new Map();
+    for (const cell of elements) {
+      if (!groups.has(cell.kind)) groups.set(cell.kind, new Map());
+      const bag = groups.get(cell.kind);
+      const text = cellParamText(cell);
+      bag.set(text, (bag.get(text) || 0) + 1);
+    }
+
+    const parts = [];
+    for (const info of KINDS) {
+      const bag = groups.get(info.kind);
+      if (!bag) continue;
+      groups.delete(info.kind);
+      parts.push(describeGroup(info.label, bag));
+    }
+    // KINDS 之外的种类（旧文件 / 以后新增的）别静默吞掉
+    for (const [kind, bag] of groups) parts.push(describeGroup(kind, bag));
+
+    lines.push('元件 ' + elements.length + ' 个：' + parts.join('；'));
+  }
+
+  const walls = countWalls();
+  lines.push('墙 ' + walls + ' 面');
+
+  lines.push(describeSupplies(doc.supplies || []));
+
+  el.inventory.textContent = lines.join('\n');
+}
+
+/** 一格的关键参数：作者看清单时真正关心的那部分（朝向 / 序列 / 次数 / 放行值 / 延迟）。 */
+function cellParamText(cell) {
+  const arrow = DIR_MARK[cell.dir] || '';
+
+  switch (cell.kind) {
+    case 'Emitter':
+      return arrow + ' ' + (cell.sequence || '1') + ' · 发 ' + (Number(cell.count) || 0) + ' 位';
+    case 'Receiver':
+      return arrow + ' ' + (cell.sequence || '1') + ' · 收 ' + (Number(cell.count) || 0) + ' 位'
+        + (cell.face === 'in' ? ' · 只认进料面' : '');
+    case 'Splitter':
+      return arrow + (DIR_MARK[cell.dir2] || '');
+    case 'NotGate':
+      return arrow;
+    case 'Filter':
+      return '放行 ' + (Number(cell.pass) === 0 ? 0 : 1);
+    case 'DelayGate':
+      return '+' + clampDelay(cell.delay) + ' tick';
+    default:
+      return '';
+  }
+}
+
+/** 一种元件的汇总：「发射器 ×2（→ 1011 · 发 4 位、→ 101 · 发 3 位）」。 */
+function describeGroup(label, bag) {
+  let total = 0;
+  const details = [];
+  for (const [text, count] of bag) {
+    total += count;
+    // 没有可说的参数（墙）就只留个数，别输出一个空括号
+    if (text) details.push(count > 1 ? text + ' ×' + count : text);
+  }
+
+  return label + ' ×' + total + (details.length ? '（' + details.join('、') + '）' : '');
+}
+
+function countWalls() {
+  let walls = 0;
+  for (const row of state.doc.wallRows || []) {
+    for (const ch of String(row)) if (ch === '#') walls++;
+  }
+  return walls;
+}
+
+/** 手牌清单：有类型就写类型名（F1 / D3 这种差别只在类型上），没有就写种类。 */
+function describeSupplies(supplies) {
+  const usable = supplies.filter((item) => item && Number(item.count) >= 1);
+  if (!usable.length) return '手牌：没有（玩家只能玩你摆好的样子）';
+
+  const parts = usable.map((item) => {
+    const spec = specOf(item.type);
+    const name = spec ? supplySpecName(spec) : kindInfo(item.kind).label;
+    return name + ' ×' + item.count;
+  });
+
+  const total = usable.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
+  return '手牌 ' + usable.length + ' 种 ' + total + ' 张：' + parts.join('、');
+}
+
 function afterEdit() {
   renderGrid();
+  renderInventory();
   renderInspector();
   renderSupplies();
   syncAllowBuildLock();
@@ -2069,27 +2213,31 @@ async function openLevel(name) {
   }
 }
 
-// ------------------------------------------------------------------ 自测
-
-/* 检查面板的常驻脚注。
-   「玩家拿着手牌到底能不能解出来」需要求解器或者人试玩，这个面板答不了。
-   与其让作者从一个框的颜色里猜，不如每次都把这句话明说出来。 */
-const CHECK_CAVEAT = '能不能真的过，只能进游戏、按玩家身份试 —— 这里只查必要条件，不解题。';
+// ------------------------------------------------------------------ 引擎检查
 
 /**
- * 检查 = 只陈述引擎真能证明的三件事，不下「这关能不能过」的结论：
+ * 把一串引擎原文收进折叠块里。
  *
- *   1. 引擎收不收这份 JSON       —— 构建问题 / 接口报错，红
- *   2. 当前布局当固定关卡跑一遍   —— 事实陈述，无褒贬
- *   3. 存档前置条件（六条）       —— 必要条件，不是充分条件，黄
+ * 这些内容（会话前置条件、预设布局的跑分）都**不影响导出的 json**，所以默认折叠、
+ * 只当参考看 —— 以前它们直接铺在网格下方，作者会当成「这关被打回了」。
+ */
+function problemsHtml(title, lines) {
+  return '<details class="refs"><summary>'
+    + escapeHtml(title + '（' + lines.length + ' 条）')
+    + '</summary><pre>' + escapeHtml(lines.map((line) => '· ' + line).join('\n')) + '</pre></details>';
+}
+
+/**
+ * 引擎检查 = 只回答一件事：引擎能不能把这份 JSON 读成关卡。
  *
- * 「有手牌的关卡，预设布局跑不通」是设计意图，不是缺陷；反过来
- * 「有手牌、预设却自己就通了」才说明手牌是摆设 —— 那由 RunForSave 判定，
- * 面板只负责如实转述，不替作者下结论。
+ * 读不懂就红，说清楚哪几条；读得懂就到此为止，不评价这关难不难、能不能解 ——
+ * 那要拿着手牌按玩家身份进游戏试，编辑器答不了。
+ *
+ * 引擎顺带跑出来的「会话前置」意见降级成网格下方的折叠参考，不参与红黄判断。
  */
 async function runCheck() {
   el.checkResult.className = 'result dim';
-  el.checkResult.textContent = '跑引擎…';
+  el.checkResult.textContent = '把这份 JSON 交给引擎…';
   el.problems.textContent = '';
 
   try {
@@ -2097,53 +2245,43 @@ async function runCheck() {
 
     if (result.error) {
       el.checkResult.className = 'result fail';
-      el.checkResult.textContent = result.error;
+      el.checkResult.textContent = '引擎读不懂这份 JSON：\n' + result.error;
       return;
     }
 
     // 宿主明确说「这项没跑」（独立版还没接引擎）—— 只转述，不伪造结论。
     if (result.pending) {
       el.checkResult.className = 'result dim';
-      el.checkResult.textContent = result.report + '\n\n' + CHECK_CAVEAT;
-      el.problems.textContent = '';
+      el.checkResult.textContent = result.report || '这个宿主还没接引擎，检查不了。';
       return;
     }
 
     const buildProblems = result.problems || [];
     const saveProblems = result.saveProblems || [];
-    // 有没有手牌以后端为准（definition.HasSupplies）：前端自己数 doc.supplies
-    // 会把 count 为 0 的残留条目也算进去，那句「有手牌，跑不通才正常」就会说错。
-    const hasSupplies = !!result.hasSupplies;
 
-    // report 首行是「✅ 通关 12 ticks」这种引擎结论，直接接在「预设布局」后面；
-    // 剩下的行（每个接收器收了几位、第一处不匹配在哪）原样留着，作者要靠它定位。
-    const reportLines = String(result.report || '').split('\n');
-    const headline = reportLines.shift() || '';
-    const detail = reportLines.join('\n').trim();
+    if (buildProblems.length) {
+      el.checkResult.className = 'result fail';
+      el.checkResult.textContent = '引擎读不懂这份 JSON（' + buildProblems.length + ' 条）：\n'
+        + buildProblems.map((line) => '· ' + line).join('\n')
+        + '\n\n这几条会直接挡住进游戏，改完再查一次。';
+      return;
+    }
 
-    const verdict = '预设布局（当成固定关卡跑一遍）：' + headline
-      + (hasSupplies && !result.pass ? '  —— 有手牌，跑不通才是正常' : '');
+    const supplies = (state.doc.supplies || []).filter((item) => item && Number(item.count) >= 1);
+    // 中性色：这是事实陈述，不是成绩单。绿框会变成替作者背书。
+    el.checkResult.className = 'result dim';
+    el.checkResult.textContent = '读得懂。引擎能把这份 JSON 读成 '
+      + state.doc.width + '×' + state.doc.height + ' 的关卡（'
+      + state.doc.elements.length + ' 个元件 / ' + countWalls() + ' 面墙'
+      + (supplies.length ? ' / ' + supplies.length + ' 种手牌' : '')
+      + '）。\n玩起来怎么样，进游戏试。';
 
-    const saveLine = saveProblems.length === 0
-      ? '存档前置检查：没有发现硬伤'
-      : '存档前置检查：' + saveProblems.length + ' 条没过（清单在网格下方）';
-
-    el.checkResult.textContent = [verdict, detail, saveLine, CHECK_CAVEAT]
-      .filter((line) => line !== '')
-      .join('\n');
-
-    // 红只留给「引擎读不了 / 读不全这份 JSON」。
-    // 存档前置没过用黄：那也可能是作者还没改完的草稿，不该一票否决。
-    el.checkResult.className = 'result '
-      + (buildProblems.length ? 'fail' : (saveProblems.length ? 'warn' : 'dim'));
-
-    const notes = [];
-    if (buildProblems.length) notes.push('构建问题：\n' + buildProblems.map((p) => '· ' + p).join('\n'));
-    if (saveProblems.length) notes.push('存档前置检查：\n' + saveProblems.map((p) => '· ' + p).join('\n'));
-    el.problems.textContent = notes.join('\n\n');
+    if (saveProblems.length) {
+      el.problems.innerHTML = problemsHtml('引擎的额外意见 — 不影响导出的 json', saveProblems);
+    }
   } catch (error) {
     el.checkResult.className = 'result fail';
-    el.checkResult.textContent = '自测失败：' + error.message;
+    el.checkResult.textContent = '检查没跑起来：' + error.message;
   }
 }
 
@@ -2337,6 +2475,9 @@ function applyMeta() {
     renderGrid();
     renderInspector();
   }
+
+  // tick / allowBuild / 关卡名也可能变了，清单里印着这些，顺手刷一次
+  renderInventory();
 }
 
 function interactionTargetIsField(target) {
@@ -2551,21 +2692,25 @@ async function saveLevel() {
       ? '已改名：' + result.renamedFrom + '.json → ' + result.name + '.json'
       : (result.existed ? '已覆盖：' : '新写入：') + result.file;
 
-    // 存得下 ≠ 做完了。文件确实写进去了，所以不是失败（中性色，不是红）——
-    // 但「这关还差几条」不能因为作者没点「跑一遍真引擎」就消失，否则清单只活在
-    // 那个要主动点的按钮后面。
+    // 存得下 ≠ 读得懂：引擎读不了这份 json 的话，Unity 那边导入会失败，必须说出来。
+    // 其余「会话前置」意见只当参考 —— 它们不影响已经落盘的 json，收进折叠块。
     const saveProblems = result.saveProblems || [];
     const buildProblems = result.problems || [];
 
     // 面板整个重铺，和 runCheck 一个形状：只叠加不清空的话，上一次留下的
     // 「这一关没有接收器」会活到这一次已经补上之后，变成一句骗人的黄字。
-    const notes = [];
-    if (buildProblems.length) notes.push('构建问题：\n' + buildProblems.map((p) => '· ' + p).join('\n'));
-    if (saveProblems.length) notes.push('存档前置检查：\n' + saveProblems.map((p) => '· ' + p).join('\n'));
-    el.problems.textContent = notes.join('\n\n');
+    if (buildProblems.length) {
+      el.problems.innerHTML = problemsHtml('引擎读不懂 —— Unity 导入这份 json 会失败', buildProblems);
+    } else if (saveProblems.length) {
+      el.problems.innerHTML = problemsHtml('引擎的额外意见 — 不影响已存下的 json', saveProblems);
+    } else {
+      el.problems.textContent = '';
+    }
 
-    if (saveProblems.length) {
-      setStatus(note + '　/　这关还差 ' + saveProblems.length + ' 条，清单在网格下方');
+    if (buildProblems.length) {
+      setStatus(note + '　/　但这关引擎读不懂（' + buildProblems.length + ' 条，在网格下方）', false);
+    } else if (saveProblems.length) {
+      setStatus(note + '　/　另 ' + saveProblems.length + ' 条参考意见在网格下方', true);
     } else {
       setStatus(note, true);
     }
@@ -2598,6 +2743,7 @@ async function boot() {
   syncMetaInputs();
   renderPalette();
   renderGrid();
+  renderInventory();
   renderInspector();
   bindUi();
   resetHistory();

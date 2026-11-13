@@ -80,8 +80,8 @@ namespace ShiftGo.EditorTools
 
         // ------------------------------------------------------------------ 菜单
 
-        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/生成内置关卡包", false, 44)]
-        static void BundleMenu()
+        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/生成内置关卡包", false, 25)]
+        internal static void BundleMenu()
         {
             Report report = Bundle();
 

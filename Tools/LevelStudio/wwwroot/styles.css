@@ -163,13 +163,41 @@ main {
 .inspector-body .dir-row button.active { border-color: var(--accent); color: var(--accent); }
 
 .result { margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 4px; white-space: pre-wrap; font-size: 12px; max-height: 320px; overflow: auto; }
-/* 这里刻意没有「绿框」这一档。
-   检查面板只陈述引擎证明得了的三件事，能不能通关要作者进游戏按玩家身份试 ——
-   一个绿色的「全部通过」等于替作者背书，是过度承诺。红只留给「引擎读不了这份 JSON」。 */
-.result.warn { border-color: #6b5730; color: var(--warn); }
+/* 这里刻意没有「通过」这一档。
+   引擎检查只回答「这份 JSON 引擎读不读得懂」，读得懂是中性事实，不是成绩 ——
+   一个绿色的「全部通过」等于替作者背书「这关能过」，是过度承诺。
+   红只留给「引擎读不了这份 JSON」。 */
 .result.fail { border-color: #6b2b2b; color: var(--bad); }
 
+/* 「本关清单」：网格下方那几行事实（尺寸 / 元件 / 各格参数 / 墙 / 手牌）。
+   一行一个事实，不打分、不标红 —— 作者要的是「我到底摆了些什么」。
+   pre-line：\n 要能换行，长行还得自己折回来。 */
+.inventory {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
 .problems { margin-top: 8px; font-size: 12px; color: var(--warn); white-space: pre-wrap; }
+
+/* 引擎的「额外意见」（会话前置条件等）收在这里，默认折叠：
+   它们不影响导出的 json，展开看即可，不该让作者以为这关被打回了。 */
+.problems .refs { white-space: normal; color: var(--dim); }
+.problems .refs summary { cursor: pointer; color: var(--dim); }
+.problems .refs pre {
+  margin: 6px 0 0;
+  padding: 0;
+  white-space: pre-wrap;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 12px;
+}
 
 .supply-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; max-height: 160px; overflow: auto; }
 .supply-list li { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); }

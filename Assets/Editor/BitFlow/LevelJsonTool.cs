@@ -36,12 +36,11 @@ namespace ShiftGo.EditorTools
         /// 导出之后的固定提醒。<c>exported/</c> 只是给人看的参照，不在
         /// <c>LevelSeedSources.Folders</c> 里 —— 不说明白，作者会以为导完就等于进包了。
         /// </summary>
-        const string ExportHint = "（只是参照，不进包；要让玩家玩到，把它放进 LevelJson/ 或 LevelJson/incoming/，再跑「生成内置关卡包」）";
+        internal const string ExportHint = "（只是参照，不进包；要让玩家玩到，把它放进 LevelJson/ 或 LevelJson/incoming/，再跑「生成内置关卡包」）";
 
         // ------------------------------------------------------------------ 导出
 
-        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/导出选中关卡", false, 25)]
-        static void ExportSelected()
+        internal static void ExportSelected()
         {
             LevelSO level = Selection.activeObject as LevelSO;
             if (level == null)
@@ -56,8 +55,7 @@ namespace ShiftGo.EditorTools
             EditorUtility.RevealInFinder(path);
         }
 
-        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/导出全部关卡", false, 26)]
-        static void ExportAll()
+        internal static void ExportAll()
         {
             List<LevelSO> levels = CollectAllLevels();
             if (levels.Count == 0)
@@ -87,8 +85,7 @@ namespace ShiftGo.EditorTools
             EditorUtility.RevealInFinder(Path.GetFullPath(ExportedFolder));
         }
 
-        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/导出空白模板", false, 27)]
-        static void ExportTemplate()
+        internal static void ExportTemplate()
         {
             EnsureFolder(RootFolder);
 
@@ -127,8 +124,7 @@ namespace ShiftGo.EditorTools
 
         // ------------------------------------------------------------------ 校验 / 导入
 
-        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/校验 JSON（不落盘）", false, 28)]
-        static void ValidateJson()
+        internal static void ValidateJson()
         {
             string path = PickJson("选择要校验的关卡 JSON");
             if (string.IsNullOrEmpty(path)) return;
@@ -138,8 +134,7 @@ namespace ShiftGo.EditorTools
             EditorUtility.DisplayDialog("校验完成", run.ToText(), "好");
         }
 
-        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/导入为新关卡", false, 29)]
-        static void ImportAsNewLevel()
+        internal static void ImportAsNewLevel()
         {
             string path = PickJson("选择要导入的关卡 JSON");
             if (string.IsNullOrEmpty(path)) return;
@@ -171,8 +166,7 @@ namespace ShiftGo.EditorTools
             EditorUtility.DisplayDialog("导入完成", summary, "好");
         }
 
-        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/覆盖选中关卡", false, 30)]
-        static void OverwriteSelected()
+        internal static void OverwriteSelected()
         {
             LevelSO target = Selection.activeObject as LevelSO;
             if (target == null)
@@ -194,8 +188,8 @@ namespace ShiftGo.EditorTools
             }
 
             string message = "即将用 JSON 覆盖 " + target.name + "：\n"
-                + "  现在：" + DescribeLevel(target) + "\n"
-                + "  JSON：" + DescribeLevel(probe.Result.Level) + "\n\n"
+                + "  现在：" + DescribeInventory(target) + "\n"
+                + "  JSON：" + DescribeInventory(probe.Result.Level) + "\n\n"
                 + (probe.Result.Ok ? "校验通过。" : "⚠ 有 " + probe.Result.Errors.Count + " 个错误格会被跳过。")
                 + "\n覆盖后可以用 Ctrl+Z 撤回。";
 
@@ -216,8 +210,7 @@ namespace ShiftGo.EditorTools
             EditorUtility.DisplayDialog("覆盖完成", summary, "好");
         }
 
-        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/批量导入 incoming 目录", false, 31)]
-        static void ImportIncomingFolder()
+        internal static void ImportIncomingFolder()
         {
             string folder = Path.GetFullPath(IncomingFolder);
             if (!Directory.Exists(folder))
@@ -261,7 +254,7 @@ namespace ShiftGo.EditorTools
                 string assetPath = CreateLevelAsset(run.Result.Level);
                 imported++;
                 builder.AppendLine();
-                builder.AppendLine("✓ " + name + " → " + assetPath + "（" + DescribeLevel(run.Result.Level) + "）");
+                builder.AppendLine("✓ " + name + " → " + assetPath + "（" + DescribeInventory(run.Result.Level) + "）");
                 if (!run.Result.Ok) builder.AppendLine("  ⚠ " + run.Result.Errors.Count + " 个错误格被跳过");
                 builder.AppendLine("  " + run.CheckText.Replace("\n", "\n  "));
             }
@@ -274,8 +267,7 @@ namespace ShiftGo.EditorTools
             EditorUtility.DisplayDialog("批量导入完成", builder.ToString(), "好");
         }
 
-        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/检查 type 断链", false, 32)]
-        static void CheckBrokenTypes()
+        internal static void CheckBrokenTypes()
         {
             List<ElementTypeSO> pool = LevelImportTool.LoadTypePool();
             StringBuilder builder = new StringBuilder();
@@ -454,8 +446,12 @@ namespace ShiftGo.EditorTools
 
                 if (Result != null && Result.HasLevel)
                 {
-                    builder.AppendLine(DescribeLevel(Result.Level));
-                    builder.AppendLine("试跑：" + CheckText);
+                    builder.AppendLine(DescribeInventory(Result.Level));
+
+                    // 模拟器只作参考：它跑的是「把当前布局当固定关卡」，
+                    // 有手牌的关本来就该跑不通，跟这份 json 能不能交付没有关系。
+                    builder.AppendLine("模拟器参考（不影响出 json）：");
+                    builder.AppendLine(Indent(CheckText));
                 }
                 else
                 {
@@ -540,17 +536,79 @@ namespace ShiftGo.EditorTools
             target.supplies = source.supplies;
         }
 
-        static string DescribeLevel(LevelSO level)
+        /// <summary>
+        /// 一份关卡的清单：尺寸 + 每种元件各几个 + 墙几面 + 手牌几摞几张。
+        ///
+        /// 这里只陈述「有什么、各多少」。这关能不能过要进游戏按玩家身份试，
+        /// 编辑器不该替它下结论；反过来「能不能读」由 Errors 说，也不靠这段文字。
+        /// 同一类型合并成 ×N（按第一次出现的顺序，不排序）；已经搬到墙层的墙算墙、不算元件。
+        /// </summary>
+        static string DescribeInventory(LevelSO level)
         {
             if (level == null) return "(空)";
 
             int walls = 0;
             foreach (Vector2Int _ in level.ParseWalls()) walls++;
 
-            int placements = level.placements != null ? level.placements.Count : 0;
-            int supplies = level.supplies != null ? level.supplies.Count : 0;
+            List<string> order = new List<string>();
+            Dictionary<string, int> counts = new Dictionary<string, int>();
 
-            return level.width + "×" + level.height + "，元件 " + placements + " 个，墙 " + walls + " 面，手牌 " + supplies + " 摞";
+            if (level.placements != null)
+            {
+                foreach (ElementPlacement placement in level.placements)
+                {
+                    // type 空着的摆放不参与游戏（ToDefinition 会跳过），清单里也别算
+                    if (placement == null || placement.type == null) continue;
+
+                    // 老关卡把墙写在 placements 里：它已经算进上面的墙数，别又列成一个元件
+                    if (LevelTypeRegistrySO.KindOf(placement.type) == CellKind.Wall) continue;
+
+                    string name = string.IsNullOrEmpty(placement.type.label)
+                        ? placement.type.Key
+                        : placement.type.label;
+
+                    if (!counts.ContainsKey(name))
+                    {
+                        counts[name] = 0;
+                        order.Add(name);
+                    }
+                    counts[name]++;
+                }
+            }
+
+            int supplyStacks = 0;
+            int supplyCards = 0;
+            if (level.supplies != null)
+            {
+                foreach (ElementSupply supply in level.supplies)
+                {
+                    if (supply == null) continue;
+                    supplyStacks++;
+                    supplyCards += Math.Max(0, supply.count);
+                }
+            }
+
+            StringBuilder summary = new StringBuilder();
+            summary.Append(level.width).Append("×").Append(level.height).Append("，");
+
+            if (order.Count == 0)
+            {
+                summary.Append("不含元件");
+            }
+            else
+            {
+                for (int i = 0; i < order.Count; i++)
+                {
+                    if (i > 0) summary.Append("、");
+                    summary.Append(order[i]).Append(" ×").Append(counts[order[i]]);
+                }
+            }
+
+            summary.Append("，墙 ").Append(walls).Append(" 面");
+            summary.Append("，手牌 ").Append(supplyStacks).Append(" 摞");
+            if (supplyStacks > 0) summary.Append("共 ").Append(supplyCards).Append(" 张");
+
+            return summary.ToString();
         }
 
         // ------------------------------------------------------------------ 杂项

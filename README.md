@@ -51,7 +51,12 @@
 需要外部手写 / 批量改关卡时，走 JSON 双向通道（导出 → 手改 → 校验 → 导入或覆盖），
 文件放在工程根目录 `LevelJson/`，字段与菜单见 **[docs/LEVEL_JSON.md](docs/LEVEL_JSON.md)**。
 
-同一份 JSON 也能**直接当关卡跑**（打包后照旧）：菜单 `关卡 JSON/一键：刷新注册表并同步`
+**做关**（摆元件、看朝向、导出 JSON）走 Unity 菜单 `SHIFT GO/BitFlow/关卡编辑器`：
+那是一个跑在浏览器里的编辑器，和游戏共用同一份 Core 规则，详见
+**[docs/LEVEL_STUDIO.md](docs/LEVEL_STUDIO.md)**。Unity 内置的网格窗口还在，但只在选中某份
+`LevelSO` 时从检视器上方的按钮进去 —— 它改的是资产本身，不经过 JSON。
+
+同一份 JSON 也能**直接当关卡跑**（打包后照旧）：`SHIFT GO/BitFlow/关卡 JSON/一键：刷新注册表并同步`
 会把 `LevelJson/` 里的关复制到 `Application.persistentDataPath/LevelJson/`，
 选关面板底部的 `CUSTOM · LEVEL JSON` 分区就能点到它们。细节见同一份文档的「运行时通道」。
 
@@ -95,7 +100,7 @@ Assets/
 
 - 工程根目录的 `LevelJson/` 是协作中转站（导出样例、待导入、诊断报告），**不要**跟 exe 一起压缩发布；
   运行时会在玩家自己的 `persistentDataPath` 和 exe 旁边另建目录。
-- 打包前可以先跑 `SHIFT GO/BitFlow/关卡 JSON/发布前自检：本机分享目录`：
+- 打包前可以先跑 `SHIFT GO/BitFlow/关卡 JSON 中心` → 「出包」→ `发布前自检：本机分享目录`：
   它会把本机的 `Levels/share/README.txt` 刷新到当前版本（旧版说明里写死过开发机的绝对路径），
   并列出目录里还剩哪些文件。
 

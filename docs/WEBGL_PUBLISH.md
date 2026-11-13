@@ -222,7 +222,7 @@ WebGL 里 `System.IO` 只有 Emscripten 的 IndexedDB 虚拟盘（`PlayerPrefs` 
 
 ```
 LevelJson/*.json + LevelJson/incoming/*.json
-   │  SHIFT GO/BitFlow/关卡 JSON/生成内置关卡包（出包前也会自动跑）
+   │  SHIFT GO/BitFlow/关卡 JSON 中心 → 出包 → 生成内置关卡包（出包前也会自动跑）
    ▼
 Assets/Resources/BitFlow/Levels/*.json        ← 生成物，要提交
    │  首次启动：LevelJsonLibrary.EnsureFolder() → BundledLevels.InstallIfNeeded()
@@ -230,7 +230,7 @@ Assets/Resources/BitFlow/Levels/*.json        ← 生成物，要提交
 PlayerPrefs（IndexedDB）里的 LevelJson/*.json  ← 和玩家自己造的关同一份存储
 ```
 
-- **生成**：菜单 `SHIFT GO/BitFlow/关卡 JSON/生成内置关卡包`。出包前 `IPreprocessBuildWithReport` 会自动再跑一次，
+- **生成**：`SHIFT GO/BitFlow/关卡 JSON 中心` → 「出包」→ `生成内置关卡包`（菜单：`SHIFT GO/BitFlow/关卡 JSON/生成内置关卡包`）。出包前 `IPreprocessBuildWithReport` 会自动再跑一次，
   Console 里会出现 `[BitFlow] 出包前已刷新内置关卡包：N 关 → ...`；源里删掉的关会连 `.meta` 一起从包里清掉。
   `exported/` 不参与打包（那是导出参照）。
 - **为什么浏览器也能用**：播种只调 `LevelJsonLibrary` 的 `FileExists / ReadAllText / WriteAllText`，

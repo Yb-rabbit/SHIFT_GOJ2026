@@ -19,7 +19,7 @@ namespace ShiftGo.EditorTools
     public static class SaveMenu
     {
         [MenuItem("SHIFT GO/BitFlow/清空本轮存档（通关打勾 + 元件首见）", false, 60)]
-        static void ClearSave()
+        internal static void ClearSave()
         {
             bool hadFile = File.Exists(SaveStore.FilePath);
 
@@ -40,7 +40,7 @@ namespace ShiftGo.EditorTools
         }
 
         [MenuItem("SHIFT GO/BitFlow/在资源管理器里显示存档", false, 61)]
-        static void RevealSave()
+        internal static void RevealSave()
         {
             string path = SaveStore.FilePath;
             string folder = Path.GetDirectoryName(path);

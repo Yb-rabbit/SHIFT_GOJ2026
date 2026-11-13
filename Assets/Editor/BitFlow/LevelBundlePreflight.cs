@@ -23,8 +23,8 @@ namespace ShiftGo.EditorTools
     {
         const string ReportName = "_preflight.txt";
 
-        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/打包前自检（关卡）", false, 45)]
-        static void RunMenu()
+        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/打包前自检（关卡）", false, 26)]
+        internal static void RunMenu()
         {
             string report = Build();
             Debug.Log("[BitFlow] 打包前自检\n" + report);

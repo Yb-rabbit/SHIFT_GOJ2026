@@ -177,8 +177,8 @@
       });
     },
 
-    /* 没接引擎时如实说"没跑"，不拿"结构看起来没问题"去冒充"能通关"。
-     * app.js 见到 pending 就只展示 report，不会拼那句「存档前置检查：没有发现硬伤」。 */
+    /* 没接引擎时如实说"没跑"，不拿"结构看起来没问题"去冒充"引擎读得懂"。
+     * app.js 见到 pending 就只展示 report。 */
     check() {
       return Promise.resolve({
         pending: true,
@@ -187,10 +187,10 @@
         hasSupplies: false,
         pass: false,
         report: [
-          '⚠ 独立版没有内置引擎，这一项没跑。',
+          '⚠ 独立版没有内置引擎，「引擎读不读得懂」这一项没跑。',
           '',
-          '「跑一遍真引擎」跑的是 Runtime/Core 里的 BitFlowSimulation（C#，762 行），',
-          '纯浏览器版需要把它移植成 engine.js —— 那是下一步。',
+          '桌面板（ShiftGoLevelStudio.exe）里这一步走的是 Runtime/Core 的 LevelJsonSerializer，',
+          '纯浏览器版要把那份 C# 移植成 JS —— 那是下一步。',
           '',
           '现在能保证的：JSON 结构、关卡名规则、元件参数范围都在前端校验过；',
           '导出的文件就是游戏 IMPORT 直接吃的格式。',

@@ -16,8 +16,8 @@ namespace ShiftGo.EditorTools
     /// </summary>
     public static class IntroTerminalSetup
     {
-        [MenuItem("SHIFT GO/BitFlow/把开场终端挂到当前场景", false, 40)]
-        static void AttachToActiveScene()
+        [MenuItem("SHIFT GO/Setup/把开场终端挂到当前场景", false, 92)]
+        internal static void AttachToActiveScene()
         {
             Scene scene = SceneManager.GetActiveScene();
 
@@ -53,7 +53,7 @@ namespace ShiftGo.EditorTools
                 "记得 Ctrl+S 保存场景，否则关闭后这次挂载会丢。", host);
         }
 
-        [MenuItem("SHIFT GO/BitFlow/把开场终端挂到当前场景", true)]
+        [MenuItem("SHIFT GO/Setup/把开场终端挂到当前场景", true, 92)]
         static bool AttachToActiveSceneValidate()
         {
             return !EditorApplication.isPlayingOrWillChangePlaymode;

@@ -22,8 +22,8 @@ namespace ShiftGo.EditorTools
     public static class LevelJsonRuntimeSetup
     {
         /// <summary>注册表落点（Resources 下，运行时 <c>Resources.Load</c> 直接取）。</summary>
-        const string RegistryFolder = "Assets/Resources/BitFlow";
-        const string RegistryAssetPath = RegistryFolder + "/LevelTypeRegistry.asset";
+        internal const string RegistryFolder = "Assets/Resources/BitFlow";
+        internal const string RegistryAssetPath = RegistryFolder + "/LevelTypeRegistry.asset";
 
         /// <summary>
         /// 同步来源：根目录 = 当前在做的关；incoming = 设计侧交上来的批次。
@@ -38,7 +38,7 @@ namespace ShiftGo.EditorTools
         // ------------------------------------------------------------------ 菜单
 
         [MenuItem("SHIFT GO/BitFlow/关卡 JSON/刷新类型注册表", false, 40)]
-        static void RefreshRegistryMenu()
+        internal static void RefreshRegistryMenu()
         {
             int count = RefreshRegistry();
 
@@ -51,7 +51,7 @@ namespace ShiftGo.EditorTools
         }
 
         [MenuItem("SHIFT GO/BitFlow/关卡 JSON/同步到运行时目录", false, 41)]
-        static void SyncRuntimeMenu()
+        internal static void SyncRuntimeMenu()
         {
             int copied = SyncRuntimeLevels();
 
@@ -67,7 +67,7 @@ namespace ShiftGo.EditorTools
         }
 
         [MenuItem("SHIFT GO/BitFlow/关卡 JSON/打开运行时关卡目录", false, 42)]
-        static void OpenRuntimeFolder()
+        internal static void OpenRuntimeFolder()
         {
             LevelJsonLibrary.EnsureFolder();
             EditorUtility.RevealInFinder(LevelJsonLibrary.Folder);
@@ -78,7 +78,7 @@ namespace ShiftGo.EditorTools
         /// 新拉一份工程后跑这个就够了。
         /// </summary>
         [MenuItem("SHIFT GO/BitFlow/关卡 JSON/一键：刷新注册表并同步", false, 43)]
-        static void SetupEverything()
+        internal static void SetupEverything()
         {
             int types = RefreshRegistry();
             int copied = SyncRuntimeLevels();
@@ -101,7 +101,7 @@ namespace ShiftGo.EditorTools
         /// 同名一律跳过 —— 宁可少搬一个，也不覆盖新目录里已有的东西。
         /// </summary>
         [MenuItem("SHIFT GO/BitFlow/关卡 JSON/迁移旧关卡目录（DefaultCompany → 当前公司名）", false, 44)]
-        static void MigrateOldCompanyFolder()
+        internal static void MigrateOldCompanyFolder()
         {
             const string oldCompany = "DefaultCompany";
 
@@ -191,7 +191,7 @@ namespace ShiftGo.EditorTools
         /// 光读代码或文档很容易记错 —— 这个菜单是唯一的事实来源。
         /// </summary>
         [MenuItem("SHIFT GO/BitFlow/关卡 JSON/显示关卡目录总览", false, 45)]
-        static void ShowFolderOverview()
+        internal static void ShowFolderOverview()
         {
             StringBuilder report = new StringBuilder();
 

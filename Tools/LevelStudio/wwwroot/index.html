@@ -37,6 +37,7 @@
       <button id="btnClear" title="清空所有元件和墙">清空</button>
     </div>
     <div id="grid" class="grid"></div>
+    <div id="inventory" class="inventory"></div>
     <div id="problems" class="problems"></div>
   </section>
 
@@ -53,9 +54,10 @@
     <ul id="supplyList" class="supply-list"></ul>
     <p class="hint">手牌只能发「不改出题权」的件：墙 / 分流器 / 非门 / 过滤器 / 延迟器。有手牌时「允许玩家进关后自己改」会被强制打开并锁住 —— 发得出牌就得放得下。<br />尺寸只有游戏给的四档：9x8（主线标准板）/ 11x8 / 7x6 / 13x9，和玩家 NEW LEVEL 里能选的完全一致。</p>
 
-    <h2>自测</h2>
-    <button id="btnCheck" class="primary">跑一遍真引擎</button>
-    <div id="checkResult" class="result dim">还没测。</div>
+    <h2>引擎检查</h2>
+    <button id="btnCheck">这份 JSON 引擎读得懂吗</button>
+    <div id="checkResult" class="result dim">还没查。</div>
+    <p class="hint">这里只回答一件事实：引擎能不能把当前布局读成一份关卡。这关能不能解、玩家拿着手牌能不能过，得进游戏按玩家身份试 —— 编辑器不解题，也不替你下结论。</p>
   </section>
 
   <section class="panel files">

@@ -70,12 +70,16 @@ namespace ShiftGo.EditorTools
         readonly Dictionary<Vector2Int, int> stackLookup = new Dictionary<Vector2Int, int>();
         readonly HashSet<Vector2Int> wallLookup = new HashSet<Vector2Int>();
 
-        [MenuItem("SHIFT GO/BitFlow/关卡编辑器", false, 21)]
-        static void Open()
+        // 不再挂菜单：做关的主通道是浏览器版 LevelStudio（SHIFT GO/BitFlow/关卡编辑器），
+        // 这个窗口退成「内置 SO」的一条支路 —— 只在选中某个 LevelSO 时由检视器上的按钮打开，
+        // 这样它永远碰不到 JSON，也不会被误当成主编辑器。
+        internal static void OpenFor(LevelSO target)
         {
             LevelEditorWindow window = GetWindow<LevelEditorWindow>("BITFLOW 关卡编辑器");
             window.minSize = new Vector2(820f, 560f);
+            if (target != null) window.level = target;
             window.Show();
+            window.Repaint();
         }
 
         void OnEnable()

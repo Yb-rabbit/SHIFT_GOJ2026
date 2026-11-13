@@ -49,6 +49,7 @@ namespace ShiftGo.EditorTools
             RebuildLookup(level);
 
             DrawHeader(level);
+            DrawOpenEditorButton(level);
             DrawGrid(level);
             DrawDiagnostics(level);
 
@@ -113,6 +114,30 @@ namespace ShiftGo.EditorTools
             EditorGUILayout.EndHorizontal();
 
             if (legacyWallCount > 0) DrawMigrateButton(legacyWallCount);
+        }
+
+        /// <summary>
+        /// 通往 Unity 内网格窗口的入口。
+        ///
+        /// 做关的主通道是浏览器版 LevelStudio（菜单 SHIFT GO/BitFlow/关卡编辑器），
+        /// 这个窗口退成「内置 SO」的一条支路：只有已经在选某份 LevelSO、想就地改几格时才用得上，
+        /// 所以做成右下角小按钮，不抢字段区的注意力。它只改 placements / supplies，不经过 JSON。
+        /// </summary>
+        void DrawOpenEditorButton(LevelSO level)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+
+            GUIContent content = new GUIContent(
+                "在内置网格里编辑",
+                "打开 Unity 内网格窗口，直接改这份 LevelSO 的 placements / supplies（不经过 JSON）");
+
+            if (GUILayout.Button(content, EditorStyles.miniButton, GUILayout.Width(120f)))
+            {
+                LevelEditorWindow.OpenFor(level);
+            }
+
+            EditorGUILayout.EndHorizontal();
         }
 
         /// <summary>

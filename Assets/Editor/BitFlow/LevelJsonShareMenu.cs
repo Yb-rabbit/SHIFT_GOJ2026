@@ -18,8 +18,7 @@ namespace ShiftGo.EditorTools
     /// </summary>
     public static class LevelJsonShareMenu
     {
-        [MenuItem("SHIFT GO/BitFlow/关卡 JSON/发布前自检：本机分享目录", false, 43)]
-        static void CheckShareFolder()
+        internal static void CheckShareFolder()
         {
             if (!LevelJsonLibrary.EnsureShareFolder(out string error))
             {
