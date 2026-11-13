@@ -172,6 +172,35 @@ namespace ShiftGo.BitFlow.View
         /// </summary>
         const float CountSlotCenter = -0.284f;
 
+        /// <summary>
+        /// 变体角标（"D3" / "F1"）的世界高度 = 张数文字再小一号：
+        /// 它是给"我知道自己在找哪一张"的人看的一眼确认，不该跟张数抢视线。
+        /// </summary>
+        const float BadgeTextSize = 0.085f;
+
+        /// <summary>
+        /// 角标底板压在卡面顶部内侧（占卡高的比例，卡本地 Y）。
+        ///
+        /// 卡面美术的顶部是图标区，字直接压上去会被亮色图标吃掉，所以角标总带一块深色底板，
+        /// 底板宽度按字数算（见 <see cref="CreateBadge"/>），高一点的卡面也不会露出半截字。
+        /// </summary>
+        const float BadgeSlotCenter = 0.30f;
+
+        /// <summary>角标文字色：暖白。深色底板 + 亮字在任何卡面美术上都能读。</summary>
+        static readonly Color BadgeTextColor = new Color(0.98f, 0.94f, 0.82f, 1f);
+
+        /// <summary>角标底板色：近黑的深蓝，和卡排的深色调统一。</summary>
+        static readonly Color BadgePlateColor = new Color(0.07f, 0.09f, 0.14f, 1f);
+
+        /// <summary>底板在文字后面多远（卡本地 +z = 远离相机，因为卡面朝向 -z）。</summary>
+        const float BadgePlateDepth = 0.0015f;
+
+        /// <summary>底板左右各留出的余量（世界单位，满尺寸卡面时）。</summary>
+        const float BadgePlatePadding = 0.05f;
+
+        /// <summary>底板高度相对角标字号：1.9 倍字高，上下都留得出气。</summary>
+        const float BadgePlateHeight = 1.9f;
+
         // ---------------------------------------------------------------- 排版
 
         const float BandMarginPx = 26f;
@@ -222,6 +251,9 @@ namespace ShiftGo.BitFlow.View
             public float SlotLength = CardWidth * CardLengthFactor;
 
             /// <summary>0 = 躺在待排区，1 = 拿在镜头前。</summary>
+            public bool IsGroup;
+            public CellKind GroupKind;
+
             public float Lift;
             public float LiftVelocity;
 
@@ -246,6 +278,13 @@ namespace ShiftGo.BitFlow.View
 
         /// <summary>工坊模式的卡面来源（六种元件，顺序 = 注册表顺序）。</summary>
         IReadOnlyList<ElementTypeSO> workshopPalette;
+
+        /// <summary>
+        /// 工坊卡排当前展开的大类；null = 大类视图。
+        /// 只对 <see cref="FoldsVariants"/> 认可的 Kind 生效，玩家正式关的手牌不用它。
+        /// 每次 <see cref="RebuildCards"/> 都按它重排，所以放下/撤销之后仍停在同一个变体组里。
+        /// </summary>
+        CellKind? foldedKind;
 
         /// <summary>草稿被改动（放置 / 拾回 / 旋转 / 撤销）后触发。工坊用它刷新自己的读数。</summary>
         public event System.Action DraftChanged;
@@ -323,6 +362,17 @@ namespace ShiftGo.BitFlow.View
 
         /// <summary>上面那份缓存是「抓起来的原件」的副本，而不是卡面的默认件。</summary>
         bool ghostGrab;
+
+        /// <summary>正被 BUFFER 按下去的那一件：换格/收手时要让上一件弹回来。</summary>
+        ElementView bufferSunkView;
+
+        /// <summary>
+        /// 工具卡目标预览的两种颜色：能和不能。
+        /// 青 = 这一格能收，红 = 不能（自己放的件 / 发射器接收器 / 工具牌用完了）。
+        /// 和 PlacementGhost 的红是同一个红：整套 UI 只有一种"不行"的颜色。
+        /// </summary>
+        static readonly Color BufferTargetColor = new Color(0.35f, 0.95f, 1f);
+        static readonly Color BufferBlockedColor = new Color(1f, 0.30f, 0.32f);
 
         /// <summary>
         /// 空格「抓娃娃机」：抓起时所在的格子。有值 = 手上正提着一件（<see cref="grabElement"/>）。
@@ -424,9 +474,12 @@ namespace ShiftGo.BitFlow.View
             ReleaseGrab();
             armedRotation = 0;
             statusMessage = string.Empty;
+            foldedKind = null;
+
             hovered = null;
 
             // 新关卡的手牌 / 元件朝向可能整套都变了，旧的预览缓存直接扔掉
+            ResetBufferSink();
             if (ghost != null) ghost.Clear();
 
             draft = level != null ? level.CreatePlayerDraft() : null;
@@ -464,8 +517,11 @@ namespace ShiftGo.BitFlow.View
             hovered = null;
             selectedCell = null;
             handTotal = target.StockTotal;
+            foldedKind = null;
+
             statusMessage = "CLICK A PIECE TO EDIT IT";
 
+            ResetBufferSink();
             if (ghost != null) ghost.Clear();
             if (cardRoot != null) cardRoot.SetActive(true);
 
@@ -482,6 +538,8 @@ namespace ShiftGo.BitFlow.View
 
             workshopMode = false;
             workshopPalette = null;
+            foldedKind = null;
+
             armedType = null;
             armedPayload = null;
             ReleaseGrab();
@@ -490,6 +548,7 @@ namespace ShiftGo.BitFlow.View
             statusMessage = string.Empty;
             selectedCell = null;
 
+            ResetBufferSink();
             if (ghost != null) ghost.Clear();
             RebuildCards();
             RefreshStatus();
@@ -574,6 +633,7 @@ namespace ShiftGo.BitFlow.View
             if (playing && (armedType != null || grabCell.HasValue))
             {
                 ReleaseGrab();
+                ResetBufferSink();
                 armedType = null;
                 armedPayload = null;
                 armedRotation = 0;
@@ -618,6 +678,15 @@ namespace ShiftGo.BitFlow.View
                 return;
             }
 
+            // 工坊卡排展开着的时候，ESC 先收视图 —— 和右键同一件事，
+            // 玩家手里没牌时也需要一个“退回去”的键。
+            if (foldedKind.HasValue && Input.GetKeyDown(KeyCode.Escape) && EscapeInput.Consume())
+            {
+                statusMessage = "BACK TO KINDS";
+                SetFoldedKind(null);
+                return;
+            }
+
             if ((grabCell.HasValue || armedType != null) &&
                 Input.GetKeyDown(KeyCode.Escape) && EscapeInput.Consume())
             {
@@ -629,6 +698,7 @@ namespace ShiftGo.BitFlow.View
                 }
                 else
                 {
+                    ResetBufferSink();
                     armedType = null;
                     armedPayload = null;
                     statusMessage = "CARD RELEASED";
@@ -800,20 +870,22 @@ namespace ShiftGo.BitFlow.View
             {
                 if (workshopPalette == null) return;
 
-                // 按「种类」去重，而不是按类型 Key：卡面美术是 <see cref="CardArtLibrary"/> 一个种类一张图，
-                // 注册表里常有好几份同种类的变体（不同序列的发射器之类），摆出来就是几张一模一样的牌 ——
-                // 玩家分不清哪张是哪张。一种只给一张，用的就是注册表里第一份。
-                HashSet<CellKind> drawnKinds = new HashSet<CellKind>();
-                foreach (ElementTypeSO type in workshopPalette)
+                // 工坊：**两级选择**。
+                //
+                // 以前按类型 Key 一张卡平铺，D1~D4 / F0~F1 全挤在一排，作者得挨个读角标才找得到
+                // 自己要的那一张。现在同 Kind 的变体先折成一张大类卡（角标 D*4），点开才铺开变体；
+                // 发射器 / 接收器 / 非门 / 墙 / 分流器不折（见 FoldsVariants），保持一张一张的旧样子。
+                //
+                // 排序规则在 PlanWorkshopCards（纯数据、可单测），这里只负责把计划画出来。
+                foreach (CardPlan plan in PlanWorkshopCards(workshopPalette, foldedKind))
+                    cards.Add(CreateCard(plan));
+
+                // 折叠组里的类型被换掉了（注册表重导）→ 回退到大类视图，别留下一排空卡排
+                if (cards.Count == 0 && foldedKind.HasValue)
                 {
-                    if (type == null || string.IsNullOrEmpty(type.Key)) continue;
-
-                    // 工具卡不进工坊：BUFFER 借的是墙的形态，摆出来会是一张"假墙"，
-                    // 而作者在工坊里要的是能真的放到板上的件。
-                    if (type.IsTool) continue;
-                    if (!drawnKinds.Add(KindOf(type))) continue;
-
-                    cards.Add(CreateCard(type));
+                    foldedKind = null;
+                    foreach (CardPlan plan in PlanWorkshopCards(workshopPalette, null))
+                        cards.Add(CreateCard(plan));
                 }
 
                 RefreshLayout();
@@ -826,12 +898,35 @@ namespace ShiftGo.BitFlow.View
             // 这里必须按 Key 去重：不然会画出两张一模一样的卡，还共用同一个数字（看着像计数坏了）。
             HashSet<string> drawn = new HashSet<string>();
 
+            // 卡面美术一个种类只有一张图，同种类发了多摞牌（D1 + D3）时必须打角标才分得清。
+            List<ElementTypeSO> supplied = new List<ElementTypeSO>();
+            foreach (ElementSupply supply in level.supplies)
+            {
+                if (supply == null || supply.type == null) continue;
+                if (drawn.Add(supply.type.Key)) supplied.Add(supply.type);
+            }
+
+            if (draft != null)
+            {
+                // 拾回来的件也要参与计数：手牌盘上出现 D3 卡时，D1 那张的角标才有意义
+                foreach (KeyValuePair<string, int> pair in draft.Stock)
+                {
+                    if (pair.Value <= 0 || drawn.Contains(pair.Key)) continue;
+
+                    ElementTypeSO recovered = FindSupplyType(pair.Key);
+                    if (recovered != null) supplied.Add(recovered);
+                }
+            }
+
+            Dictionary<CellKind, int> supplyKindCounts = CountKinds(supplied);
+
+            drawn.Clear();
             foreach (ElementSupply supply in level.supplies)
             {
                 if (supply == null || supply.type == null) continue;
                 if (!drawn.Add(supply.type.Key)) continue;
 
-                cards.Add(CreateCard(supply.type));
+                cards.Add(CreateCard(supply.type, BadgeFor(supply.type, supplyKindCounts)));
             }
 
             // BUFFER 收回来的件不在 supplies 里，只存在于草稿的库存里。
@@ -845,7 +940,7 @@ namespace ShiftGo.BitFlow.View
                     if (!drawn.Add(pair.Key)) continue;
 
                     ElementTypeSO recovered = FindSupplyType(pair.Key);
-                    if (recovered != null) cards.Add(CreateCard(recovered));
+                    if (recovered != null) cards.Add(CreateCard(recovered, BadgeFor(recovered, supplyKindCounts)));
                 }
             }
 
@@ -855,8 +950,11 @@ namespace ShiftGo.BitFlow.View
         /// <summary>
         /// 造一张卡：Root（位置/朝向）→ Face（Quad，卡面）+ Mark（选中时露出的强调条）+ Count（张数）。
         /// 全部用无光照材质：卡面是美术稿，被场景灯光打一下就变色，屏幕上跟设计稿对不上。
+        ///
+        /// <paramref name="badge"/> 打在有美术的卡面上（"D3" / "F1"）：同种类的变体共用一张美术图，
+        /// 不打角标就分不清手里这张是几 tick 的延迟、放行 0 还是 1 的过滤器。
         /// </summary>
-        CardEntry CreateCard(ElementTypeSO type)
+        CardEntry CreateCard(ElementTypeSO type, string badge = null)
         {
             CellKind kind = KindOf(type);
             Sprite art = CardArtLibrary.Icon(type);
@@ -909,8 +1007,244 @@ namespace ShiftGo.BitFlow.View
 
             entry.Count = CreateCountText(root.transform);
             if (art == null) entry.Label = CreateFallbackLabel(root.transform, LabelOf(type));
+            else if (!string.IsNullOrEmpty(badge)) entry.Label = CreateBadge(root.transform, badge);
 
             return entry;
+        }
+
+        /// <summary>
+        /// 按 <see cref="CardPlan"/> 画一张卡：工坊两级选择只走这一条，所以“大类卡”的
+        /// 额外字段（<see cref="CardEntry.IsGroup"/> / <see cref="CardEntry.GroupKind"/>）不会漏设。
+        /// </summary>
+        CardEntry CreateCard(CardPlan plan)
+        {
+            CardEntry entry = CreateCard(plan.Type, plan.Badge);
+
+            // 没有卡面美术时 CreateCard 会把类型名写进退路文字，角标就被吃掉了；
+            // 大类卡必须看得出“这是一类（D*4）”，所以这里换成角标。
+            if (plan.IsGroup && !entry.HasArt && entry.Label != null)
+            {
+                Destroy(entry.Label.gameObject);
+                entry.Label = CreateBadge(entry.Root, plan.Badge);
+            }
+
+            entry.IsGroup = plan.IsGroup;
+            entry.GroupKind = plan.GroupKind;
+            return entry;
+        }
+
+        /// <summary>
+        /// 同种类的变体角标（"D3" / "F1"）。位置和字号由 <see cref="PoseDecor"/> 按卡面尺寸摆，
+        /// 这里把「深色底板 + 亮字」一起挂上去：卡面是任意美术，纯文字压上去常常看不清。
+        /// </summary>
+        Transform CreateBadge(Transform parent, string text)
+        {
+            GameObject go = new GameObject("Badge");
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = new Vector3(0f, 0f, -FaceLift);
+
+            // 底板挂在这个小节点下：PoseDecor 只缩放 go，底板和字一起等比缩，永远不会错位。
+            GameObject plate = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            plate.name = "Plate";
+            Destroy(plate.GetComponent<Collider>());
+            plate.transform.SetParent(go.transform, false);
+            plate.transform.localPosition = new Vector3(0f, 0f, BadgePlateDepth);
+
+            MeshRenderer plateRenderer = plate.GetComponent<MeshRenderer>();
+            plateRenderer.sharedMaterial = MaterialFactory.Textured(null, BadgePlateColor, "M_CardBadgePlate");
+            plateRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            plateRenderer.receiveShadows = false;
+
+            // 像素字体是等宽的，字数 × 字号就是文字宽度；左右各留一点余量，别让字贴到板边上
+            int chars = Mathf.Max(1, text != null ? text.Length : 1);
+            plate.transform.localScale = new Vector3(
+                chars * BadgeTextSize + BadgePlatePadding,
+                BadgeTextSize * BadgePlateHeight,
+                1f);
+
+            TextMesh mesh = go.AddComponent<TextMesh>();
+            mesh.text = text;
+            mesh.font = font;
+            mesh.fontSize = 0;
+            mesh.characterSize = BadgeTextSize;
+            mesh.anchor = TextAnchor.MiddleCenter;
+            mesh.alignment = TextAlignment.Center;
+            mesh.color = BadgeTextColor;
+
+            MeshRenderer renderer = go.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = font.material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            return go.transform;
+        }
+
+        /// <summary>
+        /// 每种元件各有几摞牌（按类型 Key 去重）。同种类有多摞时卡上才需要角标 ——
+        /// 只有一摞的话，角标只是多一行字。
+        /// </summary>
+        static Dictionary<CellKind, int> CountKinds(IEnumerable<ElementTypeSO> types)
+        {
+            Dictionary<CellKind, HashSet<string>> buckets = new Dictionary<CellKind, HashSet<string>>();
+            if (types != null)
+            {
+                foreach (ElementTypeSO type in types)
+                {
+                    if (type == null || string.IsNullOrEmpty(type.Key)) continue;
+
+                    CellKind kind = KindOf(type);
+                    if (!buckets.TryGetValue(kind, out HashSet<string> keys))
+                    {
+                        keys = new HashSet<string>();
+                        buckets[kind] = keys;
+                    }
+                    keys.Add(type.Key);
+                }
+            }
+
+            Dictionary<CellKind, int> counts = new Dictionary<CellKind, int>();
+            foreach (KeyValuePair<CellKind, HashSet<string>> pair in buckets) counts[pair.Key] = pair.Value.Count;
+            return counts;
+        }
+
+        /// <summary>这一摞要不要打角标：只有同类发了/发了多摞时才打。</summary>
+        static string BadgeFor(ElementTypeSO type, Dictionary<CellKind, int> kindCounts)
+        {
+            if (type == null) return null;
+
+            CellKind kind = KindOf(type);
+            return kindCounts != null && kindCounts.TryGetValue(kind, out int count) && count > 1
+                ? LabelOf(type)
+                : null;
+        }
+
+        // ---------------------------------------------------------------- 工坊卡排的两级选择
+
+        /// <summary>
+        /// 工坊卡排上的一张卡要怎么画。纯数据（不带 GameObject），
+        /// 所以排序规则可以直接单元测试，不用起场景。
+        /// </summary>
+        public readonly struct CardPlan
+        {
+            /// <summary>卡面来源。大类卡取该组的第一张（同 Kind 共用一张美术图）。</summary>
+            public readonly ElementTypeSO Type;
+
+            /// <summary>角标文字；null = 不打角标。</summary>
+            public readonly string Badge;
+
+            /// <summary>这一张代表“一整类”，点它是展开而不是拿起。</summary>
+            public readonly bool IsGroup;
+
+            /// <summary><see cref="IsGroup"/> 为 true 时，这张卡代表哪个 Kind。</summary>
+            public readonly CellKind GroupKind;
+
+            public CardPlan(ElementTypeSO type, string badge, bool isGroup, CellKind groupKind)
+            {
+                Type = type;
+                Badge = badge;
+                IsGroup = isGroup;
+                GroupKind = groupKind;
+            }
+        }
+
+        /// <summary>
+        /// 哪些 Kind 的变体在卡排上折成一张大类卡。
+        ///
+        /// 只折“卡面完全一样、只能靠角标区分”的两类（延迟器 D1~D4、过滤器 F0~F1）。
+        /// 发射器 / 接收器 / 非门 / 墙 / 分流器按作者要求保持平铺 —— 它们的卡面自己就分得清，
+        /// 再折一层只会让平时最常用的那几张多一次点击。
+        /// </summary>
+        public static bool FoldsVariants(CellKind kind)
+        {
+            return kind == CellKind.DelayGate || kind == CellKind.Filter;
+        }
+
+        /// <summary>大类卡角标上的短码（“D” / “F”）。像素字体只有 ASCII，所以不用 ×。</summary>
+        static string FoldCode(CellKind kind)
+        {
+            switch (kind)
+            {
+                case CellKind.DelayGate: return "D";
+                case CellKind.Filter: return "F";
+                default: return "?";
+            }
+        }
+
+        /// <summary>状态行里的大类名（ASCII 大写，位图字体没有中文字形）。</summary>
+        static string FoldName(CellKind kind)
+        {
+            switch (kind)
+            {
+                case CellKind.DelayGate: return "DELAY";
+                case CellKind.Filter: return "FILTER";
+                default: return kind.ToString().ToUpperInvariant();
+            }
+        }
+
+        /// <summary>
+        /// 把调色板排成这一屏要画的卡。
+        ///
+        /// <paramref name="expanded"/> 为 null → 大类视图：折叠组出一张“D*4”，其它 Kind 一张一张平铺；
+        /// 有值 → 变体视图：只出该组的每一张（D1 / D2 …），角标就是变体名。
+        /// 返回空表表示“这一组里一张都没有了”，调用方应回退到大类视图。
+        /// </summary>
+        public static List<CardPlan> PlanWorkshopCards(IReadOnlyList<ElementTypeSO> palette, CellKind? expanded)
+        {
+            List<CardPlan> plans = new List<CardPlan>();
+            if (palette == null) return plans;
+
+            // 按 Kind 分组，顺序跟注册表一致；同一个 Key 只画一次（调色板允许重复注入同一份类型）。
+            List<CellKind> order = new List<CellKind>();
+            Dictionary<CellKind, List<ElementTypeSO>> groups = new Dictionary<CellKind, List<ElementTypeSO>>();
+            HashSet<string> keys = new HashSet<string>();
+
+            foreach (ElementTypeSO type in palette)
+            {
+                if (type == null || string.IsNullOrEmpty(type.Key)) continue;
+
+                // 工具卡不进工坊：BUFFER 借的是墙的形态，摆出来会是一张“假墙”，
+                // 而作者在工坊里要的是能真的放到板上的件。
+                if (type.IsTool) continue;
+                if (!keys.Add(type.Key)) continue;
+
+                CellKind kind = KindOf(type);
+                if (!groups.TryGetValue(kind, out List<ElementTypeSO> list))
+                {
+                    list = new List<ElementTypeSO>();
+                    groups[kind] = list;
+                    order.Add(kind);
+                }
+                list.Add(type);
+            }
+
+            if (expanded.HasValue)
+            {
+                if (!FoldsVariants(expanded.Value)) return plans;
+                if (!groups.TryGetValue(expanded.Value, out List<ElementTypeSO> variants)) return plans;
+
+                foreach (ElementTypeSO type in variants)
+                    plans.Add(new CardPlan(type, LabelOf(type), false, expanded.Value));
+
+                return plans;
+            }
+
+            foreach (CellKind kind in order)
+            {
+                List<ElementTypeSO> list = groups[kind];
+
+                // 折叠组：一张大类卡，角标写“D*4”（* 而不是 ×：位图字体只有 ASCII）。
+                if (FoldsVariants(kind) && list.Count > 1)
+                {
+                    plans.Add(new CardPlan(list[0], FoldCode(kind) + "*" + list.Count, true, kind));
+                    continue;
+                }
+
+                // 其它 Kind 保持原来的平铺；同 Kind 多张才打角标（发射器 E1~E5 就靠这个分）。
+                bool badge = list.Count > 1;
+                foreach (ElementTypeSO type in list)
+                    plans.Add(new CardPlan(type, badge ? LabelOf(type) : null, false, kind));
+            }
+
+            return plans;
         }
 
         /// <summary>
@@ -1077,7 +1411,17 @@ namespace ShiftGo.BitFlow.View
                 entry.Count.transform.localScale = Vector3.one * k;
             }
 
-            if (entry.Label != null) entry.Label.localScale = Vector3.one * k;
+            if (entry.Label != null)
+            {
+                entry.Label.localScale = Vector3.one * k;
+
+                // 有美术的卡：Label 是变体角标，得贴着卡面顶部走（无美术时 Label 是退路文字，
+                // 位置由 CreateFallbackLabel 定，别在这里挪它）
+                if (entry.HasArt)
+                {
+                    entry.Label.localPosition = new Vector3(0f, height * BadgeSlotCenter, -FaceLift);
+                }
+            }
 
             if (entry.Mark != null)
             {
@@ -1103,7 +1447,7 @@ namespace ShiftGo.BitFlow.View
                 if (entry.Root == null) continue;
 
                 // 手里已经有一张时，别的卡不再弹起来读说明 —— 否则会同时有两张飞在镜头前
-                bool held = armedType != null && entry.Type == armedType;
+                bool held = !entry.IsGroup && armedType != null && entry.Type == armedType;
                 bool lifted = held || (armedType == null && entry == hovered);
 
                 entry.Lift = Mathf.SmoothDamp(entry.Lift, lifted ? 1f : 0f, ref entry.LiftVelocity, LiftTime);
@@ -1336,10 +1680,14 @@ namespace ShiftGo.BitFlow.View
             // 手里有牌时，格子由半透明的元件副本去标记（能放=类型色、不能放=红），
             // 这层普通高亮方块让位 —— 两层东西叠在同一格上只会互相糊掉。
             // 鼠标在卡上时也不画：这时候玩家在"看牌"，不是在选位置。
-            // 工具卡是例外：它没有元件幽灵可画（见 UpdateGhost），落点提示只能靠这层中性高亮。
+            // 工具卡是例外的一半：空格要靠这层中性高亮指位置；指到元件时改用下沉 + 幽灵副本（见 UpdateToolTargetGhost），
+            // 那会儿这层方块必须让位，否则会压在真件上抢视线。
             bool aimingTool = armedType != null && armedType.IsTool;
+            bool toolOnElement = aimingTool && draft != null &&
+                                 TryPickCell(out GridPoint probe) && draft.GetAt(probe) != null;
 
-            if ((armedType != null && !aimingTool) || grabCell.HasValue || overUi || hovered != null || !TryPickCell(out GridPoint cell))
+            if ((armedType != null && (!aimingTool || toolOnElement)) || grabCell.HasValue || overUi ||
+                hovered != null || !TryPickCell(out GridPoint cell))
             {
                 if (cursor.gameObject.activeSelf) cursor.gameObject.SetActive(false);
                 return;
@@ -1360,13 +1708,16 @@ namespace ShiftGo.BitFlow.View
             bool overUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
             bool carrying = grabCell.HasValue;
 
-            // 工具卡不是"往格子里放东西"：幽灵预览会在鼠标下画一堵墙，玩家会以为要盖墙。
-            // 落点提示交给 UpdateCursor 的中性高亮，成没成功由状态行回答。
+            // 工具卡不是"往格子里放东西"：放置预览会在鼠标下画一堵墙，玩家会以为要盖墙。
+            // 改成"指着谁"的预览：那一件的半透明副本 + 真件下沉半格，见 UpdateToolTargetGhost。
             if (!carrying && armedType != null && armedType.IsTool)
             {
-                ghost.Hide();
+                UpdateToolTargetGhost();
                 return;
             }
+
+            // 换成普通牌 / 开始搬东西：上一件被 BUFFER 按下去的必须弹回来
+            ResetBufferSink();
 
             // 手里没牌 / 没提着东西 / 在 UI 上 / 在待排区选牌 —— 都没有"要放到哪一格"这回事
             if (draft == null || (!carrying && armedType == null) || mainCamera == null || overUi ||
@@ -1421,6 +1772,70 @@ namespace ShiftGo.BitFlow.View
             ghost.Show(ghostPreview, draft.CanPlace(ghostPreview));
         }
 
+        /// <summary>
+        /// 工具卡（BUFFER）的落点预览：鼠标指着哪一件，就把那一件画成半透明副本、并按下半格。
+        ///
+        /// 和放置预览的区别：这里预览的是<b>已经站在格子上</b>的那件，不是要放进去的新件 ——
+        /// 工具卡不改棋盘形状，它只对现存的一件做事。空格没有东西可画，提示留给 UpdateCursor 的中性高亮。
+        ///
+        /// 能不能收走和真正操作走同一个只读判定（<see cref="LevelDraft.CanRetract"/>），
+        /// 所以青色/红色从来不会骗人；判定本身有副作用的话，鼠标扫过网格就会真的把件收走。
+        /// </summary>
+        void UpdateToolTargetGhost()
+        {
+            bool overUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+
+            if (draft == null || mainCamera == null || overUi || hovered != null || !TryPickCell(out GridPoint cell))
+            {
+                ClearToolTarget();
+                return;
+            }
+
+            EditableElement target = draft.GetAt(cell);
+            if (target == null)
+            {
+                ClearToolTarget();
+                return;
+            }
+
+            RetractResult verdict = draft.CanRetract(cell, armedType != null ? armedType.Key : string.Empty);
+            bool collectable = verdict == RetractResult.Ok;
+
+            // 真件下沉：这是"这张牌会动这一件"的主提示 —— 幽灵副本叠在真件上，光看它分不出差别
+            SetBufferSink(FindViewAt(cell), collectable);
+
+            // 幽灵副本：和真件同形，颜色只回答"能不能收"
+            ghost.Show(target, collectable ? PlaceResult.Ok : PlaceResult.Occupied,
+                collectable ? BufferTargetColor : BufferBlockedColor);
+        }
+
+        /// <summary>收起工具卡预览，并让被按下去的那一件弹回来。</summary>
+        void ClearToolTarget()
+        {
+            ghost.Hide();
+            SetBufferSink(null, false);
+        }
+
+        /// <summary>
+        /// 只让"当前这一件"沉下去：鼠标换格时上一件必须弹回来 ——
+        /// 不然连点几下 BUFFER，满屏都是半沉着的元件，谁也看不出牌会落在哪。
+        /// </summary>
+        void SetBufferSink(ElementView view, bool sink)
+        {
+            if (bufferSunkView != null && bufferSunkView != view) bufferSunkView.SetBufferSink(0f);
+
+            bufferSunkView = sink ? view : null;
+            if (view != null) view.SetBufferSink(sink ? 1f : 0f);
+        }
+
+        /// <summary>把所有 BUFFER 下沉复位（换牌、开始搬动、离开网格都该走这里）。</summary>
+        void ResetBufferSink()
+        {
+            // Unity 的 != null 对已销毁对象返回 false：换关时视图可能已经被拆掉了
+            if (bufferSunkView != null) bufferSunkView.SetBufferSink(0f);
+            bufferSunkView = null;
+        }
+
         void HandleMouse()
         {
             // 鼠标在待排区某张卡上：左键 = 拿在手里，右键 = 放下手里那张
@@ -1428,14 +1843,31 @@ namespace ShiftGo.BitFlow.View
             {
                 if (Input.GetMouseButtonDown(0))
                 {
-                    Arm(hovered.Type);
+                    // 大类卡：点它是展开这一组，不是把卡拿在手里
+                    if (hovered.IsGroup)
+                    {
+                        statusMessage = FoldName(hovered.GroupKind) + " - PICK ONE";
+                        SetFoldedKind(hovered.GroupKind);
+                    }
+                    else Arm(hovered.Type);
                 }
-                else if (Input.GetMouseButtonDown(1) && armedType != null)
+                else if (Input.GetMouseButtonDown(1))
                 {
-                    armedType = null;
-                    armedPayload = null;
-                    statusMessage = "CARD RELEASED";
-                    RefreshAll();
+                    // 展开态下右键任意卡面 = 收起。比“点空白处”可靠：卡排横跨整个底边，
+                    // 空白处只剩画面上半片，玩家不会想到要往上点。
+                    if (foldedKind.HasValue)
+                    {
+                        statusMessage = "BACK TO KINDS";
+                        SetFoldedKind(null);
+                    }
+                    else if (armedType != null)
+                    {
+                        ResetBufferSink();
+                        armedType = null;
+                        armedPayload = null;
+                        statusMessage = "CARD RELEASED";
+                        RefreshAll();
+                    }
                 }
                 return;
             }
@@ -1588,6 +2020,7 @@ namespace ShiftGo.BitFlow.View
             }
 
             // 手上还捏着一张牌时先松手：两种"拿着东西"的状态同时存在，落点该听谁的说不清
+            ResetBufferSink();
             armedType = null;
             armedPayload = null;
             armedRotation = 0;
@@ -1686,6 +2119,7 @@ namespace ShiftGo.BitFlow.View
                     // 只有真的耗尽（== 0）才松开手牌；工坊不限量时 Remaining 是 -1，必须继续握着
                     if (armedType == null || draft.Remaining(armedType.Key) == 0)
                     {
+                        ResetBufferSink();
                         armedType = null;
                         armedPayload = null;
                     }
@@ -1732,6 +2166,9 @@ namespace ShiftGo.BitFlow.View
             switch (result)
             {
                 case RetractResult.Ok:
+                    // 板上那一件马上会消失/重建：先松开它的下沉，别握着已销毁的视图
+                    ResetBufferSink();
+
                     // 收回的是正选中的那一格：小窗要收起来（那件已经不在板上）
                     if (selectedCell.HasValue && selectedCell.Value.Equals(cell)) selectedCell = null;
 
@@ -1848,6 +2285,27 @@ namespace ShiftGo.BitFlow.View
             return preview != null ? preview.Kind : CellKind.Wall;
         }
 
+        /// <summary>
+        /// 切换工坊卡排的展开视图。必须重建卡排（<see cref="RefreshAll"/> 只更新颜色和张数，
+        /// 不换这一屏有哪些卡），而重建要保留“展开的是哪一类”，所以状态存在字段里而不是参数里。
+        /// </summary>
+        void SetFoldedKind(CellKind? kind)
+        {
+            if (foldedKind == kind) return;
+            foldedKind = kind;
+
+            // 展开到别的组时，手里那张卡已经不在这一屏了：先放回，免得玩家盯着一张看不见的牌点格子。
+            if (kind.HasValue && armedType != null && KindOf(armedType) != kind.Value)
+            {
+                ResetBufferSink();
+                armedType = null;
+                armedPayload = null;
+            }
+
+            RebuildCards();
+            RefreshAll();
+        }
+
         void Arm(ElementTypeSO type)
         {
             if (type == null || draft == null) return;
@@ -1918,7 +2376,7 @@ namespace ShiftGo.BitFlow.View
                 // -1 = 不限量（工坊模式 / 作者模式）：卡面留空，而且**不能压暗** ——
                 // 压暗是"这摞用完了"的语义，无限量永远用不完。
                 bool unlimited = left < 0;
-                bool selected = armedType == entry.Type;
+                bool selected = !entry.IsGroup && armedType == entry.Type;
                 bool empty = !unlimited && left <= 0;
 
                 // 选中态走那根强调条：卡面是不透明美术图，改底色会把它一起染掉

@@ -43,7 +43,10 @@ namespace ShiftGo.BitFlow.Core
             if (definition == null) return "关卡定义是空的";
 
             BitFlowSimulation simulation = new BitFlowSimulation(definition);
-            int safety = SafetyTicks(definition);
+            // 上限必须与模拟器一致才有意义：模拟器自己会在 SafetyTickLimit（默认 5000）停下，
+            // 而 W*H*8 在「多发射器 + 长路径 + 延迟器」的关卡里远远不够 ——
+            // 那时自检会在还没结算时就下结论，游戏内试跑却能跑完，作者看到的就是「能过却说不能过」。
+            int safety = Math.Max(SafetyTicks(definition), simulation.SafetyTickLimit);
             int ticks = 0;
             while (!simulation.IsFinished && ticks < safety)
             {
@@ -72,9 +75,11 @@ namespace ShiftGo.BitFlow.Core
             builder.Append(result.TickCount).Append(" ticks");
             if (puzzle) builder.Append("（有手牌的关，这是预期：玩家要自己用牌解开）");
 
+            // 「跑到上限还没结算」不等于关卡数据错了，措辞要分开。
             if (!result.IsSuccess && ticks >= safety)
             {
-                builder.Append("（跑到 ").Append(safety).Append(" tick 上限还没结算，可能有个位卡住了）");
+                builder.Append("（跑到 ").Append(safety)
+                    .Append(" tick 上限还没结算，可能有个位卡住了；这是自检上限，不是关卡数据错误）");
             }
 
             if (result.Receivers.Count == 0)
@@ -150,12 +155,46 @@ namespace ShiftGo.BitFlow.Core
         ///
         /// 返回空表 = 可以存。每条都是能直接念给作者听的中文。
         /// </summary>
+        /// <summary>存档前自检里一条意见的严重程度。</summary>
+        public enum SaveIssueSeverity
+        {
+            /// <summary>一定要改，否则存下来也是坏关（结构缺失 / 发牌发错种类 / 空位不够）。</summary>
+            Blocking,
+
+            /// <summary>设计上的提醒，作者确认后可以照存（目前只有「手牌是摆设」）。</summary>
+            Advisory,
+        }
+
+        /// <summary>一条自检意见：严重程度 + 能直接念给作者听的中文。</summary>
+        public sealed class SaveIssue
+        {
+            public SaveIssueSeverity Severity;
+            public string Message;
+        }
+
         public static List<string> RunForSave(LevelDefinition definition)
         {
             List<string> problems = new List<string>();
+            foreach (SaveIssue issue in RunForSaveDetailed(definition))
+            {
+                if (issue.Severity == SaveIssueSeverity.Blocking) problems.Add(issue.Message);
+            }
+            return problems;
+        }
+
+        /// <summary>
+        /// 同一次自检，但把「一定要改」和「提醒一下」分开（见 <see cref="SaveIssueSeverity"/>）。
+        ///
+        /// 工坊 DONE 用这一版：Blocking 拒绝保存，Advisory 只提示、再点一次 DONE 就照存 ——
+        /// 「手牌是摆设」是设计口味问题（比如机器本身自洽、作者只想再给玩家一张 B 卡），
+        /// 不该让作者连关都存不下来；外部编辑器一直就是这么处理的。
+        /// </summary>
+        public static List<SaveIssue> RunForSaveDetailed(LevelDefinition definition)
+        {
+            List<SaveIssue> problems = new List<SaveIssue>();
             if (definition == null)
             {
-                problems.Add("关卡定义是空的");
+                problems.Add(Blocking("关卡定义是空的"));
                 return problems;
             }
 
@@ -167,8 +206,8 @@ namespace ShiftGo.BitFlow.Core
                 else if (element is EmitterDefinition) emitters++;
             }
 
-            if (receivers == 0) problems.Add("这一关没有接收器，没法判定通关");
-            if (emitters == 0) problems.Add("这一关没有发射器，场上永远不会有位");
+            if (receivers == 0) problems.Add(Blocking("这一关没有接收器，没法判定通关"));
+            if (emitters == 0) problems.Add(Blocking("这一关没有发射器，场上永远不会有位"));
 
             // 这条规则本身不看有没有接收器：没有接收器时 Run() 必然失败，
             // 拿它当"预设布局跑不通"的证据没有意义，留给上面那两条去报。
@@ -178,14 +217,15 @@ namespace ShiftGo.BitFlow.Core
             {
                 if (receivers > 0 && emitters > 0 && !solved)
                 {
-                    problems.Add("没有手牌，但预设布局跑不通 —— 要么补件，要么发牌：" + FirstLine(report));
+                    problems.Add(Blocking("没有手牌，但预设布局跑不通 —— 要么补件，要么发牌：" + FirstLine(report)));
                 }
             }
             else
             {
                 if (solved)
                 {
-                    problems.Add("预设布局自己就能通关 —— 玩家一张牌都不用出，手牌是摆设");
+                    // 设计口味问题，不是数据错误：工坊会提示，作者再点一次 DONE 就照存。
+                    problems.Add(Advisory("预设布局自己就能通关 —— 玩家一张牌都不用出，手牌是摆设"));
                 }
 
                 foreach (LevelSupplyEntry supply in definition.Supplies)
@@ -194,8 +234,8 @@ namespace ShiftGo.BitFlow.Core
 
                     if (!SupplyKinds.IsSupplyKind(supply.Kind))
                     {
-                        problems.Add("手牌里有" + supply.Kind + "：" +
-                            "发射器 / 接收器定的是这一关的题，只能由作者给定，不能发给玩家");
+                        problems.Add(Blocking("手牌里有" + supply.Kind + "：" +
+                            "发射器 / 接收器定的是这一关的题，只能由作者给定，不能发给玩家"));
                     }
                 }
 
@@ -209,11 +249,21 @@ namespace ShiftGo.BitFlow.Core
 
                 if (empty < total)
                 {
-                    problems.Add("空位只有 " + empty + " 格，却发了 " + total + " 张牌 —— 一定有几张放不下");
+                    problems.Add(Blocking("空位只有 " + empty + " 格，却发了 " + total + " 张牌 —— 一定有几张放不下"));
                 }
             }
 
             return problems;
+        }
+
+        static SaveIssue Blocking(string message)
+        {
+            return new SaveIssue { Severity = SaveIssueSeverity.Blocking, Message = message };
+        }
+
+        static SaveIssue Advisory(string message)
+        {
+            return new SaveIssue { Severity = SaveIssueSeverity.Advisory, Message = message };
         }
 
         /// <summary>报告的第一行（"✅ 通关 12 ticks" 这种），拼进问题描述里给作者一句上下文。</summary>

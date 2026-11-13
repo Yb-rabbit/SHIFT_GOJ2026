@@ -5,17 +5,30 @@ using ShiftGo.BitFlow.Core;
 namespace ShiftGo.BitFlow.Tests
 {
     /// <summary>
-    /// 存档前自检（<see cref="LevelCheck.RunForSave"/>）的测试。
+    /// 存档前自检（<see cref="LevelCheck.RunForSaveDetailed"/>）的测试。
     ///
     /// 这套规则只查「必要条件」：结构齐不齐、有手牌的关是不是手牌摆设、空位够不够放下所有牌。
     /// 它存在的理由：工坊以前只要求"预设布局能跑通"，于是「玩家一张牌都不用出」的关也能存进去，
     /// 手牌系统等于白做 —— 这种事故模拟器一眼就能看出来，不该等玩家进关才发现。
+    ///
+    /// 严重程度区分：Blocking 一定拒绝保存；Advisory（目前只有「手牌是摆设」）只提示一次，
+    /// 作者再点一次 DONE 就照存 —— 所以它必须<b>不</b>出现在 <see cref="LevelCheck.RunForSave"/> 里。
     /// </summary>
     public class LevelCheckTests
     {
         static string Join(List<string> problems)
         {
             return string.Join("；", problems);
+        }
+
+        static string JoinAdvisories(List<LevelCheck.SaveIssue> issues)
+        {
+            List<string> messages = new List<string>();
+            foreach (LevelCheck.SaveIssue issue in issues)
+            {
+                if (issue.Severity == LevelCheck.SaveIssueSeverity.Advisory) messages.Add(issue.Message);
+            }
+            return Join(messages);
         }
 
         [Test]
@@ -30,7 +43,7 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         [Test]
-        public void Supplies_OnAnAlreadySolvableLayout_AreRejectedAsDecoration()
+        public void Supplies_OnAnAlreadySolvableLayout_AreOnlyAnAdvisory()
         {
             LevelDefinition level = DemoLevels.CreateLevel01();
             level.Supplies.Add(new LevelSupplyEntry
@@ -40,7 +53,10 @@ namespace ShiftGo.BitFlow.Tests
                 Count = 1,
             });
 
-            StringAssert.Contains("手牌是摆设", Join(LevelCheck.RunForSave(level)),
+            // 只提示、不挡保存：作者可能就是想给玩家一张 B 卡
+            Assert.IsEmpty(LevelCheck.RunForSave(level), "「手牌是摆设」是设计提醒，不该把整个关卡死");
+
+            StringAssert.Contains("手牌是摆设", JoinAdvisories(LevelCheck.RunForSaveDetailed(level)),
                 "预设布局自己就能通关时，玩家一张牌都不用出");
         }
 

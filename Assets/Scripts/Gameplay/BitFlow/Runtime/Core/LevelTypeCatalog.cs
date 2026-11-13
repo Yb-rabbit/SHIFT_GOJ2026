@@ -45,6 +45,14 @@ namespace ShiftGo.BitFlow.Core
         /// <summary>延迟器的延迟 tick 数（1~4）。</summary>
         public int delay = 1;
 
+        /// <summary>
+        /// 这张类型是不是「工具卡」而不是棋盘元件（B / BUFFER 这类）。
+        ///
+        /// 工具卡借的是别的种类的定义（BUFFER 借墙），所以光看 <see cref="kind"/> 会把它当成一面墙 ——
+        /// 外部编辑器据此才能做到：允许它进手牌（supplies），但拒绝它进 elements。
+        /// </summary>
+        public bool tool;
+
         public CellKind KindOrDefault()
         {
             return LevelDocumentBuilder.TryParseKind(kind, out CellKind parsed) ? parsed : CellKind.Wall;

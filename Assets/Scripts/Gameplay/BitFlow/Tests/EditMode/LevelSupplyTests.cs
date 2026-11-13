@@ -290,5 +290,53 @@ namespace ShiftGo.BitFlow.Tests
             Assert.AreEqual(0, definition.Supplies.Count, "0 张等于不给这张牌");
             Assert.IsNotEmpty(problems, "跳过要留下一条问题，方便作者排查");
         }
+
+        /// <summary>
+        /// 同一「种类」下的多个变体（D1 / D3）在手牌里是两摞独立的牌。
+        ///
+        /// 以前库存按种类合并，作者发了 D3 之后卡排只显示一张 D1、放下去的也是 D1 ——
+        /// 延迟 1 tick 的件被当成延迟 3 tick 的用，关卡解法直接变了。
+        /// 所以库存字典的键必须是类型 Key，写盘时也要两条 supplies。
+        /// </summary>
+        [Test]
+        public void SameKindVariants_KeepSeparateStacksInHand()
+        {
+            LevelTypeRegistrySO.ClearCache();
+            LevelTypeRegistrySO registry = LevelTypeRegistrySO.Load();
+            Assert.IsNotNull(registry, "缺少类型注册表 Resources/" + LevelTypeRegistrySO.ResourcePath);
+
+            ElementTypeSO delayOne = registry.Find("Type_DelayGate_D1");
+            ElementTypeSO delayThree = registry.Find("Type_DelayGate_D3");
+            Assert.IsNotNull(delayOne, "缺少类型资产 Type_DelayGate_D1");
+            Assert.IsNotNull(delayThree, "缺少类型资产 Type_DelayGate_D3");
+
+            LevelSO level = ScriptableObject.CreateInstance<LevelSO>();
+            try
+            {
+                level.displayName = "VARIANT HAND TEST";
+                level.allowBuild = true;
+                level.supplies.Add(new ElementSupply { type = delayOne, count = 2 });
+                level.supplies.Add(new ElementSupply { type = delayThree, count = 1 });
+
+                LevelDraft draft = level.CreatePlayerDraft();
+
+                Assert.AreEqual(2, draft.Remaining(delayOne.Key), "D1 是独立的一摞");
+                Assert.AreEqual(1, draft.Remaining(delayThree.Key), "D3 不能被并进 D1");
+
+                EditableElement placed = delayThree.CreateEditable(FreeCell());
+                Assert.IsNotNull(placed);
+                Assert.AreEqual(PlaceResult.Ok, draft.TryPlace(placed), "手里有 D3 就该放得下");
+                Assert.AreEqual(0, draft.Remaining(delayThree.Key), "放下的是 D3，扣的也该是 D3");
+                Assert.AreEqual(2, draft.Remaining(delayOne.Key), "D1 一张都没动");
+                Assert.AreEqual(3, placed.DelayTicks, "落下之后得是 3 tick，不是 D1 的 1 tick");
+
+                LevelDefinition definition = draft.ToDefinition();
+                Assert.AreEqual(2, definition.Supplies.Count, "两个变体要各写一条 supplies");
+            }
+            finally
+            {
+                Object.DestroyImmediate(level);
+            }
+        }
     }
 }

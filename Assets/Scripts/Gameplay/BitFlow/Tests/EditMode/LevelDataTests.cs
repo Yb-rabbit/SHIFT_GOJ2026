@@ -87,7 +87,7 @@ namespace ShiftGo.BitFlow.Tests
                 scratch.width = 4;
                 scratch.height = 3;
                 scratch.wallType = wallType;
-                scratch.wallMap = "#\n..#\n####\n####\n####"; // 第 2 行只有 1 个字符；后两行超出 height
+                scratch.wallMap = "#\n..#####\n####\n####\n####"; // 第 1 行是短行；第 2 行横向超宽（x=4,5 要忽略）；后两行超出 height
 
                 List<Vector2Int> walls = new List<Vector2Int>(scratch.ParseWalls());
 

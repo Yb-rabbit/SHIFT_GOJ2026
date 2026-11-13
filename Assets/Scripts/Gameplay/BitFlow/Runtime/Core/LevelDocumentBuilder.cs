@@ -205,6 +205,15 @@ namespace ShiftGo.BitFlow.Core
             {
                 if (catalog != null && catalog.TryGet(cell.type, out LevelTypeSpec found))
                 {
+                    // 工具卡（B / BUFFER）是发给玩家的牌，不是能摆在棋盘上的元件：
+                    // 它借的是墙的定义，静默放过会变成一面看不见用途的墙。
+                    if (found.tool)
+                    {
+                        Add(problems, where + " 用的是工具卡 " + cell.type
+                            + "（工具卡只能写进 supplies，不能放进 elements），已跳过");
+                        return false;
+                    }
+
                     spec = found;
                     kindMode = false;
                     return true;

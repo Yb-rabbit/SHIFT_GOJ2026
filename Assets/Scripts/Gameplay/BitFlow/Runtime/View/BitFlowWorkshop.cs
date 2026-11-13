@@ -73,6 +73,13 @@ namespace ShiftGo.BitFlow.View
         bool homeArmed;
         float armedAt;
 
+        /// <summary>
+        /// 自检只报了「提醒」时，第一次 DONE 只提示，第二次才真正落盘。
+        /// 与 <see cref="clearArmed"/> 不同，它不跟 3 秒窗口 —— 作者可能要先回 Console 读完整提示；
+        /// 但草稿一改就作废（见 <see cref="OnDraftChanged"/>），免得「改了题目还用旧确认存」。
+        /// </summary>
+        bool saveAnywayArmed;
+
         public bool IsOpen => open;
         public LevelDraft Draft => draft;
         public bool IsEditingExisting => !string.IsNullOrEmpty(editingPath);
@@ -252,6 +259,7 @@ namespace ShiftGo.BitFlow.View
 
             clearArmed = false;
             homeArmed = false;
+            saveAnywayArmed = false;
             draft = null;
             editingPath = null;
 
@@ -311,15 +319,41 @@ namespace ShiftGo.BitFlow.View
             LevelDefinition definition = draft.ToDefinition();
             definition.DisplayName = name;
 
-            // 存档前的必要条件自检（规则见 LevelCheck.RunForSave）：
-            // 结构齐不齐、手牌是不是摆设、空位够不够放下所有牌。
-            List<string> problems = LevelCheck.RunForSave(definition);
-            if (problems.Count > 0)
+            // 存档前的必要条件自检（规则见 LevelCheck.RunForSaveDetailed）：
+            // Blocking = 无论玩家怎么动都救不回来，拒绝保存；
+            // Advisory = 设计口味提醒（目前只有「手牌是摆设」），第一次只提示，再点一次 DONE 照存。
+            List<LevelCheck.SaveIssue> issues = LevelCheck.RunForSaveDetailed(definition);
+            List<string> blocking = new List<string>();
+            List<string> advisory = new List<string>();
+            foreach (LevelCheck.SaveIssue issue in issues)
             {
+                if (issue.Severity == LevelCheck.SaveIssueSeverity.Blocking) blocking.Add(issue.Message);
+                else advisory.Add(issue.Message);
+            }
+
+            if (blocking.Count > 0)
+            {
+                saveAnywayArmed = false;
                 // 中文全文进 Console（那里的字形是完整的），面板上只放得下 ASCII 结论
-                Debug.Log("[BitFlow] 工坊自检未通过：" + name + "\n  " + string.Join("\n  ", problems));
-                SetHint(HintFor(problems));
+                Debug.Log("[BitFlow] 工坊自检未通过：" + name + "\n  " + string.Join("\n  ", blocking));
+                SetHint(HintFor(blocking));
                 return;
+            }
+
+            if (advisory.Count > 0)
+            {
+                if (!saveAnywayArmed)
+                {
+                    saveAnywayArmed = true;
+                    Debug.Log("[BitFlow] 工坊自检提醒（再点一次 DONE 就照存）：" + name
+                        + "\n  " + string.Join("\n  ", advisory));
+                    SetHint("PRESS DONE AGAIN TO SAVE ANYWAY");
+                    return;
+                }
+            }
+            else
+            {
+                saveAnywayArmed = false;
             }
 
             if (editingPath != null)
@@ -415,6 +449,7 @@ namespace ShiftGo.BitFlow.View
             // 板子一变，「再点一次确认」的前提就不成立了（例如 CLEAR 已确认一半，玩家又摆了一件）
             clearArmed = false;
             homeArmed = false;
+            saveAnywayArmed = false;
 
             // 参数小窗上的读数（张数 / 匹配结论）也跟着变；撤销会改手牌，不能只在点格子时刷新
             if (setup != null) setup.Refresh();
@@ -465,6 +500,7 @@ namespace ShiftGo.BitFlow.View
             // 两个确认共用一块计时：先点 CLEAR 又去点 HOME，应该只剩后点的那个在等确认
             clearArmed = false;
             homeArmed = false;
+            saveAnywayArmed = false;
             armed = true;
             armedAt = Time.unscaledTime;
 

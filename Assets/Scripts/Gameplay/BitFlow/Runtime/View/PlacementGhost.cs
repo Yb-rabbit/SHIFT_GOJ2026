@@ -43,10 +43,13 @@ namespace ShiftGo.BitFlow.View
 
         readonly Dictionary<string, Variant> variants = new Dictionary<string, Variant>();
         readonly Dictionary<CellKind, Material> validMaterials = new Dictionary<CellKind, Material>();
+        /// <summary>按 (种类, 颜色) 缓存的覆盖色材质：BUFFER 目标预览用它，不走种类色。</summary>
+        readonly Dictionary<string, Material> tintMaterials = new Dictionary<string, Material>();
         Material invalidMaterial;
 
         Variant current;
         bool currentValid = true;
+        Color? tintOverride;
 
         /// <summary>幽灵底部所在的格心（不含悬空高度）。Update 每帧在这个点上叠悬空 + 呼吸。</summary>
         Vector3 hoverBase;
@@ -59,6 +62,17 @@ namespace ShiftGo.BitFlow.View
         /// <paramref name="result"/> 只用来决定颜色，不改变任何数据。
         /// </summary>
         public void Show(EditableElement element, PlaceResult result)
+        {
+            Show(element, result, null);
+        }
+
+        /// <summary>
+        /// 同上，但用 <paramref name="tint"/> 覆盖颜色（null = 按种类色 / 不可放红）。
+        ///
+        /// BUFFER 的目标预览要它：那一格已经站着一件真元件，预览是它的半透明副本，
+        /// 颜色只该回答"能不能收"（青=能、红=不能），再按种类上色反而像换了件东西。
+        /// </summary>
+        public void Show(EditableElement element, PlaceResult result, Color? tint)
         {
             if (element == null)
             {
@@ -77,8 +91,9 @@ namespace ShiftGo.BitFlow.View
 
             if (current != null && current != variant) current.Root.SetActive(false);
 
-            // 只在"换了形状"或"能放/不能放变了"的时候才重设材质，避免每帧刷一遍 Renderer
-            bool needsTint = current != variant || currentValid != valid || !variant.Root.activeSelf;
+            // 只在"换了形状""能放/不能放变了""覆盖色变了"的时候才重设材质，避免每帧刷一遍 Renderer
+            bool needsTint = current != variant || currentValid != valid || !variant.Root.activeSelf ||
+                             tintOverride != tint;
 
             // 换形状（或从隐藏变成显示）才重置动画时钟：
             // 鼠标在同一形状的不同格子间扫过时刻意不重置，否则会每格弹一次，像打嗝
@@ -86,6 +101,7 @@ namespace ShiftGo.BitFlow.View
 
             current = variant;
             currentValid = valid;
+            tintOverride = tint;
             visible = true;
             hoverBase = GridMetrics.CellToWorld(element.Coord);
 
@@ -151,6 +167,13 @@ namespace ShiftGo.BitFlow.View
                 if (material != null) DestroySafe(material);
             }
             validMaterials.Clear();
+
+            foreach (Material material in tintMaterials.Values)
+            {
+                if (material != null) DestroySafe(material);
+            }
+            tintMaterials.Clear();
+            tintOverride = null;
         }
 
         void OnDestroy()
@@ -192,12 +215,26 @@ namespace ShiftGo.BitFlow.View
 
         void ApplyTint(Variant variant, bool valid)
         {
-            Material material = valid ? ValidMaterial(variant.Kind) : InvalidMaterial();
+            Material material = tintOverride.HasValue
+                ? TintMaterial(variant.Kind, tintOverride.Value)
+                : valid ? ValidMaterial(variant.Kind) : InvalidMaterial();
+
             for (int i = 0; i < variant.Renderers.Length; i++)
             {
                 if (variant.Renderers[i] == null) continue;
                 variant.Renderers[i].sharedMaterial = material;
             }
+        }
+
+        /// <summary>覆盖色材质。缓存键带颜色：青/红来回切时不会每帧 new 一份。</summary>
+        Material TintMaterial(CellKind kind, Color color)
+        {
+            string key = kind + "|" + ColorUtility.ToHtmlStringRGBA(color);
+            if (tintMaterials.TryGetValue(key, out Material cached) && cached != null) return cached;
+
+            Material material = MaterialFactory.Ghost(color, Alpha, "M_Ghost_Tint_" + kind);
+            tintMaterials[key] = material;
+            return material;
         }
 
         Material ValidMaterial(CellKind kind)

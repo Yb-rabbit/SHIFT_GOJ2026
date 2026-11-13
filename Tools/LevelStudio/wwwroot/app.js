@@ -20,7 +20,10 @@ const KINDS = [
    发射器/接收器不外发 —— 那等于把出题权交给玩家。
 
    这只是「门槛」：具体发哪一张牌由类型目录决定（Filter 有 F0/F1、DelayGate 有 D1~D4），
-   下拉选的是类型资产 key，不是种类。 */
+   下拉选的是类型资产 key，不是种类。
+
+   工具卡（BUFFER）不在这个列表里：它借的是墙的形态（kind = Wall），
+   但它是「对某一格做一件事」的牌，不是一种元件 —— 靠 spec.tool 单独放行，见 isSupplySpec。 */
 const SUPPLY_KINDS = ['Wall', 'Splitter', 'NotGate', 'Filter', 'DelayGate'];
 
 /* 墙类型缺省值：和 LevelDocument.wallType 的默认一致（空串 = 用目录里第一份墙类型）。 */
@@ -1042,7 +1045,12 @@ function normalizeSupplies(raw) {
     if (!item) continue;
 
     const kind = item.kind || kindOfType(item.type);
-    if (!kind || SUPPLY_KINDS.indexOf(kind) < 0) {
+    const spec = specOf(item.type);
+
+    // 工具卡（BUFFER）借的是墙的形态，kind 虽然合法也不能说明什么；
+    // 认白名单只看目录里的 tool 标记，没导出目录的旧文件仍按种类放行。
+    const allowed = (spec && spec.tool) || (kind && SUPPLY_KINDS.indexOf(kind) >= 0);
+    if (!allowed) {
       state.notes.push('手牌 ' + JSON.stringify(item) + ' 不是可发牌的种类，已跳过');
       continue;
     }
@@ -1084,13 +1092,30 @@ function setWallIn(doc, x, y, on) {
 
 // ------------------------------------------------------------------ 手牌
 
-/* 目录里「能发牌」的类型资产（Filter 的 F0/F1、DelayGate 的 D1~D4 各算一条）。 */
+/* 目录里「能发牌」的类型资产（Filter 的 F0/F1、DelayGate 的 D1~D4 各算一条）。
+   工具卡（BUFFER）也算：它在游戏里就是一张能发到玩家手上的牌。 */
+function isSupplySpec(spec) {
+  if (!spec) return false;
+  if (spec.tool) return true;
+  return SUPPLY_KINDS.indexOf(spec.kind) >= 0;
+}
+
 function supplySpecs() {
-  return (state.catalog || []).filter((spec) => spec && SUPPLY_KINDS.indexOf(spec.kind) >= 0);
+  return (state.catalog || []).filter(isSupplySpec);
+}
+
+/* 工具卡的卡面/名字：它 kind 是 Wall（借形态），直接走 kindInfo 会显示成「墙」。 */
+function specGlyph(spec) {
+  return spec && spec.tool ? 'B' : kindInfo(spec ? spec.kind : null).glyph;
+}
+
+function specKindLabel(spec) {
+  return spec && spec.tool ? '工具' : kindInfo(spec ? spec.kind : null).label;
 }
 
 /* 变体说明：光看 F0/F1 分不出谁放行 0，光看 D3 也想不起来要等几拍。 */
 function supplySpecDetail(spec) {
+  if (spec.tool) return '（把锁定件收回手牌）';
   if (spec.kind === 'Filter') return '（PASS ' + (spec.pass === 0 ? 0 : 1) + '）';
   if (spec.kind === 'DelayGate') return '（HOLD ' + clampDelay(spec.delay) + ' TICK）';
   return '';
@@ -1098,12 +1123,12 @@ function supplySpecDetail(spec) {
 
 /* 下拉里的一行：带种类字形，省地方。 */
 function supplySpecText(spec) {
-  return kindInfo(spec.kind).glyph + ' ' + spec.label + supplySpecDetail(spec);
+  return specGlyph(spec) + ' ' + spec.label + supplySpecDetail(spec);
 }
 
 /* 手牌列表里的一行：写全「过滤器 F1（PASS 1）」，一眼能对上玩家看到的牌面。 */
 function supplySpecName(spec) {
-  return kindInfo(spec.kind).label + ' ' + spec.label + supplySpecDetail(spec);
+  return specKindLabel(spec) + ' ' + spec.label + supplySpecDetail(spec);
 }
 
 /**
@@ -1133,14 +1158,32 @@ function renderSupplyOptions() {
     return;
   }
 
+  // 元件按种类分组。工具卡（BUFFER）kind 也是 Wall，绝不能混进墙那一组 ——
+  // 它和「墙」是两种牌，混在一起作者会以为发出去的是墙。
   for (const kind of SUPPLY_KINDS) {
-    const group = specs.filter((spec) => spec.kind === kind);
+    const group = specs.filter((spec) => !spec.tool && spec.kind === kind);
     if (!group.length) continue;
 
     const box = document.createElement('optgroup');
     box.label = kindInfo(kind).label;
 
     for (const spec of group) {
+      const option = document.createElement('option');
+      option.value = spec.key;
+      option.textContent = supplySpecText(spec);
+      box.appendChild(option);
+    }
+
+    el.supplyKind.appendChild(box);
+  }
+
+  // 工具卡单独一组，排在最后：平时不常用，但教 BUFFER 的关必须发得出来。
+  const tools = specs.filter((spec) => spec.tool);
+  if (tools.length) {
+    const box = document.createElement('optgroup');
+    box.label = '工具';
+
+    for (const spec of tools) {
       const option = document.createElement('option');
       option.value = spec.key;
       option.textContent = supplySpecText(spec);
@@ -1224,7 +1267,7 @@ function addSupply() {
   // 下拉的值是类型 key（F1 / D3…）；没导出目录时会退成 'kind:Wall' 这种写法
   const spec = specOf(value);
   const kind = spec ? spec.kind : (value.indexOf('kind:') === 0 ? value.slice(5) : value);
-  if (!kind || SUPPLY_KINDS.indexOf(kind) < 0) return;
+  if (!isSupplySpec(spec) && !(kind && SUPPLY_KINDS.indexOf(kind) >= 0)) return;
 
   beginHistory('手牌');
   if (!state.doc.supplies) state.doc.supplies = [];

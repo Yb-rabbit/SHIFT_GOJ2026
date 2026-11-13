@@ -320,10 +320,15 @@ namespace ShiftGo.BitFlow.Core
         /// 记账方向和放牌相反：收回来的件要往它那一摞里**加一张**（stock 与 granted 同步加），
         /// 所以状态行的 "HAND x/y" 里 y 会变大 —— 手牌总量没变，只是从工具牌换成了元件牌，可以再放回去。
         /// </summary>
-        public RetractResult TryRetract(GridPoint coord, string toolKey, out EditableElement picked)
+        /// <summary>
+        /// 只读版 <see cref="TryRetract"/>：判定顺序一字不差，但不动任何状态。
+        ///
+        /// 存在的理由只有一个：手牌预览要每帧问"这一格能不能收"。
+        /// 直接调 TryRetract 的话，鼠标扫过网格就会真的把件收走、把工具牌扣掉 —— 预览绝不能有副作用。
+        /// 改了这边的规则，TryRetract 会跟着走（它就调这里），所以两处不会跑偏。
+        /// </summary>
+        public RetractResult CanRetract(GridPoint coord, string toolKey)
         {
-            picked = null;
-
             if (!InBounds(coord)) return RetractResult.OutOfBounds;
             if (!cells.TryGetValue(coord, out EditableElement element)) return RetractResult.EmptyCell;
             if (!lockedCells.Contains(coord)) return RetractResult.NotLocked;
@@ -333,7 +338,21 @@ namespace ShiftGo.BitFlow.Core
             if (!stockEnabled || string.IsNullOrEmpty(toolKey)) return RetractResult.OutOfStock;
 
             int toolLeft = stock.TryGetValue(toolKey, out int left) ? left : 0;
-            if (toolLeft <= 0) return RetractResult.OutOfStock;
+            return toolLeft > 0 ? RetractResult.Ok : RetractResult.OutOfStock;
+        }
+
+        public RetractResult TryRetract(GridPoint coord, string toolKey, out EditableElement picked)
+        {
+            picked = null;
+
+            // 判定全在 CanRetract 里：先问、再记账，任何失败都不扣牌
+            RetractResult verdict = CanRetract(coord, toolKey);
+            if (verdict != RetractResult.Ok) return verdict;
+
+            // 上面刚判定过，这里必然拿得到
+            if (!cells.TryGetValue(coord, out EditableElement element)) return RetractResult.EmptyCell;
+
+            int toolLeft = stock.TryGetValue(toolKey, out int left) ? left : 0;
 
             PushHistory();
 

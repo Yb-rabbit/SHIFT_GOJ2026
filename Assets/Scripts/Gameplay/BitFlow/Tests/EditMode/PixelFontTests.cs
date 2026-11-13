@@ -11,8 +11,9 @@ namespace ShiftGo.BitFlow.Tests
     /// 为什么值得单测：这两类问题都不会报编译错误，只在<b>打包后</b>表现为一屏方块，
     /// 而编辑器里因为系统字体 fallback 看着一切正常 —— 一直是这样才漏到打包版本的。
     ///
-    /// 注意：像素字体（BoutiqueBitmap9x9）只覆盖 ASCII + 少量符号，<b>没有中文字形</b>。
-    /// 玩家可见的文案必须全英文，作者模式（游戏内编辑器）是唯一允许中文的地方。
+    /// 注意：工程里的像素字体（BoutiqueBitmap9x9）是<b>带中文子集</b>的版本，作者模式
+    /// （游戏内编辑器）用它显示中文；玩家可见的文案仍保持全英文 + 箭头符号，
+    /// 这样换回原版只有 ASCII 的字体时也不会有一屏方块。
     /// </summary>
     public class PixelFontTests
     {
@@ -60,15 +61,17 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         [Test]
-        public void PixelFont_HasNoCjk_SoUiTextMustStayEnglish()
+        public void PixelFont_KeepsCjkGlyphs_SoAuthorModeTextIsSafe()
         {
             Font font = PixelFont.Get();
             if (font == null) Assert.Ignore("字体未加载");
 
-            // 这条不是「要求没有中文」，而是把事实钉住：一旦字体换了含中文的版本，
-            // 这个测试会失败，提醒作者回来把 UI 文案改成中文（或删掉这条测试）。
-            Assert.IsFalse(font.HasCharacter('接'),
-                "字体居然有中文字形了 —— 如果换成了含中文的字体，请把玩家侧 UI 文案改回中文并删除此断言");
+            // 这条把「字体到底能不能显示中文」这个事实钉住。
+            // 工程里的 BoutiqueBitmap9x9 是带中文子集的版本（2MB 左右），作者模式
+            // （BitFlowBuildMode 的调色板与快捷键提示）正是靠它显示中文的 ——
+            // 换成原版只有 ASCII 的字体后，编辑器里看不出问题，打包后那一片会变成方块。
+            Assert.IsTrue(font.HasCharacter('接'),
+                "字体没有中文字形了 —— 作者模式的中文标签会变成方块；换字体请确认它仍带中文子集");
         }
 
         [Test]

@@ -54,6 +54,15 @@ namespace ShiftGo.BitFlow.View
         float rotateTimer = -1f;
         float rotateFromAngle;
 
+        // ---- BUFFER 目标提示（纯表现）----
+        // 手里拿着工具卡、鼠标停在某一格上时，这一件往下沉半格：
+        // 幽灵副本画在真件上面、看不太出差别，真件自己"被按下去"才是能立刻读懂的提示。
+        const float BufferSinkDepth = GridMetrics.CellSize * 0.5f;
+        const float BufferSinkDuration = 0.12f;
+
+        float bufferSinkTarget;
+        float bufferSink;
+
         public void Build(ElementDefinition definition, string description, Material bodySharedMaterial)
         {
             Definition = definition;
@@ -639,6 +648,36 @@ namespace ShiftGo.BitFlow.View
                     transform.localRotation = Quaternion.identity;
                 }
             }
+
+            // 最后才叠 BUFFER 下沉量：前面两段动画在摆 transform，等它们收尾
+            TickBufferSink();
+        }
+
+        /// <summary>
+        /// BUFFER 目标提示：<paramref name="amount01"/> = 1 时把这一件往下按半格，0 时回弹。
+        ///
+        /// 为什么是"沉"而不是描边/变色：元件本身的颜色是玩法信息（青=1、橙=0、绿=跑通、红=错），
+        /// 任何改色的提示都会被误读成信号；位移不含语义，只表达"鼠标点着我"。
+        /// 目标件可能刚放下、还在下坠动画里，那段时间先记账，等动画结束再叠上去。
+        /// </summary>
+        public void SetBufferSink(float amount01)
+        {
+            bufferSinkTarget = Mathf.Clamp01(amount01);
+        }
+
+        /// <summary>推进下沉量。只在没有落地/转身动画时改 transform，免得和它们抢同一份姿态。</summary>
+        void TickBufferSink()
+        {
+            bool animating = dropTimer >= 0f || rotateTimer >= 0f;
+            if (animating) return;
+
+            // 到达目标就停机：下沉量停在 0 或 1 时不该继续每帧写 transform
+            if (Mathf.Approximately(bufferSink, bufferSinkTarget)) return;
+
+            bufferSink = Mathf.MoveTowards(bufferSink, bufferSinkTarget, Time.deltaTime / BufferSinkDuration);
+
+            Vector3 basePosition = GridMetrics.CellToWorld(Definition.Coord);
+            transform.position = basePosition + Vector3.down * (BufferSinkDepth * bufferSink);
         }
 
         /// <summary>游戏内编辑器的悬停/选中高亮（只抬自发光，不改数据）。</summary>

@@ -50,6 +50,7 @@ namespace ShiftGo.BitFlow.Data
                 count = 1,
                 acceptAnyFace = true,
                 pass = 1,
+                tool = type.IsTool,
             };
 
             // 参数一律从「0 号定义」里读：朝向、序列、次数都是元件自己的默认脸

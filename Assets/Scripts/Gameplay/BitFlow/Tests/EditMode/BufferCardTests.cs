@@ -80,6 +80,30 @@ namespace ShiftGo.BitFlow.Tests
             Assert.IsNotNull(draft.GetAt(WallCell), "失败不能把东西弄没");
         }
 
+        /// <summary>
+        /// 卡排的悬停预览每帧都要问"这一格能不能收"。那个判定绝不能有副作用 ——
+        /// 否则鼠标扫过网格就会真的把件收走、把工具牌扣掉，玩家只会觉得这张牌"自己乱吃"。
+        /// </summary>
+        [Test]
+        public void CanRetract_IsReadOnly_SoTheHoverPreviewCannotStealPieces()
+        {
+            LevelDraft draft = NewDraft(out EditableElement wall);
+
+            Assert.AreEqual(RetractResult.Ok, draft.CanRetract(WallCell, BufferKey), "判定结果必须和 TryRetract 一致");
+
+            // 判完什么都没变：件还在、还是锁的、牌一张没少、撤销栈没被压
+            Assert.AreSame(wall, draft.GetAt(WallCell), "只看一眼不能把件拿走");
+            Assert.AreEqual(1, draft.LockedCount, "锁定标记也不能被预览改掉");
+            Assert.AreEqual(1, draft.Remaining(BufferKey), "预览不能扣牌");
+            Assert.AreEqual(0, draft.Remaining(WallKey), "预览不能凭空虚增一张牌");
+            Assert.IsFalse(draft.CanUndo, "预览不能往撤销栈里塞东西 —— 否则 Ctrl+Z 会先撤掉一次\"什么都没发生\"");
+
+            // 每一种失败码都和 TryRetract 走同一套判定
+            Assert.AreEqual(RetractResult.EmptyCell, draft.CanRetract(new GridPoint(0, 0), BufferKey));
+            Assert.AreEqual(RetractResult.OutOfBounds, draft.CanRetract(new GridPoint(-1, 0), BufferKey));
+            Assert.AreEqual(RetractResult.OutOfStock, draft.CanRetract(WallCell, string.Empty), "没有工具牌就没有可花的");
+        }
+
         [Test]
         public void TryRetract_EmitterOrReceiver_IsRejected()
         {
