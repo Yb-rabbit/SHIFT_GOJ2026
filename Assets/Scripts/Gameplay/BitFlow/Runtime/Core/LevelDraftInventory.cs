@@ -16,6 +16,20 @@ namespace ShiftGo.BitFlow.Core
     }
 
     /// <summary>
+    /// BUFFER（把预设件收回手牌）的结果。和 <see cref="PlaceResult"/> 分开是因为它多两种专属失败：
+    /// 这格不是锁定的（该用右键）/ 这一件根本不许被收回（发射器、接收器）。
+    /// </summary>
+    public enum RetractResult
+    {
+        Ok = 0,
+        OutOfBounds = 1,
+        EmptyCell = 2,
+        NotLocked = 3,
+        NotBufferable = 4,
+        OutOfStock = 5,
+    }
+
+    /// <summary>
     /// <see cref="LevelDraft"/> 的玩家模式部分：有限手牌 + 关卡预设锁定 + 撤销栈。
     ///
     /// 规则（已确认）：元件放下后还能自由拾回 / 移动 / 旋转，手牌数量是硬约束，但每一次改动都能 Ctrl+Z 撤回
@@ -292,6 +306,54 @@ namespace ShiftGo.BitFlow.Core
 
             picked = element;
             return true;
+        }
+
+        /// <summary>
+        /// BUFFER：把一堵<b>关卡预设件</b>收回手牌，并把这件本身交回去（UI 会直接把它拿在手里）。
+        ///
+        /// 和 <see cref="TryPick"/> 的三处差别都是故意的：
+        /// 1) 只认锁定格 —— 自己放的件右键就能免费拾回，拿工具牌去收它是白花一张；
+        /// 2) 只认 <see cref="SupplyKinds.IsSupplyKind"/> 的种类 —— 发射器 / 接收器定义了这道题，谁也不能收走，
+        ///    否则玩家等于自己改题目；
+        /// 3) 要花掉一张 <paramref name="toolKey"/>（BUFFER 本身），但**先判定再记账**：任何失败都不扣牌。
+        ///
+        /// 记账方向和放牌相反：收回来的件要往它那一摞里**加一张**（stock 与 granted 同步加），
+        /// 所以状态行的 "HAND x/y" 里 y 会变大 —— 手牌总量没变，只是从工具牌换成了元件牌，可以再放回去。
+        /// </summary>
+        public RetractResult TryRetract(GridPoint coord, string toolKey, out EditableElement picked)
+        {
+            picked = null;
+
+            if (!InBounds(coord)) return RetractResult.OutOfBounds;
+            if (!cells.TryGetValue(coord, out EditableElement element)) return RetractResult.EmptyCell;
+            if (!lockedCells.Contains(coord)) return RetractResult.NotLocked;
+            if (!SupplyKinds.IsSupplyKind(element.Kind)) return RetractResult.NotBufferable;
+
+            // 没有有限手牌就没有「一张工具牌」可花：作者模式里不该出现能凭空搬走预设件的操作
+            if (!stockEnabled || string.IsNullOrEmpty(toolKey)) return RetractResult.OutOfStock;
+
+            int toolLeft = stock.TryGetValue(toolKey, out int left) ? left : 0;
+            if (toolLeft <= 0) return RetractResult.OutOfStock;
+
+            PushHistory();
+
+            cells.Remove(coord);
+            lockedCells.Remove(coord);
+
+            // 收回来的这一件回到它自己那一摞：TypeKey 是权威，玩家拿到的是「这一件」而不是这种元件的默认值
+            string typeKey = element.TypeKey;
+            if (!string.IsNullOrEmpty(typeKey) && typeKey != toolKey)
+            {
+                int have = stock.TryGetValue(typeKey, out int held) ? held : 0;
+                stock[typeKey] = have + 1;
+                granted[typeKey] = Granted(typeKey) + 1;
+                if (!stockKinds.ContainsKey(typeKey)) stockKinds[typeKey] = element.Kind;
+            }
+
+            stock[toolKey] = toolLeft - 1;
+
+            picked = element;
+            return RetractResult.Ok;
         }
 
         /// <summary>

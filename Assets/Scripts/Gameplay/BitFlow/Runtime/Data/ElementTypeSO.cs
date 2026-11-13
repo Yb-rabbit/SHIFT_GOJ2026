@@ -21,6 +21,24 @@ namespace ShiftGo.BitFlow.Data
         /// <summary>该类型的元件在 UI 提示里的说明文本。</summary>
         public abstract string Describe();
 
+        /// <summary>
+        /// 这张牌是不是「工具卡」，而不是「一种元件」。
+        ///
+        /// 区别在<b>落地</b>那一下：元件牌点格子 = 往那一格放一个件；
+        /// 工具牌点格子 = 对那一格做一件事（目前只有 BUFFER：把预设件收回手牌）。
+        /// 所以工具卡不能进工坊调色板 —— 它不产生任何可以摆在板上的东西。
+        /// </summary>
+        public virtual bool IsTool => false;
+
+        /// <summary>
+        /// 这张牌卡面的文件名（不含扩展名，对应 <c>Assets/Arts/Resources/Cards/</c> 下的图）。
+        ///
+        /// 留空 = 按元件种类去取（<c>CardArtLibrary.Icon(CellKind)</c>），也就是老六张卡的走法。
+        /// 工具卡必须覆写它：它的 <see cref="CreateDefinition"/> 是借某种元件的样子实现的
+        /// （BUFFER 借的是墙），不覆写就会拿到被人借的那张美术。
+        /// </summary>
+        public virtual string CardArt => string.Empty;
+
         /// <summary>按坐标 + 旋转态生成纯逻辑定义。id 由关卡在收集 placements 时统一分配。</summary>
         public abstract ElementDefinition CreateDefinition(GridPoint coord, int rotationSteps, int id);
 

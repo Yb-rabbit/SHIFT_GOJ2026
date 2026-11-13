@@ -260,6 +260,19 @@
             "acceptAnyFace": true,
             "pass": 1,
             "delay": 1
+        },
+        {
+            "key": "Type_Buffer",
+            "kind": "Wall",
+            "label": "BUFFER",
+            "hint": "BUFFER  TAKE ONE FIXED PIECE BACK TO HAND",
+            "dir": "Right",
+            "dir2": "Down",
+            "sequence": "1",
+            "count": 1,
+            "acceptAnyFace": true,
+            "pass": 1,
+            "delay": 1
         }
     ]
 }

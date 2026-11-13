@@ -261,6 +261,15 @@ namespace ShiftGo.BitFlow.View
         int handTotal;
 
         /// <summary>
+        /// 当前手牌总数：关卡发的张数，加上 BUFFER 从板上收回来的那几件。
+        ///
+        /// 收回来的件会变成手里的一张牌（<see cref="LevelDraft.TryRetract"/> 往它那一摞里加一张），
+        /// 所以总数只增不减 —— 只用 <see cref="handTotal"/> 会在收回一件后读出 "HAND 2/1" 这种数字，
+        /// 玩家一眼就会觉得计数坏了。
+        /// </summary>
+        int HandTotal => draft != null && draft.StockEnabled ? Mathf.Max(handTotal, draft.StockTotal) : handTotal;
+
+        /// <summary>
         /// 工坊里当前选中的格子（左键点已有元件 = 选中，参数小窗跟着它显示）。
         /// 用 <c>GridPoint?</c> 而不是引用：撤销会把格子里的元件换成新克隆，
         /// 存引用会指到一个已经不在板上的旧对象。
@@ -642,7 +651,14 @@ namespace ShiftGo.BitFlow.View
                     return;
                 }
 
-                if (draft.Undo()) Apply("UNDO");
+                if (draft.Undo())
+                {
+                    Apply("UNDO");
+
+                    // 撤销可能把"收回来的件"退回板上（那一摞牌也就没了），卡排必须跟着重排
+                    RebuildCards();
+                    RefreshCards();
+                }
                 else
                 {
                     statusMessage = "NOTHING TO UNDO";
@@ -791,6 +807,10 @@ namespace ShiftGo.BitFlow.View
                 foreach (ElementTypeSO type in workshopPalette)
                 {
                     if (type == null || string.IsNullOrEmpty(type.Key)) continue;
+
+                    // 工具卡不进工坊：BUFFER 借的是墙的形态，摆出来会是一张"假墙"，
+                    // 而作者在工坊里要的是能真的放到板上的件。
+                    if (type.IsTool) continue;
                     if (!drawnKinds.Add(KindOf(type))) continue;
 
                     cards.Add(CreateCard(type));
@@ -814,6 +834,21 @@ namespace ShiftGo.BitFlow.View
                 cards.Add(CreateCard(supply.type));
             }
 
+            // BUFFER 收回来的件不在 supplies 里，只存在于草稿的库存里。
+            // 不补一张卡的话，玩家手里明明有这件却看不见 —— 那件就只能永远压在手里，等于被工具牌吃掉了。
+            // （放进 drawn 里判重：supplies 里有的类型前面已经画过了。）
+            if (draft != null)
+            {
+                foreach (KeyValuePair<string, int> pair in draft.Stock)
+                {
+                    if (pair.Value <= 0) continue;
+                    if (!drawn.Add(pair.Key)) continue;
+
+                    ElementTypeSO recovered = FindSupplyType(pair.Key);
+                    if (recovered != null) cards.Add(CreateCard(recovered));
+                }
+            }
+
             RefreshLayout();
         }
 
@@ -824,7 +859,7 @@ namespace ShiftGo.BitFlow.View
         CardEntry CreateCard(ElementTypeSO type)
         {
             CellKind kind = KindOf(type);
-            Sprite art = CardArtLibrary.Icon(kind);
+            Sprite art = CardArtLibrary.Icon(type);
 
             GameObject root = new GameObject("Card_" + type.Key);
             root.transform.SetParent(cardRoot.transform, false);
@@ -1301,7 +1336,10 @@ namespace ShiftGo.BitFlow.View
             // 手里有牌时，格子由半透明的元件副本去标记（能放=类型色、不能放=红），
             // 这层普通高亮方块让位 —— 两层东西叠在同一格上只会互相糊掉。
             // 鼠标在卡上时也不画：这时候玩家在"看牌"，不是在选位置。
-            if (armedType != null || grabCell.HasValue || overUi || hovered != null || !TryPickCell(out GridPoint cell))
+            // 工具卡是例外：它没有元件幽灵可画（见 UpdateGhost），落点提示只能靠这层中性高亮。
+            bool aimingTool = armedType != null && armedType.IsTool;
+
+            if ((armedType != null && !aimingTool) || grabCell.HasValue || overUi || hovered != null || !TryPickCell(out GridPoint cell))
             {
                 if (cursor.gameObject.activeSelf) cursor.gameObject.SetActive(false);
                 return;
@@ -1321,6 +1359,14 @@ namespace ShiftGo.BitFlow.View
 
             bool overUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
             bool carrying = grabCell.HasValue;
+
+            // 工具卡不是"往格子里放东西"：幽灵预览会在鼠标下画一堵墙，玩家会以为要盖墙。
+            // 落点提示交给 UpdateCursor 的中性高亮，成没成功由状态行回答。
+            if (!carrying && armedType != null && armedType.IsTool)
+            {
+                ghost.Hide();
+                return;
+            }
 
             // 手里没牌 / 没提着东西 / 在 UI 上 / 在待排区选牌 —— 都没有"要放到哪一格"这回事
             if (draft == null || (!carrying && armedType == null) || mainCamera == null || overUi ||
@@ -1416,7 +1462,10 @@ namespace ShiftGo.BitFlow.View
 
             if (armedType != null)
             {
-                TryPlaceArmed(cell);
+                // 工具卡（BUFFER）不是往格子里放东西，而是对那一格做一件事。
+                // 两者共用同一个输入（手里有牌 + 左键点格子），所以分流点必须放在这里。
+                if (armedType.IsTool) TryBuffer(cell);
+                else TryPlaceArmed(cell);
                 return;
             }
 
@@ -1667,6 +1716,60 @@ namespace ShiftGo.BitFlow.View
             }
         }
 
+        /// <summary>
+        /// BUFFER 卡落地：把鼠标指着的**锁定件**收进手牌，并立刻把它拿在手里继续放。
+        ///
+        /// 成功之后必须重排卡排：收回来的件很可能是这一关 supplies 里根本没有的类型
+        /// （wallMap 画的墙就是），那一摞牌还没画出来 —— 不重排，玩家会看不见自己刚换到的那张牌。
+        /// </summary>
+        void TryBuffer(GridPoint cell)
+        {
+            if (draft == null) return;
+
+            RetractResult result = draft.TryRetract(
+                cell, armedType != null ? armedType.Key : string.Empty, out EditableElement picked);
+
+            switch (result)
+            {
+                case RetractResult.Ok:
+                    // 收回的是正选中的那一格：小窗要收起来（那件已经不在板上）
+                    if (selectedCell.HasValue && selectedCell.Value.Equals(cell)) selectedCell = null;
+
+                    // 换到手里的是「这一件」：参数跟着走，放回去还是原样
+                    armedType = FindSupplyType(picked.TypeKey);
+                    armedPayload = armedType != null ? picked : null;
+                    armedRotation = 0;
+                    ReleaseGrab();
+
+                    Apply(armedType != null ? "BUFFERED " + LabelOf(armedType) : "BUFFERED " + picked.Kind);
+                    RebuildCards();
+                    RefreshCards();
+                    break;
+
+                case RetractResult.NotLocked:
+                    // 自己的件用右键就能拾回，别浪费一张工具牌
+                    Fail("NOT FIXED - RIGHT CLICK");
+                    break;
+
+                case RetractResult.NotBufferable:
+                    // 发射器 / 接收器定义了这道题：收走它等于玩家自己改题，这里刻意不扣牌
+                    Fail("CANNOT BUFFER");
+                    break;
+
+                case RetractResult.EmptyCell:
+                    Fail("EMPTY CELL");
+                    break;
+
+                case RetractResult.OutOfStock:
+                    Fail(LabelOf(armedType) + " LEFT");
+                    break;
+
+                default:
+                    Fail("OUTSIDE GRID");
+                    break;
+            }
+        }
+
         void PickBack(GridPoint cell)
         {
             if (LockedForMe(cell))
@@ -1722,7 +1825,11 @@ namespace ShiftGo.BitFlow.View
                 if (supply == null || supply.type == null) continue;
                 if (supply.type.Key == typeKey) return supply.type;
             }
-            return null;
+
+            // 兜底：BUFFER 收回来的件（比如 wallMap 画的墙）根本没写进本关 supplies，
+            // 只能问类型注册表。问不到就返回 null —— 玩家还是会拿到牌（payload 那一路），只是没卡面。
+            LevelTypeRegistrySO registry = LevelTypeRegistrySO.Load();
+            return registry != null ? registry.Find(typeKey) : null;
         }
 
         static string LabelOf(ElementTypeSO type)
@@ -1863,7 +1970,7 @@ namespace ShiftGo.BitFlow.View
             {
                 // 只留"手牌用了几张 / 一共几张" + 最后一条反馈；
                 // 手里拿着哪张由卡片的强调条表达，不再写一行文字
-                string summary = "HAND " + HandUsed() + "/" + handTotal;
+                string summary = "HAND " + HandUsed() + "/" + HandTotal;
                 statusText.text = string.IsNullOrEmpty(statusMessage) ? summary : summary + "  /  " + statusMessage;
             }
         }
@@ -1875,7 +1982,7 @@ namespace ShiftGo.BitFlow.View
 
             int left = 0;
             foreach (KeyValuePair<string, int> pair in draft.Stock) left += Mathf.Max(0, pair.Value);
-            return Mathf.Max(0, handTotal - left);
+            return Mathf.Max(0, HandTotal - left);
         }
 
         /// <summary>本关手牌总数：按 supplies 逐条累加（同一类型写两条就是"再多给几张"，和草稿记账规则一致）。</summary>

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using ShiftGo.BitFlow.Core;
+using ShiftGo.BitFlow.Data;
 
 namespace ShiftGo.BitFlow.View
 {
@@ -17,6 +18,41 @@ namespace ShiftGo.BitFlow.View
 
         static readonly Dictionary<CellKind, Sprite> cache = new Dictionary<CellKind, Sprite>();
         static readonly HashSet<CellKind> missing = new HashSet<CellKind>();
+
+        /// <summary>按文件名取到的卡面（工具卡之类没有 CellKind 的牌走这条）。</summary>
+        static readonly Dictionary<string, Sprite> fileCache = new Dictionary<string, Sprite>();
+        static readonly HashSet<string> missingFiles = new HashSet<string>();
+
+        /// <summary>
+        /// 一张牌该用哪张卡面：类型自己指定了就听它（工具卡走这条），否则按元件种类取。
+        /// 卡排只问这一个方法，不用自己区分「工具卡」和「元件卡」。
+        /// </summary>
+        public static Sprite Icon(ElementTypeSO type)
+        {
+            if (type == null) return null;
+            if (!string.IsNullOrEmpty(type.CardArt)) return Card(type.CardArt);
+
+            // 种类的判定统一交给注册表：它建一份 0 号定义再读 Kind，和模拟 / 渲染用的是同一套。
+            return Icon(LevelTypeRegistrySO.KindOf(type));
+        }
+
+        /// <summary>按文件名取卡面（不含扩展名，例如 <c>"Card_Buffer"</c>）；没有这张图返回 null。</summary>
+        public static Sprite Card(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return null;
+            if (fileCache.TryGetValue(fileName, out Sprite cached)) return cached;
+            if (missingFiles.Contains(fileName)) return null;
+
+            Sprite sprite = Resources.Load<Sprite>(CardFolder + fileName);
+            if (sprite == null)
+            {
+                missingFiles.Add(fileName);
+                return null;
+            }
+
+            fileCache[fileName] = sprite;
+            return sprite;
+        }
 
         /// <summary>取某种元件对应的卡面；没有对应资源时返回 null。</summary>
         public static Sprite Icon(CellKind kind)
