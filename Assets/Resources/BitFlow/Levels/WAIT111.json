@@ -1,89 +1,63 @@
 {
-    "schema": 2,
-    "displayName": "WAIT111",
-    "width": 9,
-    "height": 8,
-    "tickInterval": 0.3499999940395355,
-    "wallType": "",
-    "wallRows": [],
-    "wallMap": "",
-    "elements": [
-        {
-            "type": "",
-            "kind": "Emitter",
-            "x": 0,
-            "y": 2,
-            "rot": 0,
-            "dir": "Right",
-            "dir2": "",
-            "sequence": "1011",
-            "count": 4,
-            "face": "",
-            "pass": -1,
-            "delay": -1,
-            "playerEditable": true
-        },
-        {
-            "type": "",
-            "kind": "DelayGate",
-            "x": 3,
-            "y": 2,
-            "rot": 0,
-            "dir": "",
-            "dir2": "",
-            "sequence": "",
-            "count": -1,
-            "face": "",
-            "pass": -1,
-            "delay": 4,
-            "playerEditable": true
-        },
-        {
-            "type": "",
-            "kind": "Receiver",
-            "x": 7,
-            "y": 2,
-            "rot": 0,
-            "dir": "Down",
-            "dir2": "",
-            "sequence": "1101",
-            "count": 4,
-            "face": "any",
-            "pass": -1,
-            "delay": -1,
-            "playerEditable": true
-        },
-        {
-            "type": "",
-            "kind": "Emitter",
-            "x": 0,
-            "y": 6,
-            "rot": 0,
-            "dir": "Right",
-            "dir2": "",
-            "sequence": "1011",
-            "count": 4,
-            "face": "",
-            "pass": -1,
-            "delay": -1,
-            "playerEditable": true
-        },
-        {
-            "type": "",
-            "kind": "Receiver",
-            "x": 7,
-            "y": 6,
-            "rot": 0,
-            "dir": "Down",
-            "dir2": "",
-            "sequence": "1101",
-            "count": 4,
-            "face": "any",
-            "pass": -1,
-            "delay": -1,
-            "playerEditable": true
-        }
-    ],
-    "supplies": [],
-    "allowBuild": false
+  "schema": 2,
+  "displayName": "WAIT111",
+  "width": 9,
+  "height": 8,
+  "tickInterval": 0.35,
+  "wallType": "",
+  "elements": [
+    {
+      "kind": "Emitter",
+      "x": 0,
+      "y": 2,
+      "dir": "Right",
+      "sequence": "1011",
+      "count": 4,
+      "playerEditable": true
+    },
+    {
+      "kind": "DelayGate",
+      "x": 3,
+      "y": 2,
+      "delay": 4,
+      "playerEditable": true
+    },
+    {
+      "kind": "Receiver",
+      "x": 7,
+      "y": 2,
+      "dir": "Down",
+      "sequence": "1101",
+      "count": 4,
+      "face": "any",
+      "playerEditable": true
+    },
+    {
+      "kind": "Emitter",
+      "x": 0,
+      "y": 6,
+      "dir": "Right",
+      "sequence": "1011",
+      "count": 4,
+      "playerEditable": true
+    },
+    {
+      "kind": "Receiver",
+      "x": 7,
+      "y": 6,
+      "dir": "Down",
+      "sequence": "1101",
+      "count": 4,
+      "face": "any",
+      "playerEditable": true
+    }
+  ],
+  "supplies": [
+    {
+      "kind": "Wall",
+      "type": "Type_Buffer",
+      "count": 1
+    }
+  ],
+  "allowBuild": true
 }

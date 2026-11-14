@@ -1,0 +1,956 @@
+{
+  "engine": "ShiftGo Core (C#)",
+  "schema": 2,
+  "cases": [
+    {
+      "name": "one_only",
+      "width": 9,
+      "height": 8,
+      "tickInterval": 0.35,
+      "displayName": "ONE ONLY",
+      "allowBuild": true,
+      "elements": [
+        {
+          "kind": "Emitter",
+          "id": 1,
+          "x": 0,
+          "y": 4,
+          "dir": 1,
+          "dir2": null,
+          "sequence": "10110000",
+          "count": 8,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "E"
+        },
+        {
+          "kind": "Receiver",
+          "id": 2,
+          "x": 8,
+          "y": 6,
+          "dir": 2,
+          "dir2": null,
+          "sequence": "11111111",
+          "count": 8,
+          "acceptAnyFace": true,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "R"
+        }
+      ],
+      "supplies": [
+        {
+          "typeKey": "Type_Splitter_L1",
+          "kind": "Splitter",
+          "count": 1
+        },
+        {
+          "typeKey": "Type_NotGate_N1",
+          "kind": "NotGate",
+          "count": 1
+        },
+        {
+          "typeKey": "Type_Filter_F1",
+          "kind": "Filter",
+          "count": 1
+        }
+      ],
+      "problems": [],
+      "ticks": 15,
+      "success": false,
+      "finished": true,
+      "report": "\uD83D\uDCDD \u9884\u8BBE\u5E03\u5C40\u672A\u901A\u5173 15 ticks\uFF08\u6709\u624B\u724C\u7684\u5173\uFF0C\u8FD9\u662F\u9884\u671F\uFF1A\u73A9\u5BB6\u8981\u81EA\u5DF1\u7528\u724C\u89E3\u5F00\uFF09\n  R2   0/8 \u5C11\u6536  \u2717   \u5B9E\u6536 \uFF08\u7A7A\uFF09",
+      "receivers": [
+        {
+          "id": 2,
+          "targetCount": 8,
+          "receivedCount": 0,
+          "received": [],
+          "matched": [],
+          "isSuccess": false
+        }
+      ],
+      "issues": []
+    },
+    {
+      "name": "wait111",
+      "width": 9,
+      "height": 8,
+      "tickInterval": 0.35,
+      "displayName": "WAIT111",
+      "allowBuild": false,
+      "elements": [
+        {
+          "kind": "Emitter",
+          "id": 1,
+          "x": 0,
+          "y": 2,
+          "dir": 1,
+          "dir2": null,
+          "sequence": "1011",
+          "count": 4,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": true,
+          "typeKey": "",
+          "label": "E"
+        },
+        {
+          "kind": "DelayGate",
+          "id": 2,
+          "x": 3,
+          "y": 2,
+          "dir": null,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": 4,
+          "playerEditable": true,
+          "typeKey": "",
+          "label": "D1"
+        },
+        {
+          "kind": "Receiver",
+          "id": 3,
+          "x": 7,
+          "y": 2,
+          "dir": 2,
+          "dir2": null,
+          "sequence": "1101",
+          "count": 4,
+          "acceptAnyFace": true,
+          "pass": null,
+          "delay": null,
+          "playerEditable": true,
+          "typeKey": "",
+          "label": "R"
+        },
+        {
+          "kind": "Emitter",
+          "id": 4,
+          "x": 0,
+          "y": 6,
+          "dir": 1,
+          "dir2": null,
+          "sequence": "1011",
+          "count": 4,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": true,
+          "typeKey": "",
+          "label": "E"
+        },
+        {
+          "kind": "Receiver",
+          "id": 5,
+          "x": 7,
+          "y": 6,
+          "dir": 2,
+          "dir2": null,
+          "sequence": "1101",
+          "count": 4,
+          "acceptAnyFace": true,
+          "pass": null,
+          "delay": null,
+          "playerEditable": true,
+          "typeKey": "",
+          "label": "R"
+        }
+      ],
+      "supplies": [],
+      "problems": [],
+      "ticks": 13,
+      "success": true,
+      "finished": true,
+      "report": "\u2705 \u901A\u5173 13 ticks\n  R3   4/4  \u2713   \u5B9E\u6536 1101\n  R5   4/4  \u2713   \u5B9E\u6536 1101",
+      "receivers": [
+        {
+          "id": 3,
+          "targetCount": 4,
+          "receivedCount": 4,
+          "received": [
+            1,
+            1,
+            0,
+            1
+          ],
+          "matched": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "isSuccess": true
+        },
+        {
+          "id": 5,
+          "targetCount": 4,
+          "receivedCount": 4,
+          "received": [
+            1,
+            1,
+            0,
+            1
+          ],
+          "matched": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "isSuccess": true
+        }
+      ],
+      "issues": []
+    },
+    {
+      "name": "splitter_route",
+      "width": 9,
+      "height": 8,
+      "tickInterval": 0.35,
+      "displayName": "SPLITTER ROUTE",
+      "allowBuild": false,
+      "elements": [
+        {
+          "kind": "Emitter",
+          "id": 1,
+          "x": 0,
+          "y": 4,
+          "dir": 1,
+          "dir2": null,
+          "sequence": "0000",
+          "count": 4,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "E"
+        },
+        {
+          "kind": "Splitter",
+          "id": 2,
+          "x": 2,
+          "y": 4,
+          "dir": 0,
+          "dir2": 1,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "L1"
+        },
+        {
+          "kind": "Receiver",
+          "id": 3,
+          "x": 8,
+          "y": 4,
+          "dir": 3,
+          "dir2": null,
+          "sequence": "0000",
+          "count": 4,
+          "acceptAnyFace": true,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "R"
+        }
+      ],
+      "supplies": [],
+      "problems": [],
+      "ticks": 10,
+      "success": true,
+      "finished": true,
+      "report": "\u2705 \u901A\u5173 10 ticks\n  R3   4/4  \u2713   \u5B9E\u6536 0000",
+      "receivers": [
+        {
+          "id": 3,
+          "targetCount": 4,
+          "receivedCount": 4,
+          "received": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "matched": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "isSuccess": true
+        }
+      ],
+      "issues": []
+    },
+    {
+      "name": "two_emitters_conflict",
+      "width": 5,
+      "height": 5,
+      "tickInterval": 0.35,
+      "displayName": "CONFLICT",
+      "allowBuild": false,
+      "elements": [
+        {
+          "kind": "Receiver",
+          "id": 1,
+          "x": 4,
+          "y": 0,
+          "dir": 0,
+          "dir2": null,
+          "sequence": "1",
+          "count": 1,
+          "acceptAnyFace": true,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "R"
+        },
+        {
+          "kind": "Emitter",
+          "id": 2,
+          "x": 0,
+          "y": 2,
+          "dir": 1,
+          "dir2": null,
+          "sequence": "1111",
+          "count": 4,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "E"
+        },
+        {
+          "kind": "Emitter",
+          "id": 3,
+          "x": 2,
+          "y": 2,
+          "dir": 3,
+          "dir2": null,
+          "sequence": "0000",
+          "count": 4,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "E"
+        }
+      ],
+      "supplies": [],
+      "problems": [],
+      "ticks": 4,
+      "success": false,
+      "finished": true,
+      "report": "\u274C \u672A\u901A\u8FC7 4 ticks\n  R1   0/1 \u5C11\u6536  \u2717   \u5B9E\u6536 \uFF08\u7A7A\uFF09",
+      "receivers": [
+        {
+          "id": 1,
+          "targetCount": 1,
+          "receivedCount": 0,
+          "received": [],
+          "matched": [],
+          "isSuccess": false
+        }
+      ],
+      "issues": [
+        {
+          "severity": "Blocking",
+          "message": "\u6CA1\u6709\u624B\u724C\uFF0C\u4F46\u9884\u8BBE\u5E03\u5C40\u8DD1\u4E0D\u901A \u2014\u2014 \u8981\u4E48\u8865\u4EF6\uFF0C\u8981\u4E48\u53D1\u724C\uFF1A\u274C \u672A\u901A\u8FC7 4 ticks"
+        }
+      ]
+    },
+    {
+      "name": "delay_overflow",
+      "width": 6,
+      "height": 5,
+      "tickInterval": 0.35,
+      "displayName": "DELAY OVERFLOW",
+      "allowBuild": false,
+      "elements": [
+        {
+          "kind": "Emitter",
+          "id": 1,
+          "x": 0,
+          "y": 2,
+          "dir": 1,
+          "dir2": null,
+          "sequence": "1",
+          "count": 12,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "E"
+        },
+        {
+          "kind": "DelayGate",
+          "id": 2,
+          "x": 2,
+          "y": 2,
+          "dir": null,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": 4,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "D1"
+        },
+        {
+          "kind": "Wall",
+          "id": 3,
+          "x": 3,
+          "y": 2,
+          "dir": null,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "BUFFER"
+        },
+        {
+          "kind": "Receiver",
+          "id": 4,
+          "x": 5,
+          "y": 2,
+          "dir": 2,
+          "dir2": null,
+          "sequence": "1",
+          "count": 1,
+          "acceptAnyFace": true,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "R"
+        }
+      ],
+      "supplies": [],
+      "problems": [],
+      "ticks": 17,
+      "success": false,
+      "finished": true,
+      "report": "\u274C \u672A\u901A\u8FC7 17 ticks\n  R4   0/1 \u5C11\u6536  \u2717   \u5B9E\u6536 \uFF08\u7A7A\uFF09",
+      "receivers": [
+        {
+          "id": 4,
+          "targetCount": 1,
+          "receivedCount": 0,
+          "received": [],
+          "matched": [],
+          "isSuccess": false
+        }
+      ],
+      "issues": [
+        {
+          "severity": "Blocking",
+          "message": "\u6CA1\u6709\u624B\u724C\uFF0C\u4F46\u9884\u8BBE\u5E03\u5C40\u8DD1\u4E0D\u901A \u2014\u2014 \u8981\u4E48\u8865\u4EF6\uFF0C\u8981\u4E48\u53D1\u724C\uFF1A\u274C \u672A\u901A\u8FC7 17 ticks"
+        }
+      ]
+    },
+    {
+      "name": "receiver_strict_wrong_face",
+      "width": 6,
+      "height": 5,
+      "tickInterval": 0.35,
+      "displayName": "STRICT FACE",
+      "allowBuild": false,
+      "elements": [
+        {
+          "kind": "Emitter",
+          "id": 1,
+          "x": 0,
+          "y": 2,
+          "dir": 1,
+          "dir2": null,
+          "sequence": "1",
+          "count": 1,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "E"
+        },
+        {
+          "kind": "Receiver",
+          "id": 2,
+          "x": 3,
+          "y": 2,
+          "dir": 2,
+          "dir2": null,
+          "sequence": "1",
+          "count": 1,
+          "acceptAnyFace": false,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "R"
+        }
+      ],
+      "supplies": [],
+      "problems": [],
+      "ticks": 2,
+      "success": false,
+      "finished": true,
+      "report": "\u274C \u672A\u901A\u8FC7 2 ticks\n  R2   0/1 \u5C11\u6536  \u2717   \u5B9E\u6536 \uFF08\u7A7A\uFF09",
+      "receivers": [
+        {
+          "id": 2,
+          "targetCount": 1,
+          "receivedCount": 0,
+          "received": [],
+          "matched": [],
+          "isSuccess": false
+        }
+      ],
+      "issues": [
+        {
+          "severity": "Blocking",
+          "message": "\u6CA1\u6709\u624B\u724C\uFF0C\u4F46\u9884\u8BBE\u5E03\u5C40\u8DD1\u4E0D\u901A \u2014\u2014 \u8981\u4E48\u8865\u4EF6\uFF0C\u8981\u4E48\u53D1\u724C\uFF1A\u274C \u672A\u901A\u8FC7 2 ticks"
+        }
+      ]
+    },
+    {
+      "name": "splitter_backflow",
+      "width": 6,
+      "height": 5,
+      "tickInterval": 0.35,
+      "displayName": "BACKFLOW",
+      "allowBuild": false,
+      "elements": [
+        {
+          "kind": "Receiver",
+          "id": 1,
+          "x": 0,
+          "y": 2,
+          "dir": 2,
+          "dir2": null,
+          "sequence": "1",
+          "count": 1,
+          "acceptAnyFace": true,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "R"
+        },
+        {
+          "kind": "Splitter",
+          "id": 2,
+          "x": 2,
+          "y": 2,
+          "dir": 0,
+          "dir2": 1,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "L1"
+        },
+        {
+          "kind": "Emitter",
+          "id": 3,
+          "x": 4,
+          "y": 2,
+          "dir": 3,
+          "dir2": null,
+          "sequence": "1",
+          "count": 1,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "E"
+        }
+      ],
+      "supplies": [],
+      "problems": [],
+      "ticks": 1,
+      "success": false,
+      "finished": true,
+      "report": "\u274C \u672A\u901A\u8FC7 1 ticks\n  R1   0/1 \u5C11\u6536  \u2717   \u5B9E\u6536 \uFF08\u7A7A\uFF09",
+      "receivers": [
+        {
+          "id": 1,
+          "targetCount": 1,
+          "receivedCount": 0,
+          "received": [],
+          "matched": [],
+          "isSuccess": false
+        }
+      ],
+      "issues": [
+        {
+          "severity": "Blocking",
+          "message": "\u6CA1\u6709\u624B\u724C\uFF0C\u4F46\u9884\u8BBE\u5E03\u5C40\u8DD1\u4E0D\u901A \u2014\u2014 \u8981\u4E48\u8865\u4EF6\uFF0C\u8981\u4E48\u53D1\u724C\uFF1A\u274C \u672A\u901A\u8FC7 1 ticks"
+        }
+      ]
+    },
+    {
+      "name": "type_mode_rotation",
+      "width": 9,
+      "height": 8,
+      "tickInterval": 0.35,
+      "displayName": "TYPE ROT",
+      "allowBuild": false,
+      "elements": [
+        {
+          "kind": "Emitter",
+          "id": 1,
+          "x": 0,
+          "y": 1,
+          "dir": 1,
+          "dir2": null,
+          "sequence": "1111",
+          "count": 4,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "E"
+        },
+        {
+          "kind": "Splitter",
+          "id": 2,
+          "x": 2,
+          "y": 1,
+          "dir": 1,
+          "dir2": 2,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "Type_Splitter_L1",
+          "label": "L1"
+        },
+        {
+          "kind": "Receiver",
+          "id": 3,
+          "x": 8,
+          "y": 1,
+          "dir": 2,
+          "dir2": null,
+          "sequence": "1111",
+          "count": 4,
+          "acceptAnyFace": true,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "R"
+        }
+      ],
+      "supplies": [],
+      "problems": [],
+      "ticks": 10,
+      "success": true,
+      "finished": true,
+      "report": "\u2705 \u901A\u5173 10 ticks\n  R3   4/4  \u2713   \u5B9E\u6536 1111",
+      "receivers": [
+        {
+          "id": 3,
+          "targetCount": 4,
+          "receivedCount": 4,
+          "received": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "matched": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "isSuccess": true
+        }
+      ],
+      "issues": []
+    },
+    {
+      "name": "builder_problems",
+      "width": 6,
+      "height": 4,
+      "tickInterval": 0.35,
+      "displayName": "CUSTOM LEVEL",
+      "allowBuild": true,
+      "elements": [
+        {
+          "kind": "Emitter",
+          "id": 1,
+          "x": 1,
+          "y": 1,
+          "dir": 1,
+          "dir2": null,
+          "sequence": "1",
+          "count": 1,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "E"
+        },
+        {
+          "kind": "Filter",
+          "id": 2,
+          "x": 4,
+          "y": 1,
+          "dir": 3,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": 0,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "NoSuchType",
+          "label": "F0"
+        },
+        {
+          "kind": "Receiver",
+          "id": 3,
+          "x": 4,
+          "y": 2,
+          "dir": 2,
+          "dir2": null,
+          "sequence": "1",
+          "count": 1,
+          "acceptAnyFace": true,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "",
+          "label": "R"
+        },
+        {
+          "kind": "Wall",
+          "id": 4,
+          "x": 0,
+          "y": 0,
+          "dir": null,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "Type_Buffer",
+          "label": "BUFFER"
+        },
+        {
+          "kind": "Wall",
+          "id": 5,
+          "x": 1,
+          "y": 0,
+          "dir": null,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "Type_Buffer",
+          "label": "BUFFER"
+        },
+        {
+          "kind": "Wall",
+          "id": 6,
+          "x": 2,
+          "y": 0,
+          "dir": null,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "Type_Buffer",
+          "label": "BUFFER"
+        },
+        {
+          "kind": "Wall",
+          "id": 7,
+          "x": 0,
+          "y": 1,
+          "dir": null,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "Type_Buffer",
+          "label": "BUFFER"
+        },
+        {
+          "kind": "Wall",
+          "id": 8,
+          "x": 2,
+          "y": 1,
+          "dir": null,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "Type_Buffer",
+          "label": "BUFFER"
+        },
+        {
+          "kind": "Wall",
+          "id": 9,
+          "x": 0,
+          "y": 2,
+          "dir": null,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "Type_Buffer",
+          "label": "BUFFER"
+        },
+        {
+          "kind": "Wall",
+          "id": 10,
+          "x": 2,
+          "y": 2,
+          "dir": null,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "Type_Buffer",
+          "label": "BUFFER"
+        },
+        {
+          "kind": "Wall",
+          "id": 11,
+          "x": 0,
+          "y": 3,
+          "dir": null,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "Type_Buffer",
+          "label": "BUFFER"
+        },
+        {
+          "kind": "Wall",
+          "id": 12,
+          "x": 1,
+          "y": 3,
+          "dir": null,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "Type_Buffer",
+          "label": "BUFFER"
+        },
+        {
+          "kind": "Wall",
+          "id": 13,
+          "x": 2,
+          "y": 3,
+          "dir": null,
+          "dir2": null,
+          "sequence": null,
+          "count": null,
+          "acceptAnyFace": null,
+          "pass": null,
+          "delay": null,
+          "playerEditable": false,
+          "typeKey": "Type_Buffer",
+          "label": "BUFFER"
+        }
+      ],
+      "supplies": [
+        {
+          "typeKey": "",
+          "kind": "NotGate",
+          "count": 1
+        }
+      ],
+      "problems": [
+        "elements[1] \u5750\u6807 (1,1) \u4E0E\u524D\u9762\u7684\u683C\u5B50\u91CD\u590D\uFF0C\u5DF2\u8DF3\u8FC7",
+        "elements[2] \u5750\u6807 (99,1) \u8D8A\u754C\uFF08\u672C\u5173 6\u00D74\uFF09\uFF0C\u5DF2\u8DF3\u8FC7",
+        "elements[3] \u7528\u7684\u662F\u5DE5\u5177\u5361 Type_Buffer\uFF08\u5DE5\u5177\u5361\u53EA\u80FD\u5199\u8FDB supplies\uFF0C\u4E0D\u80FD\u653E\u8FDB elements\uFF09\uFF0C\u5DF2\u8DF3\u8FC7",
+        "elements[4] \u7C7B\u578B\u76EE\u5F55\u91CC\u6CA1\u6709 NoSuchType\uFF0C\u6309 kind=Filter \u7684\u9ED8\u8BA4\u503C\u5904\u7406",
+        "elements[5] \u627E\u4E0D\u5230\u7C7B\u578B NoSuchType\uFF08\u7F3A typeCatalog.json\uFF1F\u4E5F\u4E0D\u8BA4\u8BC6 kind=\u0022Bogus\u0022\uFF09",
+        "wallRows \u6709 5 \u884C\uFF0C\u8D85\u8FC7 height=4\uFF0C\u591A\u51FA\u6765\u7684\u884C\u4F1A\u88AB\u5FFD\u7565",
+        "supplies[0] count=0 \u7B49\u4E8E\u4E0D\u7ED9\u8FD9\u5F20\u724C\uFF0C\u5DF2\u8DF3\u8FC7",
+        "supplies[1] \u65E2\u6CA1\u6709 type \u4E5F\u8BA4\u4E0D\u51FA kind\uFF0C\u5DF2\u8DF3\u8FC7"
+      ],
+      "ticks": 5000,
+      "success": false,
+      "finished": true,
+      "report": "\uD83D\uDCDD \u9884\u8BBE\u5E03\u5C40\u672A\u901A\u5173 5000 ticks\uFF08\u6709\u624B\u724C\u7684\u5173\uFF0C\u8FD9\u662F\u9884\u671F\uFF1A\u73A9\u5BB6\u8981\u81EA\u5DF1\u7528\u724C\u89E3\u5F00\uFF09\uFF08\u8DD1\u5230 5000 tick \u4E0A\u9650\u8FD8\u6CA1\u7ED3\u7B97\uFF0C\u53EF\u80FD\u6709\u4E2A\u4F4D\u5361\u4F4F\u4E86\uFF1B\u8FD9\u662F\u81EA\u68C0\u4E0A\u9650\uFF0C\u4E0D\u662F\u5173\u5361\u6570\u636E\u9519\u8BEF\uFF09\n  R3   0/1 \u5C11\u6536  \u2717   \u5B9E\u6536 \uFF08\u7A7A\uFF09",
+      "receivers": [
+        {
+          "id": 3,
+          "targetCount": 1,
+          "receivedCount": 0,
+          "received": [],
+          "matched": [],
+          "isSuccess": false
+        }
+      ],
+      "issues": []
+    }
+  ]
+}

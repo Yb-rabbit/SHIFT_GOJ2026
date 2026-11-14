@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHIFT GO · LEVEL LAB</title>
+<style id="app-style">
+/* __STYLE__ */
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div class="brand">
+      <span class="brand-mark">▚</span>
+      SHIFT GO · LEVEL LAB
+      <span class="brand-tag">offline</span>
+    </div>
+    <div class="topbar-actions">
+      <select id="sampleSelect" title="载入内置样关">
+        <option value="">内置样关…</option>
+      </select>
+      <button id="btnNew" class="btn">新建</button>
+      <button id="btnImport" class="btn">导入 JSON</button>
+      <button id="btnExport" class="btn primary">导出 JSON</button>
+      <button id="btnDocs" class="btn">文档</button>
+    </div>
+  </header>
+
+  <div id="storageBanner" class="banner hidden"></div>
+
+  <main id="workspace">
+    <section id="leftPane">
+      <div id="handTray" class="hand-tray hidden">
+        <div class="hand-head">
+          <strong>手牌试玩</strong>
+          <span id="handStatus" class="muted"></span>
+          <div class="hand-actions">
+            <button id="btnHandAdopt" class="btn small" title="通关后把这套解写回关卡（这些件变成预设件，手牌保留）">采用解</button>
+            <button id="btnHandExit" class="btn small" title="结束试玩，回到预设布局（试玩改动不写回）">退出</button>
+          </div>
+        </div>
+        <div id="handPiles" class="hand-piles"></div>
+        <div id="handMsg" class="hand-msg muted">点一张牌，再点棋盘落件；右键旋转；左键点自己的件拾回。</div>
+      </div>
+      <div id="palette" class="palette"></div>
+      <div id="stageBar" class="stage-bar">
+        <div class="stage-actions">
+          <button id="btnUndo" class="btn small" title="撤销（Ctrl+Z）">↶ 撤销</button>
+          <button id="btnRedo" class="btn small" title="重做（Ctrl+Y）">↷ 重做</button>
+          <button id="btnRotate" class="btn small" title="旋转选中件（R）">⟳ 旋转</button>
+          <button id="btnErase" class="btn small" title="删除选中格（Delete）">⌫ 删除</button>
+          <button id="btnClear" class="btn small" title="清空全部元件与墙（可撤销）">清空</button>
+          <button id="btnSolve" class="btn small" title="用手牌按玩家的规则试玩：锁定件不能搬，BUFFER 收预设件">🧩 试玩</button>
+        </div>
+        <div id="coordLabel" class="coord-label">悬停格子看坐标与参数</div>
+      </div>
+      <div id="canvasWrap">
+        <div id="grid"></div>
+      </div>
+      <div id="inventory" class="inventory"></div>
+      <div id="timelineBar" class="timeline">
+        <div class="timeline-controls">
+          <button id="btnRestart" class="btn icon" title="回到第 0 拍">⏮</button>
+          <button id="btnPrev" class="btn icon" title="上一拍">◀</button>
+          <button id="btnPlay" class="btn icon primary" title="播放 / 暂停（空格）">▶</button>
+          <button id="btnNext" class="btn icon" title="下一拍">▶|</button>
+          <select id="speedSelect" title="播放倍速">
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+            <option value="4">4×</option>
+          </select>
+          <span id="tickLabel" class="tick-label">tick 0 / 0</span>
+        </div>
+        <input id="scrub" type="range" min="0" max="0" value="0" step="1">
+        <div id="eventLine" class="event-line">自检后可以逐 tick 回放</div>
+      </div>
+    </section>
+
+    <aside id="rightPane">
+      <section class="panel" id="checkPanel">
+        <header class="panel-head">
+          <h2>自检</h2>
+          <button id="btnCheck" class="btn primary small">运行自检</button>
+        </header>
+        <pre id="reportText" class="report">尚未运行。点「运行自检」用游戏同一份模拟器跑到底。</pre>
+        <div id="issueList" class="issue-list"></div>
+        <div id="problemList" class="problem-list"></div>
+      </section>
+
+      <section class="panel" id="inspectorPanel">
+        <header class="panel-head">
+          <h2 id="inspectorTitle">画笔参数</h2>
+          <span id="inspectorHint" class="muted"></span>
+        </header>
+        <div id="inspector" class="inspector"></div>
+      </section>
+
+      <section class="panel" id="metaPanel">
+        <header class="panel-head">
+          <h2>关卡</h2>
+          <span id="metaHint" class="muted"></span>
+        </header>
+        <div id="metaForm" class="meta-form"></div>
+        <div class="panel-subhead">
+          <h3>手牌 supplies</h3>
+          <button id="btnAddSupply" class="btn small">＋ 加一摞</button>
+        </div>
+        <div id="supplyList" class="supply-list"></div>
+      </section>
+    </aside>
+  </main>
+
+  <footer id="footer">
+    <span id="footerBuild">build —</span>
+    <span id="footerSelfTest">自检 —</span>
+    <span id="footerParity">对拍 —</span>
+    <span id="footerStorage" class="muted">本地存储 —</span>
+  </footer>
+
+  <div id="docsDrawer" class="drawer hidden" aria-hidden="true">
+    <div class="drawer-head">
+      <h2>使用说明</h2>
+      <button id="btnCloseDocs" class="btn small">关闭</button>
+    </div>
+    <div id="docsBody" class="drawer-body"></div>
+  </div>
+
+  <div id="importModal" class="modal hidden">
+    <div class="modal-body">
+      <h2>导入关卡 JSON</h2>
+      <p class="muted">粘贴 JSON，或选择文件。导入会替换当前关卡（先导出备份）。</p>
+      <textarea id="importText" spellcheck="false" placeholder='{ "schema": 2, "displayName": "…" }'></textarea>
+      <div class="modal-row">
+        <input id="importFile" type="file" accept=".json,application/json">
+        <div class="modal-actions">
+          <button id="btnCancelImport" class="btn">取消</button>
+          <button id="btnDoImport" class="btn primary">导入</button>
+        </div>
+      </div>
+      <pre id="importError" class="report error hidden"></pre>
+    </div>
+  </div>
+
+  <input id="exportFile" type="file" style="display:none">
+</div>
+<script>
+/* __SCRIPTS__ */
+</script>
+</body>
+</html>

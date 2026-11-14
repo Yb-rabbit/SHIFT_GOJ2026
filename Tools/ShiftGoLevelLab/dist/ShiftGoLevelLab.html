@@ -1,0 +1,5123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHIFT GO · LEVEL LAB</title>
+<style id="app-style">
+/* SHIFT GO · LEVEL LAB —— 单文件交付的样式（构建时内联进 <style>）。 */
+
+:root {
+  --bg: #0b0e13;
+  --panel: #11161d;
+  --panel-2: #151c25;
+  --line: #1f2733;
+  --line-2: #2b3644;
+  --text: #c9d1d9;
+  --muted: #7d8794;
+  --accent: #7ee787;
+  --accent-2: #58a6ff;
+  --warn: #d29922;
+  --danger: #f85149;
+  --mono: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+#topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: 0.08em; }
+.brand-mark { color: var(--accent); }
+.brand-tag {
+  font: 11px/1 var(--mono); letter-spacing: 0.1em; color: var(--muted);
+  border: 1px solid var(--line-2); border-radius: 999px; padding: 3px 7px;
+}
+
+.topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.btn {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line-2);
+  border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit;
+}
+.btn:hover { border-color: var(--accent-2); }
+.btn.primary { border-color: #2f6b46; background: #16301f; color: var(--accent); }
+.btn.primary:hover { background: #1c3d27; }
+.btn.small { padding: 3px 8px; font-size: 12px; }
+.btn.icon { padding: 4px 9px; font-family: var(--mono); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+select, input[type="text"], input[type="number"], textarea {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line-2);
+  border-radius: 6px; padding: 5px 8px; font: inherit;
+}
+select:focus, input:focus, textarea:focus { outline: 1px solid var(--accent-2); }
+
+.banner {
+  padding: 8px 16px; background: #3a2a05; color: #f5d488; border-bottom: 1px solid #5b4410;
+  font-size: 13px;
+}
+.hidden { display: none !important; }
+
+#workspace { flex: 1; display: flex; min-height: 0; }
+
+#leftPane { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 10px 12px 0; gap: 8px; }
+
+.palette { display: flex; flex-wrap: wrap; gap: 6px; }
+.brush {
+  display: flex; align-items: center; gap: 7px; padding: 4px 10px 4px 5px;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 6px;
+  color: var(--text); cursor: pointer; font: inherit;
+}
+.brush .glyph {
+  width: 20px; height: 20px; display: grid; place-items: center;
+  border-radius: 4px; background: #0d1117; border: 1px solid var(--line-2);
+  font: 700 12px/1 var(--mono);
+}
+.brush .name { font-size: 12px; }
+.brush .key { font: 10px/1 var(--mono); color: var(--muted); }
+.brush.tool .key { color: var(--accent-2); }
+.brush:hover { border-color: var(--accent-2); }
+.brush.active { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(126, 231, 135, 0.28) inset; }
+.brush.active .name { color: var(--accent); }
+
+.stage-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.stage-actions { display: flex; gap: 6px; }
+.coord-label {
+  margin-left: auto; font: 11px/1.4 var(--mono); color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 58%;
+}
+
+/* 舞台是滚动盒，#grid 只负责居中：内容比容器大时抽屉式滚动、不裁边。 */
+#canvasWrap {
+  flex: 1; min-height: 240px; overflow: auto;
+  background: #0a0e13; border: 1px solid var(--line); border-radius: 8px;
+}
+#grid { display: flex; min-width: 100%; min-height: 100%; padding: 10px; }
+.grid-inner { display: grid; gap: 3px; margin: auto; --cell: 32px; }
+
+.cell {
+  position: relative; display: grid; place-items: center;
+  background: #10151a; border: 1px solid #1d2530; border-radius: 5px;
+  color: var(--text); cursor: crosshair; user-select: none;
+  font: 700 calc(var(--cell) * 0.34)/1 var(--mono);
+  transition: background 90ms linear, border-color 90ms linear;
+}
+.grid-inner.tool-select .cell { cursor: pointer; }
+.cell.empty { color: #3d4652; }
+.cell.hover { background: #1a2230; border-color: #2f3b4b; }
+
+.cell .glyph { line-height: 1; }
+.cell .glyph.ghost-glyph { opacity: 0.32; }
+
+.cell.wall {
+  background: repeating-linear-gradient(45deg, #151c25, #151c25 4px, #1b2430 4px, #1b2430 8px);
+  color: #5b6673;
+}
+.cell.wall.hover { filter: brightness(1.35); }
+
+.cell.kind-0 { color: #8b949e; }
+.cell.kind-1 { color: #b48ead; background: #1c1720; }
+.cell.kind-2 { color: #5aa9e6; background: #101a24; }
+.cell.kind-3 { color: #e0a458; background: #221a10; }
+.cell.kind-4 { color: #7ee787; background: #10211a; }
+.cell.kind-5 { color: #d98cb3; background: #221420; }
+.cell.kind-6 { color: #8fbcbb; background: #10201f; }
+
+.cell .coord {
+  position: absolute; top: 2px; left: 3px;
+  font: 9px/1 var(--mono); color: #4d5866;
+  opacity: 0; transition: opacity 90ms linear;
+}
+.grid-inner.with-coords .cell .coord { opacity: 1; }
+
+/* 箭头贴着格子对应边放，方向一眼可读，不用挤在中间。 */
+.cell .arrow {
+  position: absolute; font: 700 calc(var(--cell) * 0.24)/1 var(--mono);
+  color: currentColor; opacity: 0.9;
+}
+.cell .arrow.up { top: 1px; left: 50%; transform: translateX(-50%); }
+.cell .arrow.right { right: 2px; top: 50%; transform: translateY(-50%); }
+.cell .arrow.down { bottom: 1px; left: 50%; transform: translateX(-50%); }
+.cell .arrow.left { left: 2px; top: 50%; transform: translateY(-50%); }
+
+.cell .badge {
+  position: absolute; right: 3px; bottom: 2px;
+  font: 700 calc(var(--cell) * 0.19)/1 var(--mono);
+  color: #7d8794; letter-spacing: -0.02em;
+}
+
+.cell .bit {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  display: grid; place-items: center;
+  width: calc(var(--cell) * 0.46); height: calc(var(--cell) * 0.46);
+  border-radius: 50%; font: 700 calc(var(--cell) * 0.26)/1 var(--mono);
+  color: #0d1117; box-shadow: 0 0 0 2px rgba(13, 17, 23, 0.9);
+}
+.cell .bit.b1 { background: #ffd166; }
+.cell .bit.b0 { background: #4cc9f0; }
+.cell .bit:empty { display: none; }
+
+.cell.selected { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 2; }
+
+.cell.pe::after {
+  content: ''; position: absolute; top: 3px; right: 3px;
+  width: 5px; height: 5px; border-radius: 50%; background: #c9d1d9; opacity: 0.75;
+}
+
+.cell.fx-destroy { background: #2b1214; }
+.cell.fx-hit { box-shadow: inset 0 0 0 2px var(--accent); }
+.cell.fx-miss { box-shadow: inset 0 0 0 2px var(--danger); }
+.cell.fx-absorb { background: #14262a; }
+
+.inventory {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 10px; margin-bottom: 10px; max-height: 26vh; overflow-y: auto;
+  font: 11px/1.6 var(--mono);
+}
+.inventory-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.inventory-head strong { font-size: 11px; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; }
+.inv-group { display: flex; align-items: baseline; gap: 7px; margin-top: 3px; }
+.inv-dot { width: 7px; height: 7px; border-radius: 2px; flex: 0 0 auto; transform: translateY(-1px); }
+.inv-name { color: var(--text); white-space: nowrap; }
+.inv-body { color: #9aa5b1; word-break: break-word; }
+.inv-cell { color: #8b96a3; }
+.inv-sep { color: #303b47; }
+.inv-supply { margin-top: 4px; color: #7d8794; }
+.inv-empty { color: #7d8794; }
+
+.timeline {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px 10px; margin-bottom: 10px;
+}
+.timeline-controls { display: flex; align-items: center; gap: 8px; }
+.tick-label { font: 12px/1 var(--mono); color: var(--muted); margin-left: auto; }
+#scrub { width: 100%; accent-color: var(--accent); }
+.event-line { font: 12px/1.5 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+
+#rightPane {
+  width: 390px; flex: 0 0 390px; border-left: 1px solid var(--line);
+  background: #0a0d12; overflow-y: auto; padding: 10px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.panel-head h2 { font-size: 13px; letter-spacing: 0.08em; margin: 0; text-transform: uppercase; color: var(--muted); }
+.panel-subhead { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+.panel-subhead h3 { font-size: 12px; margin: 0; color: var(--muted); letter-spacing: 0.06em; }
+.muted { color: var(--muted); font-size: 12px; }
+
+.report {
+  margin: 8px 0 0; padding: 8px; white-space: pre-wrap; word-break: break-word;
+  background: #0d1117; border: 1px solid var(--line); border-radius: 6px;
+  font: 12px/1.55 var(--mono); color: var(--text);
+}
+.report.error { border-color: #5b1d1d; color: #ffb4ae; }
+
+.issue-list, .problem-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.issue { font-size: 12px; padding: 5px 8px; border-radius: 5px; border: 1px solid var(--line); background: #0d1117; }
+.issue.blocking { border-color: #5b1d1d; color: #ffb4ae; }
+.issue.advisory { border-color: #5b4410; color: #f5d488; }
+.issue.problem { border-color: var(--line-2); color: var(--muted); }
+
+.inspector { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.field { display: grid; grid-template-columns: 92px 1fr; align-items: center; gap: 8px; }
+.field label { font-size: 12px; color: var(--muted); }
+.field input, .field select { width: 100%; }
+.field .row { display: flex; gap: 6px; align-items: center; }
+.field .hint { grid-column: 2; font-size: 11px; color: var(--muted); }
+
+.meta-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+
+.supply-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.supply-row { display: grid; grid-template-columns: 1fr 1fr 64px 28px; gap: 6px; align-items: center; }
+.supply-row input, .supply-row select { width: 100%; }
+
+#footer {
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  padding: 6px 16px; border-top: 1px solid var(--line); background: var(--panel);
+  font: 11px/1.4 var(--mono); color: var(--muted);
+}
+#footer .ok { color: var(--accent); }
+#footer .bad { color: var(--danger); }
+
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 92vw);
+  background: #0d1218; border-left: 1px solid var(--line-2); z-index: 20;
+  display: flex; flex-direction: column; box-shadow: -24px 0 48px rgba(0, 0, 0, 0.45);
+}
+.drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.drawer-head h2 { margin: 0; font-size: 15px; }
+.drawer-body { overflow-y: auto; padding: 6px 18px 32px; }
+.drawer-body h3 { margin: 22px 0 8px; font-size: 14px; color: var(--accent); }
+.drawer-body p, .drawer-body li { font-size: 13px; color: #b7c0cb; }
+.drawer-body code { font-family: var(--mono); font-size: 12px; background: #161d26; padding: 1px 4px; border-radius: 3px; }
+.doc-table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 8px 0; }
+.doc-table th, .doc-table td { border: 1px solid var(--line); padding: 5px 7px; text-align: left; vertical-align: top; }
+.doc-table th { color: var(--muted); font-weight: 600; background: #0b1016; }
+
+.modal { position: fixed; inset: 0; background: rgba(4, 6, 9, 0.72); display: flex; align-items: center; justify-content: center; z-index: 30; }
+.modal-body { width: min(760px, 94vw); background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; padding: 16px; }
+.modal-body h2 { margin: 0 0 6px; font-size: 16px; }
+#importText { width: 100%; height: 260px; font: 12px/1.5 var(--mono); resize: vertical; }
+.modal-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+.modal-actions { display: flex; gap: 8px; }
+
+/* ---------- 手牌试玩 ---------- */
+.hand-tray {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--panel); border: 1px solid #2f6b46; border-radius: 8px; padding: 8px 10px;
+}
+.hand-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hand-head strong { font-size: 12px; letter-spacing: 0.06em; color: var(--accent); }
+.hand-head .muted { font-size: 12px; }
+.hand-actions { margin-left: auto; display: flex; gap: 6px; }
+.hand-piles { display: flex; flex-wrap: wrap; gap: 6px; }
+.pile {
+  display: flex; align-items: center; gap: 6px; padding: 4px 8px;
+  background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 6px;
+  color: var(--text); cursor: pointer; font: inherit;
+}
+.pile:hover { border-color: var(--accent-2); }
+.pile.active { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(126, 231, 135, 0.28) inset; }
+.pile.active .pile-kind { color: var(--accent); }
+.pile.empty { opacity: 0.42; }
+.pile .pile-glyph { font: 700 12px/1 var(--mono); color: var(--accent-2); }
+.pile .pile-count { font: 11px/1 var(--mono); color: var(--muted); }
+.pile .pile-kind { font-size: 11px; color: var(--muted); }
+.pile .pile-tool { font: 10px/1 var(--mono); color: var(--warn); border: 1px solid #5b4410; border-radius: 999px; padding: 2px 5px; }
+.hand-msg { font-size: 12px; }
+.hand-msg.bad { color: var(--danger); }
+
+/* 试玩期间藏起作者用的画笔与关卡参数，避免中途改到数据 */
+body.solving #palette,
+body.solving #metaPanel { display: none !important; }
+body.solving #btnRotate,
+body.solving #btnErase,
+body.solving #btnClear { display: none !important; }
+body.solving #handTray { border-color: var(--accent); }
+
+@media (max-width: 980px) {
+  #workspace { flex-direction: column; }
+  #rightPane { width: auto; flex: 1 1 auto; border-left: none; border-top: 1px solid var(--line); }
+  #canvasWrap { min-height: 320px; }
+}
+
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div class="brand">
+      <span class="brand-mark">▚</span>
+      SHIFT GO · LEVEL LAB
+      <span class="brand-tag">offline</span>
+    </div>
+    <div class="topbar-actions">
+      <select id="sampleSelect" title="载入内置样关">
+        <option value="">内置样关…</option>
+      </select>
+      <button id="btnNew" class="btn">新建</button>
+      <button id="btnImport" class="btn">导入 JSON</button>
+      <button id="btnExport" class="btn primary">导出 JSON</button>
+      <button id="btnDocs" class="btn">文档</button>
+    </div>
+  </header>
+
+  <div id="storageBanner" class="banner hidden"></div>
+
+  <main id="workspace">
+    <section id="leftPane">
+      <div id="handTray" class="hand-tray hidden">
+        <div class="hand-head">
+          <strong>手牌试玩</strong>
+          <span id="handStatus" class="muted"></span>
+          <div class="hand-actions">
+            <button id="btnHandAdopt" class="btn small" title="通关后把这套解写回关卡（这些件变成预设件，手牌保留）">采用解</button>
+            <button id="btnHandExit" class="btn small" title="结束试玩，回到预设布局（试玩改动不写回）">退出</button>
+          </div>
+        </div>
+        <div id="handPiles" class="hand-piles"></div>
+        <div id="handMsg" class="hand-msg muted">点一张牌，再点棋盘落件；右键旋转；左键点自己的件拾回。</div>
+      </div>
+      <div id="palette" class="palette"></div>
+      <div id="stageBar" class="stage-bar">
+        <div class="stage-actions">
+          <button id="btnUndo" class="btn small" title="撤销（Ctrl+Z）">↶ 撤销</button>
+          <button id="btnRedo" class="btn small" title="重做（Ctrl+Y）">↷ 重做</button>
+          <button id="btnRotate" class="btn small" title="旋转选中件（R）">⟳ 旋转</button>
+          <button id="btnErase" class="btn small" title="删除选中格（Delete）">⌫ 删除</button>
+          <button id="btnClear" class="btn small" title="清空全部元件与墙（可撤销）">清空</button>
+          <button id="btnSolve" class="btn small" title="用手牌按玩家的规则试玩：锁定件不能搬，BUFFER 收预设件">🧩 试玩</button>
+        </div>
+        <div id="coordLabel" class="coord-label">悬停格子看坐标与参数</div>
+      </div>
+      <div id="canvasWrap">
+        <div id="grid"></div>
+      </div>
+      <div id="inventory" class="inventory"></div>
+      <div id="timelineBar" class="timeline">
+        <div class="timeline-controls">
+          <button id="btnRestart" class="btn icon" title="回到第 0 拍">⏮</button>
+          <button id="btnPrev" class="btn icon" title="上一拍">◀</button>
+          <button id="btnPlay" class="btn icon primary" title="播放 / 暂停（空格）">▶</button>
+          <button id="btnNext" class="btn icon" title="下一拍">▶|</button>
+          <select id="speedSelect" title="播放倍速">
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+            <option value="4">4×</option>
+          </select>
+          <span id="tickLabel" class="tick-label">tick 0 / 0</span>
+        </div>
+        <input id="scrub" type="range" min="0" max="0" value="0" step="1">
+        <div id="eventLine" class="event-line">自检后可以逐 tick 回放</div>
+      </div>
+    </section>
+
+    <aside id="rightPane">
+      <section class="panel" id="checkPanel">
+        <header class="panel-head">
+          <h2>自检</h2>
+          <button id="btnCheck" class="btn primary small">运行自检</button>
+        </header>
+        <pre id="reportText" class="report">尚未运行。点「运行自检」用游戏同一份模拟器跑到底。</pre>
+        <div id="issueList" class="issue-list"></div>
+        <div id="problemList" class="problem-list"></div>
+      </section>
+
+      <section class="panel" id="inspectorPanel">
+        <header class="panel-head">
+          <h2 id="inspectorTitle">画笔参数</h2>
+          <span id="inspectorHint" class="muted"></span>
+        </header>
+        <div id="inspector" class="inspector"></div>
+      </section>
+
+      <section class="panel" id="metaPanel">
+        <header class="panel-head">
+          <h2>关卡</h2>
+          <span id="metaHint" class="muted"></span>
+        </header>
+        <div id="metaForm" class="meta-form"></div>
+        <div class="panel-subhead">
+          <h3>手牌 supplies</h3>
+          <button id="btnAddSupply" class="btn small">＋ 加一摞</button>
+        </div>
+        <div id="supplyList" class="supply-list"></div>
+      </section>
+    </aside>
+  </main>
+
+  <footer id="footer">
+    <span id="footerBuild">build —</span>
+    <span id="footerSelfTest">自检 —</span>
+    <span id="footerParity">对拍 —</span>
+    <span id="footerStorage" class="muted">本地存储 —</span>
+  </footer>
+
+  <div id="docsDrawer" class="drawer hidden" aria-hidden="true">
+    <div class="drawer-head">
+      <h2>使用说明</h2>
+      <button id="btnCloseDocs" class="btn small">关闭</button>
+    </div>
+    <div id="docsBody" class="drawer-body"></div>
+  </div>
+
+  <div id="importModal" class="modal hidden">
+    <div class="modal-body">
+      <h2>导入关卡 JSON</h2>
+      <p class="muted">粘贴 JSON，或选择文件。导入会替换当前关卡（先导出备份）。</p>
+      <textarea id="importText" spellcheck="false" placeholder='{ "schema": 2, "displayName": "…" }'></textarea>
+      <div class="modal-row">
+        <input id="importFile" type="file" accept=".json,application/json">
+        <div class="modal-actions">
+          <button id="btnCancelImport" class="btn">取消</button>
+          <button id="btnDoImport" class="btn primary">导入</button>
+        </div>
+      </div>
+      <pre id="importError" class="report error hidden"></pre>
+    </div>
+  </div>
+
+  <input id="exportFile" type="file" style="display:none">
+</div>
+<script>
+/* ===== engine/dir.js ===== */
+/* BitFlow 方向盘 —— Dir.cs / DirUtil 的零依赖移植。
+ *
+ * 顺序固定为 上 → 右 → 下 → 左，旋转就是 +1 mod 4，与 C# 端完全一致。
+ * 这个文件既能被浏览器当普通脚本加载（挂到 window.BitFlowDir），
+ * 也能被 Node require 进去跑对拍（module.exports）。
+ */
+(function (root) {
+  'use strict';
+
+  var UP = 0;
+  var RIGHT = 1;
+  var DOWN = 2;
+  var LEFT = 3;
+
+  var NAMES = ['Up', 'Right', 'Down', 'Left'];
+  var MARKS = ['↑', '→', '↓', '←'];
+  var CHINESE = ['上', '右', '下', '左'];
+
+  /* 网格步进：y 向上（与游戏一致）。 */
+  var OFFSETS = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+
+  var CHINESE_NAMES = { '上': UP, '右': RIGHT, '下': DOWN, '左': LEFT };
+  var MARK_NAMES = { '↑': UP, '→': RIGHT, '↓': DOWN, '←': LEFT };
+
+  /* Up/Right/Down/Left（不分大小写），也认 ↑→↓← 与 上右下左。
+   * 解析失败返回 null（对应 C# 的 TryParseDir 返回 false）。 */
+  function parse(text) {
+    if (typeof text !== 'string') return null;
+    var trimmed = text.trim();
+    if (trimmed === '') return null;
+    if (MARK_NAMES[trimmed] !== undefined) return MARK_NAMES[trimmed];
+    if (CHINESE_NAMES[trimmed] !== undefined) return CHINESE_NAMES[trimmed];
+
+    var lower = trimmed.toLowerCase();
+    for (var i = 0; i < NAMES.length; i++) {
+      if (NAMES[i].toLowerCase() === lower) return i;
+    }
+    /* Enum.TryParse 也接受数字串；IsDefined 保证只认 0..3 */
+    if (/^\d+$/.test(trimmed)) {
+      var numeric = parseInt(trimmed, 10);
+      return numeric >= 0 && numeric <= 3 ? numeric : null;
+    }
+    return null;
+  }
+
+  function name(dir) { return NAMES[dir] || 'Right'; }
+
+  function mark(dir) { return MARKS[dir] || '→'; }
+
+  function chineseName(dir) { return CHINESE[dir] || '右'; }
+
+  function opposite(dir) { return (dir + 2) & 3; }
+
+  function clockwise(dir) { return (dir + 1) & 3; }
+
+  function counterClockwise(dir) { return (dir + 3) & 3; }
+
+  function offset(dir) { return OFFSETS[dir] || OFFSETS[RIGHT]; }
+
+  function isVertical(dir) { return dir === UP || dir === DOWN; }
+
+  /* 把基准朝向按旋转档（顺时针 90°/档）换算 —— LevelDocumentBuilder.Rotate */
+  function rotate(baseDir, rotationSteps) {
+    var steps = ((rotationSteps % 4) + 4) % 4;
+    var result = baseDir;
+    for (var i = 0; i < steps; i++) result = clockwise(result);
+    return result;
+  }
+
+  var api = {
+    UP: UP, RIGHT: RIGHT, DOWN: DOWN, LEFT: LEFT,
+    NAMES: NAMES,
+    parse: parse,
+    name: name,
+    mark: mark,
+    chineseName: chineseName,
+    opposite: opposite,
+    clockwise: clockwise,
+    counterClockwise: counterClockwise,
+    offset: offset,
+    isVertical: isVertical,
+    rotate: rotate
+  };
+
+  root.BitFlowDir = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+/* ===== engine/document.js ===== */
+/* LevelDocument → LevelDefinition —— LevelDocumentBuilder.cs 的零依赖移植。
+ *
+ * 为什么逐行照抄而不是"重写一个更干净的"：这份构建器的每一条规则
+ * （越界跳过、同坐标先到先得、(y,x) 排序后发 Id、type 模式吃 rot 且忽略 pass、
+ * kind 模式用绝对 dir、工具卡不得进 elements、墙层追加在最后）都是游戏侧已经在跑的语义。
+ * 只要有一格读法不同，"编辑器里能过 / 游戏里过不了" 就会再次出现。
+ */
+(function (root) {
+  'use strict';
+
+  var D = root.BitFlowDir;
+  if (!D && typeof require === 'function') D = require('./dir.js');
+
+  var CURRENT_SCHEMA = 2;
+
+  var KIND = { Wall: 0, Emitter: 1, Receiver: 2, Splitter: 3, NotGate: 4, Filter: 5, DelayGate: 6 };
+  var KIND_NAMES = ['Wall', 'Emitter', 'Receiver', 'Splitter', 'NotGate', 'Filter', 'DelayGate'];
+
+  function kindName(kind) { return KIND_NAMES[kind] || 'Wall'; }
+
+  function int(value, fallback) {
+    return typeof value === 'number' && isFinite(value) ? Math.trunc(value) : fallback;
+  }
+
+  function str(value) { return typeof value === 'string' ? value : ''; }
+
+  /* CellKind 解析：Wall/Emitter/... 也认 not、delay_gate 这种写法，还认数字串。 */
+  function parseKind(text) {
+    if (typeof text !== 'string') return null;
+    var trimmed = text.trim();
+    if (trimmed === '') return null;
+
+    var squeezed = trimmed.replace(/_/g, '').replace(/-/g, '');
+    if (squeezed.toLowerCase() === 'not') return KIND.NotGate;
+
+    var lower = squeezed.toLowerCase();
+    for (var i = 0; i < KIND_NAMES.length; i++) {
+      if (KIND_NAMES[i].toLowerCase() === lower) return i;
+    }
+    if (/^\d+$/.test(squeezed)) {
+      var numeric = parseInt(squeezed, 10);
+      return numeric >= 0 && numeric <= KIND.DelayGate ? numeric : null;
+    }
+    return null;
+  }
+
+  /* 接收器 face 语义：any / in；空串 = 没写，"?" = 看不懂。 */
+  function parseFace(text) {
+    if (typeof text !== 'string' || text.trim() === '') return '';
+    var lower = text.trim().toLowerCase();
+    if (lower === 'any' || lower === 'all' || lower === '四面') return 'any';
+    if (lower === 'in' || lower === 'inlet' || lower === '进料面') return 'in';
+    return '?';
+  }
+
+  /* EditableElement.CreateDefault 的纯数据版本 —— kind 模式的唯一默认值来源。
+   * 注意接收器默认进料面是 Down（位要朝上走进去），不是 Right。 */
+  function kindDefaults(kind) {
+    var spec = {
+      key: '', kind: kindName(kind), label: '', hint: '',
+      dir: 'Right', dir2: 'Down', sequence: '1', count: 1,
+      acceptAnyFace: true, pass: 1, delay: 1
+    };
+    if (kind === KIND.Receiver) spec.dir = 'Down';
+    else if (kind === KIND.Splitter) { spec.dir = 'Up'; spec.dir2 = 'Right'; }
+    return spec;
+  }
+
+  function parseDirOr(text, fallback) {
+    var parsed = D.parse(text);
+    return parsed === null ? fallback : parsed;
+  }
+
+  function specKind(spec) {
+    var parsed = parseKind(spec && spec.kind);
+    return parsed === null ? KIND.Wall : parsed;
+  }
+
+  /* LevelTypeSpec.CreateDefinition：按快照生成一份逻辑定义（朝向按 rot 旋转）。 */
+  function createDefinition(spec, x, y, rotationSteps, id) {
+    var kind = specKind(spec);
+    var primary = parseDirOr(spec.dir, D.RIGHT);
+    var secondary = parseDirOr(spec.dir2, D.DOWN);
+    var base = { kind: kind, id: id, x: x, y: y, label: str(spec.label), hint: str(spec.hint), typeKey: str(spec.key) };
+
+    switch (kind) {
+      case KIND.Emitter:
+        base.facing = D.rotate(primary, rotationSteps);
+        base.sequence = str(spec.sequence) || '1';
+        base.emitCount = Math.max(0, int(spec.count, 1));
+        return base;
+
+      case KIND.Receiver:
+        base.feedFace = D.rotate(primary, rotationSteps);
+        base.acceptAnyFace = !!spec.acceptAnyFace;
+        base.targetSequence = str(spec.sequence) || '1';
+        base.targetCount = Math.max(0, int(spec.count, 1));
+        return base;
+
+      case KIND.Splitter:
+        base.oneArm = D.rotate(primary, rotationSteps);
+        base.zeroArm = D.rotate(secondary, rotationSteps);
+        return base;
+
+      case KIND.NotGate:
+        base.outputDir = D.rotate(primary, rotationSteps);
+        return base;
+
+      case KIND.Filter:
+        base.outputDir = D.rotate(primary, rotationSteps);
+        base.passValue = int(spec.pass, 1) === 0 ? 0 : 1;
+        return base;
+
+      case KIND.DelayGate:
+        var delay = int(spec.delay, 1);
+        base.delayTicks = delay < 1 ? 1 : (delay > 4 ? 4 : delay);
+        return base;
+
+      default:
+        return base;
+    }
+  }
+
+
+  /* kind 模式的默认值 + 目录里同类的短名/提示（纯显示，不参与规则）。 */
+  function buildKindSpec(kind, catalog) {
+    var defaults = kindDefaults(kind);
+    var spec = {
+      key: '', kind: kindName(kind), label: '', hint: '',
+      dir: defaults.dir, dir2: defaults.dir2,
+      sequence: defaults.sequence, count: defaults.count,
+      acceptAnyFace: true, pass: defaults.pass, delay: defaults.delay
+    };
+
+    var named = catalog && catalog.findByKind ? catalog.findByKind(kind) : null;
+    if (named) {
+      spec.label = str(named.label);
+      spec.hint = str(named.hint);
+    }
+    return spec;
+  }
+
+  /* 这一格自己写的参数盖到定义上 —— 与 ElementPlacement.ApplyOverrides 同义。 */
+  function applyCellOverrides(element, cell, kindMode) {
+    var dir;
+    switch (element.kind) {
+      case KIND.Emitter:
+        if (kindMode && (dir = D.parse(cell.dir)) !== null) element.facing = dir;
+        if (str(cell.sequence).trim() !== '') element.sequence = str(cell.sequence).trim();
+        if (int(cell.count, -1) >= 0) element.emitCount = Math.max(0, int(cell.count, -1));
+        break;
+
+      case KIND.Receiver:
+        if (kindMode && (dir = D.parse(cell.dir)) !== null) element.feedFace = dir;
+
+        var face = parseFace(cell.face);
+        if (face === 'any') element.acceptAnyFace = true;
+        else if (face === 'in') element.acceptAnyFace = false;
+
+        if (str(cell.sequence).trim() !== '') element.targetSequence = str(cell.sequence).trim();
+        if (int(cell.count, -1) >= 0) element.targetCount = Math.max(0, int(cell.count, -1));
+        break;
+
+      case KIND.Splitter:
+        if (kindMode) {
+          if ((dir = D.parse(cell.dir)) !== null) element.oneArm = dir;
+          if ((dir = D.parse(cell.dir2)) !== null) element.zeroArm = dir;
+        }
+        break;
+
+      case KIND.NotGate:
+        if (kindMode && (dir = D.parse(cell.dir)) !== null) element.outputDir = dir;
+        break;
+
+      case KIND.Filter:
+        if (kindMode && (dir = D.parse(cell.dir)) !== null) element.outputDir = dir;
+        if (kindMode && int(cell.pass, -1) >= 0) element.passValue = int(cell.pass, -1) === 0 ? 0 : 1;
+        break;
+
+      case KIND.DelayGate:
+        if (kindMode && int(cell.delay, -1) >= 0) {
+          var delay = int(cell.delay, -1);
+          element.delayTicks = delay < 1 ? 1 : (delay > 4 ? 4 : delay);
+        }
+        break;
+    }
+  }
+
+  /* 一格 → 类型快照。type 精确（走目录，找不到退回 kind）；kind 宽松（内置默认）。 */
+  function tryResolveSpec(cell, catalog, where, problems) {
+    var rotationSteps = ((int(cell.rot, 0) % 4) + 4) % 4;
+    var kindMode = true;
+    var spec = null;
+    var typeText = str(cell.type);
+
+    if (typeText !== '') {
+      var found = catalog && catalog.find ? catalog.find(typeText) : null;
+      if (found) {
+        if (found.tool) {
+          problems.push(where + ' 用的是工具卡 ' + typeText + '（工具卡只能写进 supplies，不能放进 elements），已跳过');
+          return null;
+        }
+        return { spec: found, rotationSteps: rotationSteps, kindMode: false, typeKey: cell.type };
+      }
+
+      var fallbackKind = parseKind(cell.kind);
+      if (fallbackKind === null) {
+        problems.push(where + ' 找不到类型 ' + typeText + '（缺 typeCatalog.json？也不认识 kind="' + str(cell.kind) + '"）');
+        return null;
+      }
+
+      problems.push(where + ' 类型目录里没有 ' + typeText + '，按 kind=' + kindName(fallbackKind) + ' 的默认值处理');
+      spec = buildKindSpec(fallbackKind, catalog);
+      return { spec: spec, rotationSteps: 0, kindMode: true, typeKey: cell.type };
+    }
+
+    var kind = parseKind(cell.kind);
+    if (kind === null) {
+      problems.push(where + ' 解析不出元件类型：kind="' + str(cell.kind) + '" type="' + typeText + '"');
+      return null;
+    }
+
+    spec = buildKindSpec(kind, catalog);
+    return { spec: spec, rotationSteps: 0, kindMode: true, typeKey: '' };
+  }
+
+  /* 只解析一格（UI 画图用），不进关卡。失败返回 null。 */
+  function resolveCell(cell, catalog) {
+    var problems = [];
+    var resolved = tryResolveSpec(cell || {}, catalog, 'cell', problems);
+    if (!resolved) return null;
+
+    var element = createDefinition(resolved.spec, int(cell.x, 0), int(cell.y, 0), resolved.rotationSteps, 0);
+    element.typeKey = resolved.typeKey === '' ? str(resolved.spec.key) : resolved.typeKey;
+    element.playerEditable = !!cell.playerEditable;
+    applyCellOverrides(element, cell, resolved.kindMode);
+    return element;
+  }
+
+
+  function coordText(x, y) { return '(' + x + ',' + y + ')'; }
+
+  function clampNumber(value, min, max) {
+    if (value < min) return min;
+    return value > max ? max : value;
+  }
+
+  /* 一关文档 → 逻辑关卡。问题（越界/未知类型/叠格…）写进 problems，不抛异常。 */
+  function read(document, catalog) {
+    var problems = [];
+    var definition = {
+      displayName: 'CUSTOM LEVEL',
+      width: 1,
+      height: 1,
+      tickInterval: 0.35,
+      elements: [],
+      supplies: [],
+      allowBuild: false
+    };
+
+    if (!document || typeof document !== 'object') {
+      problems.push('关卡数据是空的');
+      return { definition: definition, problems: problems };
+    }
+
+    var width = Math.max(1, int(document.width, 9));
+    var height = Math.max(1, int(document.height, 8));
+
+    definition.displayName = str(document.displayName) === '' ? 'CUSTOM LEVEL' : document.displayName;
+    definition.width = width;
+    definition.height = height;
+
+    var interval = typeof document.tickInterval === 'number' && isFinite(document.tickInterval) ? document.tickInterval : 0;
+    definition.tickInterval = interval > 0.01 ? clampNumber(interval, 0.05, 5) : 0.35;
+
+    /* ---------------- 元件 ---------------- */
+    var placed = [];
+    var used = Object.create(null);
+    var cells = Array.isArray(document.elements) ? document.elements : [];
+
+    for (var i = 0; i < cells.length; i++) {
+      var cell = cells[i];
+      if (!cell || typeof cell !== 'object') continue;
+
+      var where = 'elements[' + i + ']';
+      var x = int(cell.x, 0);
+      var y = int(cell.y, 0);
+
+      if (x < 0 || y < 0 || x >= width || y >= height) {
+        problems.push(where + ' 坐标 ' + coordText(x, y) + ' 越界（本关 ' + width + '×' + height + '），已跳过');
+        continue;
+      }
+
+      var key = x + ',' + y;
+      if (used[key]) {
+        problems.push(where + ' 坐标 ' + coordText(x, y) + ' 与前面的格子重复，已跳过');
+        continue;
+      }
+      used[key] = true;
+
+      var resolved = tryResolveSpec(cell, catalog, where, problems);
+      if (!resolved) {
+        delete used[key];
+        continue;
+      }
+
+      placed.push({
+        cell: cell,
+        spec: resolved.spec,
+        rotationSteps: ((resolved.rotationSteps % 4) + 4) % 4,
+        kindMode: resolved.kindMode,
+        typeKey: resolved.typeKey,
+        x: x,
+        y: y
+      });
+    }
+
+    /* 统一按 (y, x) 排序后发 Id —— 同一份 JSON 无论行序怎么排，构建结果都一样 */
+    placed.sort(function (left, right) {
+      if (left.y !== right.y) return left.y - right.y;
+      return left.x - right.x;
+    });
+
+    var nextId = 1;
+    var occupied = Object.create(null);
+    for (var p = 0; p < placed.length; p++) {
+      var item = placed[p];
+      var element = createDefinition(item.spec, item.x, item.y, item.rotationSteps, nextId);
+      element.label = str(item.spec.label);
+      element.typeKey = item.typeKey === '' ? str(item.spec.key) : str(item.typeKey);
+      element.playerEditable = !!item.cell.playerEditable;
+      applyCellOverrides(element, item.cell, item.kindMode);
+      /* 详情面板的提示文本：编辑器里现算，规则不影响模拟。 */
+      if (element.hint === '') element.hint = describeElement(element);
+
+      definition.elements.push(element);
+      occupied[item.x + ',' + item.y] = true;
+      nextId++;
+    }
+
+    /* ---------------- 墙层（追加在最后，Id 接在后面） ---------------- */
+    var walls = parseWalls(document, width, height, problems);
+    if (walls.length > 0) {
+      var wallSpec = catalog && catalog.findByKind ? catalog.findByKind(KIND.Wall) : null;
+      var wallLabel = wallSpec ? str(wallSpec.label) : '';
+      var wallKey = wallSpec ? str(wallSpec.key) : '';
+
+      var id = nextId;
+      var overlapped = 0;
+      for (var w = 0; w < walls.length; w++) {
+        var wall = walls[w];
+        if (occupied[wall.x + ',' + wall.y]) { overlapped++; continue; }
+        definition.elements.push({
+          kind: KIND.Wall, id: id, x: wall.x, y: wall.y,
+          label: wallLabel, hint: 'WALL', typeKey: wallKey, playerEditable: false
+        });
+        id++;
+      }
+
+      if (overlapped > 0) {
+        problems.push('墙层和 elements 有 ' + overlapped + ' 个格子重叠，那些格子的墙已忽略（元件优先）');
+      }
+    }
+
+    readSupplies(document, definition, problems);
+    definition.hasSupplies = definition.supplies.length > 0;
+    return { definition: definition, problems: problems };
+  }
+
+
+  function readSupplies(document, definition, problems) {
+    definition.supplies = [];
+    var list = Array.isArray(document.supplies) ? document.supplies : [];
+    for (var i = 0; i < list.length; i++) {
+      var supply = list[i];
+      if (!supply || typeof supply !== 'object') continue;
+
+      var where = 'supplies[' + i + ']';
+      var rawCount = int(supply.count, -1);
+      var count = rawCount >= 0 ? rawCount : 1;
+      if (count === 0) {
+        problems.push(where + ' count=0 等于不给这张牌，已跳过');
+        continue;
+      }
+
+      var kind = parseKind(supply.kind);
+      var type = str(supply.type);
+      if (type === '' && kind === null) {
+        problems.push(where + ' 既没有 type 也认不出 kind，已跳过');
+        continue;
+      }
+
+      definition.supplies.push({
+        typeKey: type,
+        kind: kind === null ? KIND.Wall : kind,
+        count: count
+      });
+    }
+
+    /* 有手牌就必须能动手：手写 JSON 忘了写 allowBuild 时，玩家会盯着一排点不动的卡 */
+    definition.allowBuild = !!document.allowBuild || definition.supplies.length > 0;
+  }
+
+  /* ---------------- 墙层 → 坐标表 ----------------
+   * 一行一个 y（第一行 y=0，从下往上），行内第 i 个字符是 x=i；
+   * 短行右侧留空，超出尺寸的字符忽略，同一格只算一次。 */
+  function wallLines(document, height, problems) {
+    var lines = [];
+
+    if (Array.isArray(document.wallRows) && document.wallRows.length > 0) {
+      if (document.wallRows.length > height) {
+        problems.push('wallRows 有 ' + document.wallRows.length + ' 行，超过 height=' + height + '，多出来的行会被忽略');
+      }
+      for (var i = 0; i < document.wallRows.length; i++) {
+        lines.push(typeof document.wallRows[i] === 'string' ? document.wallRows[i] : '');
+      }
+      return lines;
+    }
+
+    var map = str(document.wallMap);
+    if (map === '') return lines;
+    return map.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  }
+
+  function parseWalls(document, width, height, problems) {
+    var walls = [];
+    if (!document) return walls;
+
+    var lines = wallLines(document, height, problems);
+    var seen = Object.create(null);
+
+    for (var y = 0; y < lines.length && y < height; y++) {
+      var line = lines[y];
+      if (!line) continue;
+      var limit = Math.min(line.length, width);
+      for (var x = 0; x < limit; x++) {
+        if (line[x] !== '#') continue;
+        var key = x + ',' + y;
+        if (seen[key]) continue;
+        seen[key] = true;
+        walls.push({ x: x, y: y });
+      }
+    }
+    return walls;
+  }
+
+  /* 只在详情面板显示，不参与规则。 */
+  function describeElement(element) {
+    if (!element) return '';
+    switch (element.kind) {
+      case KIND.Emitter:
+        return 'EMITTER ' + D.mark(element.facing) + ' ×' + element.emitCount + ' 序列 ' + element.sequence;
+      case KIND.Receiver:
+        return 'RECEIVER ' + (element.acceptAnyFace ? '四面可收' : '只认 ' + D.mark(element.feedFace))
+          + ' ×' + element.targetCount + ' 序列 ' + element.targetSequence;
+      case KIND.Splitter:
+        return 'SPLITTER 1→' + D.mark(element.oneArm) + ' 0→' + D.mark(element.zeroArm);
+      case KIND.NotGate:
+        return 'NOT →' + D.mark(element.outputDir);
+      case KIND.Filter:
+        return 'FILTER 放行 ' + element.passValue + ' →' + D.mark(element.outputDir);
+      case KIND.DelayGate:
+        return 'DELAY ' + element.delayTicks + ' tick';
+      default:
+        return 'WALL';
+    }
+  }
+
+  var api = {
+    CURRENT_SCHEMA: CURRENT_SCHEMA,
+    KIND: KIND,
+    KIND_NAMES: KIND_NAMES,
+    kindName: kindName,
+    parseKind: parseKind,
+    parseFace: parseFace,
+    kindDefaults: kindDefaults,
+    buildKindSpec: buildKindSpec,
+    createDefinition: createDefinition,
+    applyCellOverrides: applyCellOverrides,
+    resolveCell: resolveCell,
+    read: read,
+    parseWalls: parseWalls,
+    describeElement: describeElement
+  };
+
+  root.BitFlowDocument = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+/* ===== engine/simulation.js ===== */
+/* BitFlowSimulation.cs 的零依赖移植 —— 位流路由的唯一真相。
+ *
+ * 每个 tick 严格四步，顺序不能换（换了就会跟游戏里跑出不同结果）：
+ *   0) 延迟器放行：队列里到期且出口空的位先回到自己格子上；
+ *   1) 发射：各发射器尝试吐位（前方被占则顺延，多发射器抢同一格 → 一起销毁）；
+ *   2) 前进：所有位按朝向走 1 格（链式阻塞允许"跟着前进"；抢格/对穿 → 全销毁）；
+ *   3) 裁决：本 tick 刚进入元件格的位按元件规则改向/改值/销毁（延迟器在这里收位）。
+ *
+ * 事件顺序（spawns / moves / destroyed / deliveries）也照抄 C# 的遍历顺序，
+ * 这样时间轴回放和"第一次销毁发生在第几 tick"才能和游戏逐帧对齐。
+ */
+(function (root) {
+  'use strict';
+
+  var D = root.BitFlowDir;
+  var Doc = root.BitFlowDocument;
+  if (!D && typeof require === 'function') D = require('./dir.js');
+  if (!Doc && typeof require === 'function') Doc = require('./document.js');
+
+  var KIND = Doc.KIND;
+  var DELAY_CAPACITY = 8;
+  var DEFAULT_SAFETY_TICKS = 5000;
+
+  var DESTROY = {
+    Wall: 'Wall', OutOfBounds: 'OutOfBounds', EmitterBody: 'EmitterBody',
+    ReceiverWrongFace: 'ReceiverWrongFace', Conflict: 'Conflict',
+    SplitterBackflow: 'SplitterBackflow', NotGateBackflow: 'NotGateBackflow',
+    FilterBackflow: 'FilterBackflow', FilterRejected: 'FilterRejected',
+    DelayOverflow: 'DelayOverflow'
+  };
+
+  function key(x, y) { return x + ',' + y; }
+
+  function parseSequence(text) {
+    if (typeof text !== 'string' || text === '') return [];
+    var result = [];
+    for (var i = text.length - 1; i >= 0; i--) {
+      var c = text[i];
+      if (c === '1') result.push(1);
+      else if (c === '0') result.push(0);
+    }
+    return result;
+  }
+
+  /* 展开后的实际发射顺序，长度恒等于 emitCount（BuildEmitOrder）。 */
+  function buildEmitOrder(element) {
+    var order = [];
+    var count = element.emitCount | 0;
+    if (count <= 0) return order;
+
+    var cycle = parseSequence(element.sequence);
+    if (cycle.length === 0) return order;
+
+    for (var i = 0; i < count; i++) order.push(cycle[i % cycle.length]);
+    return order;
+  }
+
+  function expectedValueAt(receiver, index) {
+    var seq = receiver.targetSequence;
+    if (typeof seq !== 'string' || seq === '') return 1;
+    return seq[index % seq.length] === '0' ? 0 : 1;
+  }
+
+  function acceptsEntry(receiver, entryFace) {
+    return receiver.acceptAnyFace || entryFace === receiver.feedFace;
+  }
+
+  function exitDirsOf(element) {
+    switch (element.kind) {
+      case KIND.Emitter: return [element.facing];
+      case KIND.Splitter: return [element.oneArm, element.zeroArm];
+      case KIND.NotGate: return [element.outputDir];
+      case KIND.Filter: return [element.outputDir];
+      default: return [];
+    }
+  }
+
+
+  function emptyReport(tick) {
+    return {
+      tick: tick,
+      isFinished: false,
+      spawns: [],
+      moves: [],
+      destroyed: [],
+      deliveries: [],
+      delayAbsorbed: [],
+      delayReleased: [],
+      stalledEmitters: 0,
+      delayStalled: 0,
+      delayDropped: 0
+    };
+  }
+
+  function Simulation(definition) {
+    if (!definition || !Array.isArray(definition.elements)) throw new Error('BitFlowSimulation 需要一份 LevelDefinition');
+    this.level = definition;
+    this.lookup = Object.create(null);
+    for (var i = 0; i < definition.elements.length; i++) {
+      var element = definition.elements[i];
+      this.lookup[key(element.x, element.y)] = element;
+    }
+
+    this.emitters = [];
+    this.receivers = [];
+    this.delayGates = [];
+    this.emittersById = Object.create(null);
+    this.receiversById = Object.create(null);
+    this.delayGatesById = Object.create(null);
+    this.bits = [];
+    this.occupancy = Object.create(null);
+    this.tickIndex = 0;
+    this.finished = false;
+    this.nextBitId = 1;
+    this.safetyTickLimit = DEFAULT_SAFETY_TICKS;
+    this.reset();
+  }
+
+  Simulation.prototype.reset = function () {
+    this.tickIndex = 0;
+    this.finished = false;
+    this.nextBitId = 1;
+    this.bits = [];
+    this.occupancy = Object.create(null);
+    this.emitters = [];
+    this.receivers = [];
+    this.delayGates = [];
+    this.emittersById = Object.create(null);
+    this.receiversById = Object.create(null);
+    this.delayGatesById = Object.create(null);
+
+    for (var i = 0; i < this.level.elements.length; i++) {
+      var element = this.level.elements[i];
+      if (element.kind === KIND.Emitter) {
+        var emitter = { def: element, order: buildEmitOrder(element), cursor: 0 };
+        this.emitters.push(emitter);
+        this.emittersById[element.id] = emitter;
+      } else if (element.kind === KIND.Receiver) {
+        var receiver = { def: element, received: [], matched: [] };
+        this.receivers.push(receiver);
+        this.receiversById[element.id] = receiver;
+      } else if (element.kind === KIND.DelayGate) {
+        var gate = { def: element, queue: [] };
+        this.delayGates.push(gate);
+        this.delayGatesById[element.id] = gate;
+      }
+    }
+  };
+
+  Simulation.prototype.step = function () {
+    var report = emptyReport(this.tickIndex + 1);
+    if (this.finished) {
+      report.isFinished = true;
+      return report;
+    }
+
+    this.tickIndex++;
+    this.delayReleasePhase(report);
+    this.emitPhase(report);
+    this.advancePhase(report);
+    this.resolvePhase(report);
+
+    if ((this.allEmittersDone() && this.bits.length === 0 && !this.hasQueuedBits()) ||
+        this.tickIndex >= this.safetyTickLimit) {
+      this.finished = true;
+      report.isFinished = true;
+    }
+    return report;
+  };
+
+  /* ---------- 阶段 0：延迟器放行 ---------- */
+  Simulation.prototype.delayReleasePhase = function (report) {
+    if (this.delayGates.length === 0) return;
+    this.rebuildOccupancy();
+
+    for (var g = 0; g < this.delayGates.length; g++) {
+      var gate = this.delayGates[g];
+      if (gate.queue.length === 0) continue;
+
+      var front = gate.queue[0];
+      if (front.releaseTick > this.tickIndex) continue;
+
+      if (this.occupancy[key(gate.def.x, gate.def.y)]) {
+        /* 上一颗还没走出去（被前方堵住）：本 tick 继续压着，队列不前进 */
+        report.delayStalled++;
+        continue;
+      }
+
+      gate.queue.shift();
+
+      /* 不能走 spawnBit：那个入口会把"元件格里的位"标成待裁决，
+         结果刚放出来的位又被延迟器收回去。它是"离开"，不是"进入"。 */
+      var bit = {
+        id: this.nextBitId++,
+        value: front.value,
+        x: gate.def.x,
+        y: gate.def.y,
+        facing: front.exitDir,
+        pendingResolve: false
+      };
+      this.bits.push(bit);
+      this.occupancy[key(bit.x, bit.y)] = bit;
+
+      var spawned = {
+        bitId: bit.id, value: bit.value, x: bit.x, y: bit.y,
+        dir: bit.facing, sourceId: gate.def.id
+      };
+      report.spawns.push(spawned);
+      report.delayReleased.push(spawned);
+    }
+  };
+
+  /* ---------- 阶段 1：发射 ---------- */
+  Simulation.prototype.emitPhase = function (report) {
+    this.rebuildOccupancy();
+    var intents = [];
+
+    for (var e = 0; e < this.emitters.length; e++) {
+      var emitter = this.emitters[e];
+      if (emitter.cursor >= emitter.order.length) continue;
+
+      var value = emitter.order[emitter.cursor];
+      var offset = D.offset(emitter.def.facing);
+      var targetX = emitter.def.x + offset[0];
+      var targetY = emitter.def.y + offset[1];
+
+      if (!this.inBounds(targetX, targetY)) {
+        /* 出口对着网格外：视为配置错误，本 tick 顺延 */
+        report.stalledEmitters++;
+        continue;
+      }
+
+      if (this.occupancy[key(targetX, targetY)]) {
+        report.stalledEmitters++;
+        continue;
+      }
+
+      var occupant = this.getElement(targetX, targetY);
+      if (occupant && (occupant.kind === KIND.Wall || occupant.kind === KIND.Emitter)) {
+        /* 正前方是墙 / 发射器机身：同样顺延 */
+        report.stalledEmitters++;
+        continue;
+      }
+
+      intents.push({ emitter: emitter, value: value, x: targetX, y: targetY });
+    }
+
+    if (intents.length === 0) return;
+
+    var intentCount = Object.create(null);
+    for (var i = 0; i < intents.length; i++) {
+      var tk = key(intents[i].x, intents[i].y);
+      intentCount[tk] = (intentCount[tk] || 0) + 1;
+    }
+
+    for (var j = 0; j < intents.length; j++) {
+      var intent = intents[j];
+      intent.emitter.cursor++;
+
+      if (intentCount[key(intent.x, intent.y)] > 1) {
+        /* 同格争抢：全部销毁（红闪），谁的位也没真正出现 */
+        report.destroyed.push({
+          bitId: 0, value: intent.value, x: intent.x, y: intent.y, reason: DESTROY.Conflict
+        });
+        continue;
+      }
+
+      var newBit = this.spawnBit(intent.value, intent.x, intent.y, intent.emitter.def.facing);
+      report.spawns.push({
+        bitId: newBit.id, value: newBit.value, x: newBit.x, y: newBit.y,
+        dir: newBit.facing, sourceId: intent.emitter.def.id
+      });
+    }
+  };
+
+
+  /* ---------- 阶段 2：前进 ---------- */
+  Simulation.prototype.advancePhase = function (report) {
+    this.rebuildOccupancy();
+    var snapshot = this.bits.slice();
+    var candidates = [];
+
+    /* 第一轮：先把"绝对进不去"的位处理掉（出界 / 墙 / 发射器机身 / 接收器错误进料面） */
+    for (var i = 0; i < snapshot.length; i++) {
+      var bit = snapshot[i];
+
+      /* 刚被吐进元件格、还没裁决的位：本 tick 停在原地，等第 3 阶段由元件改向 */
+      if (bit.pendingResolve) {
+        report.moves.push({
+          bitId: bit.id, value: bit.value,
+          fromX: bit.x, fromY: bit.y, toX: bit.x, toY: bit.y, moved: false
+        });
+        continue;
+      }
+
+      var offset = D.offset(bit.facing);
+      var targetX = bit.x + offset[0];
+      var targetY = bit.y + offset[1];
+
+      if (!this.inBounds(targetX, targetY)) {
+        this.destroyBit(bit, DESTROY.OutOfBounds, report);
+        continue;
+      }
+
+      var element = this.getElement(targetX, targetY);
+      if (element && element.kind === KIND.Wall) {
+        this.destroyBit(bit, DESTROY.Wall, report);
+        continue;
+      }
+      if (element && element.kind === KIND.Emitter) {
+        /* 发射器机身不可穿过 */
+        this.destroyBit(bit, DESTROY.EmitterBody, report);
+        continue;
+      }
+      if (element && element.kind === KIND.Receiver && !acceptsEntry(element, D.opposite(bit.facing))) {
+        /* 严格模式的接收器只有进料面能进，其余面撞上即销毁（默认四面都可收） */
+        this.destroyBit(bit, DESTROY.ReceiverWrongFace, report);
+        continue;
+      }
+
+      candidates.push({ bit: bit, x: targetX, y: targetY });
+    }
+
+    if (candidates.length === 0) return;
+
+    /* 第二轮：链式阻塞。前方格里的位如果本 tick 也走不掉，自己就被顶住；
+       反之（前方位同 tick 会离开）允许"跟着前进"。 */
+    var blocked = this.findBlocked(candidates);
+    var intents = [];
+    for (var c = 0; c < candidates.length; c++) {
+      var move = candidates[c];
+      if (blocked[move.bit.id]) {
+        report.moves.push({
+          bitId: move.bit.id, value: move.bit.value,
+          fromX: move.bit.x, fromY: move.bit.y,
+          toX: move.bit.x, toY: move.bit.y, moved: false
+        });
+        continue;
+      }
+      intents.push(move);
+    }
+
+    if (intents.length === 0) return;
+
+    var conflicted = this.findConflicts(intents);
+
+    for (var n = 0; n < intents.length; n++) {
+      var pending = intents[n];
+      if (conflicted[pending.bit.id]) {
+        this.destroyBit(pending.bit, DESTROY.Conflict, report);
+        continue;
+      }
+
+      var fromX = pending.bit.x;
+      var fromY = pending.bit.y;
+      pending.bit.x = pending.x;
+      pending.bit.y = pending.y;
+      report.moves.push({
+        bitId: pending.bit.id, value: pending.bit.value,
+        fromX: fromX, fromY: fromY, toX: pending.x, toY: pending.y, moved: true
+      });
+
+      var arrived = this.getElement(pending.x, pending.y);
+      if (arrived && arrived.kind === KIND.Receiver) {
+        this.deliver(arrived, pending.bit, report);
+      } else if (arrived) {
+        pending.bit.pendingResolve = true;
+      }
+    }
+  };
+
+  /* 迭代到收敛地求"被顶住"的位集合：只有当前方格里的位本 tick 也动不了，自己才动不了。 */
+  Simulation.prototype.findBlocked = function (candidates) {
+    var blocked = Object.create(null);
+    var changed = true;
+
+    while (changed) {
+      changed = false;
+      for (var i = 0; i < candidates.length; i++) {
+        var move = candidates[i];
+        if (blocked[move.bit.id]) continue;
+
+        var other = this.occupancy[key(move.x, move.y)];
+        if (!other || other === move.bit) continue;
+
+        if (blocked[other.id]) {
+          blocked[move.bit.id] = true;
+          changed = true;
+        }
+      }
+    }
+
+    return blocked;
+  };
+
+  /* 找出"抢同一格"与"两两对穿"的位（都会被销毁）。 */
+  Simulation.prototype.findConflicts = function (intents) {
+    var conflicted = Object.create(null);
+    var byTarget = Object.create(null);
+    var bySource = Object.create(null);
+
+    for (var i = 0; i < intents.length; i++) {
+      var move = intents[i];
+      var tk = key(move.x, move.y);
+      if (!byTarget[tk]) byTarget[tk] = [];
+      byTarget[tk].push(move);
+      bySource[key(move.bit.x, move.bit.y)] = move;
+    }
+
+    for (var t in byTarget) {
+      var list = byTarget[t];
+      if (list.length > 1) {
+        for (var l = 0; l < list.length; l++) conflicted[list[l].bit.id] = true;
+      }
+    }
+
+    /* 对穿（A 去 B 的格、B 去 A 的格）：两颗一起销毁 */
+    for (var m = 0; m < intents.length; m++) {
+      var current = intents[m];
+      var oppositeMove = bySource[key(current.x, current.y)];
+      if (oppositeMove && oppositeMove.x === current.bit.x && oppositeMove.y === current.bit.y &&
+          oppositeMove.bit.id !== current.bit.id) {
+        conflicted[current.bit.id] = true;
+        conflicted[oppositeMove.bit.id] = true;
+      }
+    }
+
+    return conflicted;
+  };
+
+
+  /* ---------- 阶段 3：元件裁决 ---------- */
+  Simulation.prototype.resolvePhase = function (report) {
+    var snapshot = this.bits.slice();
+
+    for (var i = 0; i < snapshot.length; i++) {
+      var bit = snapshot[i];
+      if (!bit.pendingResolve) continue;
+      bit.pendingResolve = false;
+
+      var element = this.getElement(bit.x, bit.y);
+      if (!element) continue;
+
+      /* 位"从哪一面进来的" = 当前朝向的反面 */
+      var entryFace = D.opposite(bit.facing);
+      var exits = exitDirsOf(element);
+
+      switch (element.kind) {
+        case KIND.Splitter:
+          if (exits.indexOf(entryFace) >= 0) {
+            this.destroyBit(bit, DESTROY.SplitterBackflow, report);
+            break;
+          }
+          bit.facing = bit.value === 1 ? element.oneArm : element.zeroArm;
+          break;
+
+        case KIND.NotGate:
+          if (exits.indexOf(entryFace) >= 0) {
+            this.destroyBit(bit, DESTROY.NotGateBackflow, report);
+            break;
+          }
+          bit.value = 1 - bit.value;
+          bit.facing = element.outputDir;
+          break;
+
+        case KIND.Filter:
+          if (exits.indexOf(entryFace) >= 0) {
+            this.destroyBit(bit, DESTROY.FilterBackflow, report);
+            break;
+          }
+          if (bit.value !== element.passValue) {
+            this.destroyBit(bit, DESTROY.FilterRejected, report);
+            break;
+          }
+          bit.facing = element.outputDir;
+          break;
+
+        case KIND.DelayGate:
+          /* 进队 = 从场上撤下（不占格）。出口朝向沿用进入时的前进方向。 */
+          var gateState = this.delayGatesById[element.id];
+          if (!gateState) break;
+
+          if (gateState.queue.length >= DELAY_CAPACITY) {
+            report.delayDropped++;
+            this.destroyBit(bit, DESTROY.DelayOverflow, report);
+            break;
+          }
+
+          /* 第 T tick 吸入 → 第 T+1+N 个 tick 放行（"比直通多停 N 拍"） */
+          var releaseTick = this.tickIndex + element.delayTicks + 1;
+          gateState.queue.push({ value: bit.value, exitDir: bit.facing, releaseTick: releaseTick });
+
+          this.removeBit(bit);
+          report.delayAbsorbed.push({
+            bitId: bit.id, value: bit.value, gateId: element.id,
+            x: bit.x, y: bit.y, releaseTick: releaseTick
+          });
+          break;
+      }
+    }
+  };
+
+  /* ---------- 内部工具 ---------- */
+  Simulation.prototype.spawnBit = function (value, x, y, facing) {
+    var aligned = this.getElement(x, y) !== null;
+    var bit = {
+      id: this.nextBitId++,
+      value: value,
+      x: x,
+      y: y,
+      facing: facing,
+      pendingResolve: aligned
+    };
+    this.bits.push(bit);
+    this.occupancy[key(x, y)] = bit;
+    return bit;
+  };
+
+  Simulation.prototype.removeBit = function (bit) {
+    var index = this.bits.indexOf(bit);
+    if (index >= 0) this.bits.splice(index, 1);
+    var slot = key(bit.x, bit.y);
+    if (this.occupancy[slot] === bit) delete this.occupancy[slot];
+  };
+
+  Simulation.prototype.destroyBit = function (bit, reason, report) {
+    this.removeBit(bit);
+    report.destroyed.push({ bitId: bit.id, value: bit.value, x: bit.x, y: bit.y, reason: reason });
+  };
+
+  Simulation.prototype.deliver = function (receiverDef, bit, report) {
+    var state = this.receiversById[receiverDef.id];
+    if (!state) return;
+
+    var receivedIndex = state.received.length;
+    var overflow = receivedIndex >= receiverDef.targetCount;
+    var matched = !overflow && bit.value === expectedValueAt(receiverDef, receivedIndex);
+
+    state.received.push(bit.value);
+    state.matched.push(matched);
+
+    this.removeBit(bit);
+
+    report.deliveries.push({
+      receiverId: receiverDef.id, value: bit.value, matched: matched,
+      index: receivedIndex, overflow: overflow
+    });
+  };
+
+  Simulation.prototype.rebuildOccupancy = function () {
+    this.occupancy = Object.create(null);
+    for (var i = 0; i < this.bits.length; i++) {
+      var bit = this.bits[i];
+      this.occupancy[key(bit.x, bit.y)] = bit;
+    }
+  };
+
+  Simulation.prototype.getElement = function (x, y) {
+    var element = this.lookup[key(x, y)];
+    return element === undefined ? null : element;
+  };
+
+  Simulation.prototype.inBounds = function (x, y) {
+    return x >= 0 && x < this.level.width && y >= 0 && y < this.level.height;
+  };
+
+  Simulation.prototype.allEmittersDone = function () {
+    for (var i = 0; i < this.emitters.length; i++) {
+      var emitter = this.emitters[i];
+      if (emitter.cursor < emitter.order.length) return false;
+    }
+    return true;
+  };
+
+  Simulation.prototype.hasQueuedBits = function () {
+    for (var i = 0; i < this.delayGates.length; i++) {
+      if (this.delayGates[i].queue.length > 0) return true;
+    }
+    return false;
+  };
+
+  /* ---------- 给 View / UI 的只读查询 ---------- */
+  Simulation.prototype.getBits = function () {
+    var snapshots = [];
+    for (var i = 0; i < this.bits.length; i++) {
+      var bit = this.bits[i];
+      snapshots.push({ bitId: bit.id, value: bit.value, x: bit.x, y: bit.y, facing: bit.facing });
+    }
+    return snapshots;
+  };
+
+  Simulation.prototype.getDelayGateProgress = function () {
+    var progress = [];
+    for (var i = 0; i < this.delayGates.length; i++) {
+      var gate = this.delayGates[i];
+      progress.push({
+        gateId: gate.def.id,
+        queuedCount: gate.queue.length,
+        capacity: DELAY_CAPACITY,
+        nextReleaseTick: gate.queue.length > 0 ? gate.queue[0].releaseTick : -1
+      });
+    }
+    return progress;
+  };
+
+  Simulation.prototype.getEmitterProgress = function () {
+    var progress = [];
+    for (var i = 0; i < this.emitters.length; i++) {
+      var emitter = this.emitters[i];
+      progress.push({
+        emitterId: emitter.def.id,
+        emittedCount: emitter.cursor,
+        totalCount: emitter.order.length
+      });
+    }
+    return progress;
+  };
+
+  Simulation.prototype.getReceiverProgress = function () {
+    var progress = [];
+    for (var i = 0; i < this.receivers.length; i++) {
+      var state = this.receivers[i];
+      var stillValid = true;
+      for (var m = 0; m < state.matched.length; m++) {
+        if (!state.matched[m]) { stillValid = false; break; }
+      }
+      progress.push({
+        receiverId: state.def.id,
+        targetCount: state.def.targetCount,
+        receivedCount: state.received.length,
+        isStillValid: stillValid
+      });
+    }
+    return progress;
+  };
+
+  Simulation.prototype.buildResult = function () {
+    var result = {
+      displayName: this.level.displayName,
+      tickCount: this.tickIndex,
+      isSuccess: false,
+      receivers: []
+    };
+
+    var allSuccess = this.receivers.length > 0;
+    for (var i = 0; i < this.receivers.length; i++) {
+      var state = this.receivers[i];
+      var receiverResult = {
+        receiverId: state.def.id,
+        targetCount: state.def.targetCount,
+        receivedCount: state.received.length,
+        received: state.received.slice(),
+        matched: state.matched.slice()
+      };
+
+      var ok = receiverResult.receivedCount === receiverResult.targetCount;
+      if (ok) {
+        for (var m = 0; m < receiverResult.matched.length; m++) {
+          if (!receiverResult.matched[m]) { ok = false; break; }
+        }
+      }
+      receiverResult.isSuccess = ok;
+
+      result.receivers.push(receiverResult);
+      allSuccess = allSuccess && ok;
+    }
+
+    result.isSuccess = allSuccess;
+    return result;
+  };
+
+  /* LevelResult.Summary() 的同一句话，UI 直接显示。 */
+  function summarizeResult(result) {
+    if (result.isSuccess) return 'ALL RECEIVERS LOCKED IN ' + result.tickCount + ' TICKS';
+    var text = 'MISMATCH';
+    for (var i = 0; i < result.receivers.length; i++) {
+      var receiver = result.receivers[i];
+      text += '  |  R' + receiver.receiverId + ' ' + receiver.receivedCount + '/' + receiver.targetCount +
+        (receiver.isSuccess ? ' ok' : ' bad');
+    }
+    return text;
+  }
+
+  var api = {
+    Simulation: Simulation,
+    DELAY_CAPACITY: DELAY_CAPACITY,
+    DEFAULT_SAFETY_TICKS: DEFAULT_SAFETY_TICKS,
+    DESTROY: DESTROY,
+    buildEmitOrder: buildEmitOrder,
+    parseSequence: parseSequence,
+    expectedValueAt: expectedValueAt,
+    acceptsEntry: acceptsEntry,
+    summarizeResult: summarizeResult
+  };
+
+  root.BitFlowSimulation = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+/* ===== engine/check.js ===== */
+/* LevelCheck.cs 的移植：把一关丢进模拟器跑到底，返回一句人话报告 + 存档前自检。
+ *
+ * 这里的措辞（✅ / 📝 / ❌、超收/少收、第 N 位不匹配）是作者会直接看到的文案，
+ * 与游戏内自检保持一字不差，免得同一个关卡在两个地方给出不同说法。
+ */
+(function (root) {
+  'use strict';
+
+  var Doc = root.BitFlowDocument;
+  var Sim = root.BitFlowSimulation;
+  if (!Doc && typeof require === 'function') Doc = require('./document.js');
+  if (!Sim && typeof require === 'function') Sim = require('./simulation.js');
+
+  var KIND = Doc.KIND;
+
+  function safetyTicks(definition) {
+    if (!definition) return 128;
+    return Math.max(128, definition.width * definition.height * 8);
+  }
+
+  function bitsText(bits, maxShow) {
+    var limit = typeof maxShow === 'number' ? maxShow : 32;
+    if (!bits || bits.length === 0) return '（空）';
+
+    var show = Math.min(bits.length, limit);
+    var text = '';
+    for (var i = 0; i < show; i++) text += bits[i] === 0 ? '0' : '1';
+    if (bits.length > show) text += '…（共 ' + bits.length + ' 位）';
+    return text;
+  }
+
+  function findReceiver(definition, receiverId) {
+    for (var i = 0; i < definition.elements.length; i++) {
+      var element = definition.elements[i];
+      if (element.kind === KIND.Receiver && element.id === receiverId) return element;
+    }
+    return null;
+  }
+
+  function describe(definition, hasSupplies, result, ticks, safety) {
+    /* 有手牌的关，预设布局跑不通才是对的：措辞必须能一眼区分「题还没解」和「数据错了」。 */
+    var puzzle = hasSupplies && !result.isSuccess;
+    var text = '';
+
+    if (result.isSuccess) text += '✅ 通关 ';
+    else if (puzzle) text += '📝 预设布局未通关 ';
+    else text += '❌ 未通过 ';
+
+    text += result.tickCount + ' ticks';
+    if (puzzle) text += '（有手牌的关，这是预期：玩家要自己用牌解开）';
+
+    /* 「跑到上限还没结算」不等于关卡数据错了，措辞要分开。 */
+    if (!result.isSuccess && ticks >= safety) {
+      text += '（跑到 ' + safety + ' tick 上限还没结算，可能有个位卡住了；这是自检上限，不是关卡数据错误）';
+    }
+
+    if (result.receivers.length === 0) {
+      text += '\n这一关没有接收器，没法判定通关';
+      return text;
+    }
+
+    for (var i = 0; i < result.receivers.length; i++) {
+      var receiver = result.receivers[i];
+      text += '\n  R' + receiver.receiverId + '   ';
+      text += receiver.receivedCount + '/' + receiver.targetCount;
+
+      if (receiver.receivedCount > receiver.targetCount) text += ' 超收';
+      else if (receiver.receivedCount < receiver.targetCount) text += ' 少收';
+
+      text += receiver.isSuccess ? '  ✓' : '  ✗';
+      text += '   实收 ' + bitsText(receiver.received, 24);
+
+      if (receiver.isSuccess) continue;
+
+      /* 指出第一个不匹配的位置：作者一眼能定位是哪一段节奏错了 */
+      var source = findReceiver(definition, receiver.receiverId);
+      for (var m = 0; m < receiver.matched.length; m++) {
+        if (receiver.matched[m]) continue;
+        text += '\n      第 ' + (m + 1) + ' 位不匹配：期望 ';
+        text += source ? Sim.expectedValueAt(source, m) : 1;
+        text += ' 实收 ' + receiver.received[m];
+        break;
+      }
+    }
+
+    return text;
+  }
+
+  /* 跑一遍。返回的 sim 已经是终局状态，时间轴可以直接用它回放。 */
+  function run(definition, hasSupplies) {
+    var outcome = {
+      success: false,
+      report: '关卡定义是空的',
+      ticks: 0,
+      safety: 128,
+      result: null,
+      simulation: null,
+      finished: false
+    };
+    if (!definition) return outcome;
+
+    var simulation = new Sim.Simulation(definition);
+    var supplies = typeof hasSupplies === 'boolean' ? hasSupplies : !!definition.hasSupplies;
+    /* 上限必须与模拟器一致才有意义（模拟器自己会在 safetyTickLimit 停下）。 */
+    var safety = Math.max(safetyTicks(definition), simulation.safetyTickLimit);
+
+    var ticks = 0;
+    while (!simulation.finished && ticks < safety) {
+      simulation.step();
+      ticks++;
+    }
+
+    var result = simulation.buildResult();
+    outcome.success = result.isSuccess;
+    outcome.result = result;
+    outcome.simulation = simulation;
+    outcome.ticks = ticks;
+    outcome.safety = safety;
+    outcome.finished = simulation.finished;
+    outcome.report = describe(definition, supplies, result, ticks, safety);
+    return outcome;
+  }
+
+
+  /* ---------------- 存档前自检 ----------------
+   * 只查那些「无论玩家怎么动都救不回来」的错；「手牌是摆设」是 Advisory，不拦保存。 */
+  function runForSaveDetailed(definition) {
+    var issues = [];
+    if (!definition) {
+      issues.push({ severity: 'Blocking', message: '关卡定义是空的' });
+      return issues;
+    }
+
+    var receivers = 0;
+    var emitters = 0;
+    for (var i = 0; i < definition.elements.length; i++) {
+      var element = definition.elements[i];
+      if (element.kind === KIND.Receiver) receivers++;
+      else if (element.kind === KIND.Emitter) emitters++;
+    }
+
+    if (receivers === 0) issues.push({ severity: 'Blocking', message: '这一关没有接收器，没法判定通关' });
+    if (emitters === 0) issues.push({ severity: 'Blocking', message: '这一关没有发射器，场上永远不会有位' });
+
+    var outcome = run(definition, !!definition.hasSupplies);
+
+    if (!definition.hasSupplies) {
+      if (receivers > 0 && emitters > 0 && !outcome.success) {
+        issues.push({
+          severity: 'Blocking',
+          message: '没有手牌，但预设布局跑不通 —— 要么补件，要么发牌：' + firstLine(outcome.report)
+        });
+      }
+    } else {
+      if (outcome.success) {
+        issues.push({
+          severity: 'Advisory',
+          message: '预设布局自己就能通关 —— 玩家一张牌都不用出，手牌是摆设'
+        });
+      }
+
+      for (var s = 0; s < definition.supplies.length; s++) {
+        var supply = definition.supplies[s];
+        if (!supply) continue;
+        /* SupplyKinds：发射器 / 接收器是这一关的题，不能发给玩家。 */
+        if (supply.kind === KIND.Emitter || supply.kind === KIND.Receiver) {
+          issues.push({
+            severity: 'Blocking',
+            message: '手牌里有' + Doc.kindName(supply.kind) + '：' +
+              '发射器 / 接收器定的是这一关的题，只能由作者给定，不能发给玩家'
+          });
+        }
+      }
+
+      var occupied = definition.elements.length;
+      var empty = definition.width * definition.height - occupied;
+      var total = 0;
+      for (var c = 0; c < definition.supplies.length; c++) {
+        if (definition.supplies[c]) total += Math.max(0, definition.supplies[c].count);
+      }
+
+      if (empty < total) {
+        issues.push({
+          severity: 'Blocking',
+          message: '空位只有 ' + empty + ' 格，却发了 ' + total + ' 张牌 —— 一定有几张放不下'
+        });
+      }
+    }
+
+    return issues;
+  }
+
+  function runForSave(definition) {
+    var problems = [];
+    var issues = runForSaveDetailed(definition);
+    for (var i = 0; i < issues.length; i++) {
+      if (issues[i].severity === 'Blocking') problems.push(issues[i].message);
+    }
+    return problems;
+  }
+
+  function firstLine(text) {
+    if (typeof text !== 'string' || text === '') return '';
+    var index = text.indexOf('\n');
+    return index <= 0 ? text : text.substring(0, index);
+  }
+
+  var api = {
+    safetyTicks: safetyTicks,
+    bitsText: bitsText,
+    run: run,
+    describe: describe,
+    runForSave: runForSave,
+    runForSaveDetailed: runForSaveDetailed
+  };
+
+  root.BitFlowCheck = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+/* ===== engine/catalog.js ===== */
+/* 类型目录（LevelTypeCatalog.cs 的浏览器版）。
+ *
+ * 数据抄自 Unity 菜单「导出类型目录」产出的 typeCatalog.json，
+ * 也就是真实类型资产 CreateDefinition 读出来的那份快照 —— 编辑器打开
+ * 只写了 type 的关卡时，靠它还原出和游戏一模一样的朝向 / 序列 / 数量。
+ *
+ * 手牌里的 type 也靠它认；认不出来时退回 kind 的内置默认值（与 C# 同一条规矩）。
+ */
+(function (root) {
+  'use strict';
+
+  var Doc = root.BitFlowDocument;
+  if (!Doc && typeof require === 'function') Doc = require('./document.js');
+
+  /* 与 Tools/LevelStudio/web-src/catalog.json 逐字段一致（schema 2）。 */
+  var BUILTIN_TYPES = [
+    { key: 'Type_Buffer', kind: 'Wall', label: 'BUFFER', hint: 'BUFFER  TAKE ONE FIXED PIECE BACK TO HAND', dir: 'Right', dir2: 'Down', sequence: '1', count: 1, acceptAnyFace: true, pass: 1, delay: 1, tool: true },
+    { key: 'Type_DelayGate_D1', kind: 'DelayGate', label: 'D1', hint: 'DELAY D1\nHOLD 1 TICK  THROUGH', dir: 'Right', dir2: 'Down', sequence: '1', count: 1, acceptAnyFace: true, pass: 1, delay: 1, tool: false },
+    { key: 'Type_DelayGate_D2', kind: 'DelayGate', label: 'D2', hint: 'DELAY D2\nHOLD 2 TICK  THROUGH', dir: 'Right', dir2: 'Down', sequence: '1', count: 1, acceptAnyFace: true, pass: 1, delay: 2, tool: false },
+    { key: 'Type_DelayGate_D3', kind: 'DelayGate', label: 'D3', hint: 'DELAY D3\nHOLD 3 TICK  THROUGH', dir: 'Right', dir2: 'Down', sequence: '1', count: 1, acceptAnyFace: true, pass: 1, delay: 3, tool: false },
+    { key: 'Type_DelayGate_D4', kind: 'DelayGate', label: 'D4', hint: 'DELAY D4\nHOLD 4 TICK  THROUGH', dir: 'Right', dir2: 'Down', sequence: '1', count: 1, acceptAnyFace: true, pass: 1, delay: 4, tool: false },
+    { key: 'Type_Emitter', kind: 'Emitter', label: 'E', hint: 'EMITTER E\n1011 x2  FACE →', dir: 'Right', dir2: 'Down', sequence: '1011', count: 8, acceptAnyFace: true, pass: 1, delay: 1, tool: false },
+    { key: 'Type_Filter_F0', kind: 'Filter', label: 'F0', hint: 'FILTER F0\nPASS 0  OUT →', dir: 'Right', dir2: 'Down', sequence: '1', count: 1, acceptAnyFace: true, pass: 0, delay: 1, tool: false },
+    { key: 'Type_Filter_F1', kind: 'Filter', label: 'F1', hint: 'FILTER F1\nPASS 1  OUT →', dir: 'Right', dir2: 'Down', sequence: '1', count: 1, acceptAnyFace: true, pass: 1, delay: 1, tool: false },
+    { key: 'Type_NotGate_N1', kind: 'NotGate', label: 'N1', hint: 'NOT N1\nINVERT  OUT →', dir: 'Right', dir2: 'Down', sequence: '1', count: 1, acceptAnyFace: true, pass: 1, delay: 1, tool: false },
+    { key: 'Type_Receiver', kind: 'Receiver', label: 'R', hint: 'RECEIVER R\nNEED 1 x4  ANY FACE', dir: 'Down', dir2: 'Down', sequence: '1', count: 4, acceptAnyFace: true, pass: 1, delay: 1, tool: false },
+    { key: 'Type_Splitter_L1', kind: 'Splitter', label: 'L1', hint: 'SPLITTER L1\n1 ↑   0 →', dir: 'Up', dir2: 'Right', sequence: '1', count: 1, acceptAnyFace: true, pass: 1, delay: 1, tool: false },
+    { key: 'Type_Wall', kind: 'Wall', label: 'WALL', hint: 'WALL', dir: 'Right', dir2: 'Down', sequence: '1', count: 1, acceptAnyFace: true, pass: 1, delay: 1, tool: false }
+  ];
+
+  function normalizeType(raw) {
+    return {
+      key: typeof raw.key === 'string' ? raw.key : '',
+      kind: typeof raw.kind === 'string' ? raw.kind : 'Wall',
+      label: typeof raw.label === 'string' ? raw.label : '',
+      hint: typeof raw.hint === 'string' ? raw.hint : '',
+      dir: typeof raw.dir === 'string' ? raw.dir : 'Right',
+      dir2: typeof raw.dir2 === 'string' ? raw.dir2 : 'Down',
+      sequence: typeof raw.sequence === 'string' ? raw.sequence : '1',
+      count: typeof raw.count === 'number' ? Math.trunc(raw.count) : 1,
+      acceptAnyFace: raw.acceptAnyFace !== false,
+      pass: typeof raw.pass === 'number' ? Math.trunc(raw.pass) : 1,
+      delay: typeof raw.delay === 'number' ? Math.trunc(raw.delay) : 1,
+      tool: raw.tool === true
+    };
+  }
+
+  function fromTypes(rawTypes) {
+    var types = [];
+    var byKey = Object.create(null);
+    var list = Array.isArray(rawTypes) ? rawTypes : [];
+
+    for (var i = 0; i < list.length; i++) {
+      if (!list[i] || typeof list[i] !== 'object') continue;
+      var spec = normalizeType(list[i]);
+      if (spec.key === '' || byKey[spec.key]) continue;
+      types.push(spec);
+      byKey[spec.key] = spec;
+    }
+
+    return {
+      schema: Doc.CURRENT_SCHEMA,
+      types: types,
+
+      find: function (typeKey) {
+        if (typeof typeKey !== 'string' || typeKey === '') return null;
+        return byKey[typeKey] || null;
+      },
+
+      /** 按种类找第一份快照（墙层、kind 模式没写参数时的参照）。 */
+      findByKind: function (kind) {
+        for (var i = 0; i < types.length; i++) {
+          if (Doc.parseKind(types[i].kind) === kind) return types[i];
+        }
+        return null;
+      },
+
+      /** 只列能摆上棋盘的件（工具卡是发牌用的，不能进 elements）。 */
+      placeable: function () {
+        var out = [];
+        for (var i = 0; i < types.length; i++) {
+          if (!types[i].tool) out.push(types[i]);
+        }
+        return out;
+      }
+    };
+  }
+
+  var builtin = fromTypes(BUILTIN_TYPES);
+
+  var api = {
+    BUILTIN_TYPES: BUILTIN_TYPES,
+    builtin: builtin,
+    fromTypes: fromTypes,
+    normalizeType: normalizeType
+  };
+
+  root.BitFlowCatalog = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+/* ===== samples.js ===== */
+/* 内置样关：两个官方关卡（与 Resources/BitFlow/Levels 下的文件同内容）+ 一关演示。
+ * 单文件交付不能 fetch，所以这些数据直接写在这里。 */
+(function (root) {
+  'use strict';
+
+  var SAMPLES = [
+    {
+      id: 'one_only',
+      title: 'ONE ONLY',
+      note: '官方关卡：有手牌，预设布局跑不通（自检应显示 📝）',
+      document: {
+        schema: 2,
+        displayName: 'ONE ONLY',
+        width: 9,
+        height: 8,
+        tickInterval: 0.35,
+        wallType: 'Type_Wall',
+        wallRows: [],
+        elements: [
+          { type: '', kind: 'Emitter', x: 0, y: 4, rot: 0, dir: 'Right', dir2: '', sequence: '10110000', count: 8, face: '', pass: -1, delay: -1, playerEditable: false },
+          { type: '', kind: 'Receiver', x: 8, y: 6, rot: 0, dir: 'Down', dir2: '', sequence: '11111111', count: 8, face: 'any', pass: -1, delay: -1, playerEditable: false }
+        ],
+        supplies: [
+          { type: 'Type_Splitter_L1', kind: 'Splitter', count: 1 },
+          { type: 'Type_NotGate_N1', kind: 'NotGate', count: 1 },
+          { type: 'Type_Filter_F1', kind: 'Filter', count: 1 }
+        ],
+        allowBuild: true
+      }
+    },
+    {
+      id: 'wait111',
+      title: 'WAIT111',
+      note: '官方关卡：延迟器 D4 改变节奏，无手牌（自检应显示 ✅）',
+      document: {
+        schema: 2,
+        displayName: 'WAIT111',
+        width: 9,
+        height: 8,
+        tickInterval: 0.35,
+        wallType: '',
+        wallRows: [],
+        elements: [
+          { type: '', kind: 'Emitter', x: 0, y: 2, rot: 0, dir: 'Right', dir2: '', sequence: '1011', count: 4, face: '', pass: -1, delay: -1, playerEditable: true },
+          { type: '', kind: 'DelayGate', x: 3, y: 2, rot: 0, dir: '', dir2: '', sequence: '', count: -1, face: '', pass: -1, delay: 4, playerEditable: true },
+          { type: '', kind: 'Receiver', x: 7, y: 2, rot: 0, dir: 'Down', dir2: '', sequence: '1101', count: 4, face: 'any', pass: -1, delay: -1, playerEditable: true },
+          { type: '', kind: 'Emitter', x: 0, y: 6, rot: 0, dir: 'Right', dir2: '', sequence: '1011', count: 4, face: '', pass: -1, delay: -1, playerEditable: true },
+          { type: '', kind: 'Receiver', x: 7, y: 6, rot: 0, dir: 'Down', dir2: '', sequence: '1101', count: 4, face: 'any', pass: -1, delay: -1, playerEditable: true }
+        ],
+        supplies: [],
+        allowBuild: false
+      }
+    },
+    {
+      id: 'not_lab',
+      title: 'NOT LAB',
+      note: '演示关：发射 1111 → 非门取反 → 接收 0000（应显示 ✅ 通关）',
+      document: {
+        schema: 2,
+        displayName: 'NOT LAB',
+        width: 9,
+        height: 6,
+        tickInterval: 0.35,
+        wallType: '',
+        wallRows: ['#########', '#.......#', '#.......#', '#.......#', '#.......#', '#########'],
+        elements: [
+          { type: '', kind: 'Emitter', x: 1, y: 3, rot: 0, dir: 'Right', dir2: '', sequence: '1111', count: 4, face: '', pass: -1, delay: -1, playerEditable: false },
+          { type: '', kind: 'NotGate', x: 3, y: 3, rot: 0, dir: 'Right', dir2: '', sequence: '', count: -1, face: '', pass: -1, delay: -1, playerEditable: false },
+          { type: '', kind: 'Receiver', x: 7, y: 3, rot: 0, dir: 'Left', dir2: '', sequence: '0000', count: 4, face: 'any', pass: -1, delay: -1, playerEditable: false }
+        ],
+        supplies: [],
+        allowBuild: false
+      }
+    }
+  ];
+
+  function clone(document) {
+    return JSON.parse(JSON.stringify(document));
+  }
+
+  function byId(id) {
+    for (var i = 0; i < SAMPLES.length; i++) {
+      if (SAMPLES[i].id === id) return SAMPLES[i];
+    }
+    return null;
+  }
+
+  function blank() {
+    return {
+      schema: 2,
+      displayName: 'NEW LEVEL',
+      width: 9,
+      height: 8,
+      tickInterval: 0.35,
+      wallType: '',
+      wallRows: [],
+      elements: [],
+      supplies: [],
+      allowBuild: false
+    };
+  }
+
+  var api = { SAMPLES: SAMPLES, byId: byId, blank: blank, clone: clone };
+  root.BitFlowSamples = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+/* ===== selftest.js ===== */
+/* 启动自检：用内置样关跑几条硬断言，结果直接印在页脚。
+ *
+ * 为什么页脚要印它：这是离线单文件，出了问题时没有控制台可看。
+ * 只要页脚写着"自检 6/6 通过"，就说明这份 HTML 里的引擎仍然能跑出预期结果；
+ * 数字对不上就是文件被改坏了，一眼能看出来。 */
+(function (root) {
+  'use strict';
+
+  var Doc = root.BitFlowDocument;
+  var Sim = root.BitFlowSimulation;
+  var Check = root.BitFlowCheck;
+  var Catalog = root.BitFlowCatalog;
+  var Samples = root.BitFlowSamples;
+  if (!Doc && typeof require === 'function') Doc = require('./engine/document.js');
+  if (!Sim && typeof require === 'function') Sim = require('./engine/simulation.js');
+  if (!Check && typeof require === 'function') Check = require('./engine/check.js');
+  if (!Catalog && typeof require === 'function') Catalog = require('./engine/catalog.js');
+  if (!Samples && typeof require === 'function') Samples = require('./samples.js');
+
+  function arraysEqual(left, right) {
+    if (left.length !== right.length) return false;
+    for (var i = 0; i < left.length; i++) {
+      if (left[i] !== right[i]) return false;
+    }
+    return true;
+  }
+
+  function summarize(doc) {
+    var read = Doc.read(doc, Catalog.builtin);
+    var outcome = Check.run(read.definition, read.definition.hasSupplies);
+    return { read: read, outcome: outcome, definition: read.definition };
+  }
+
+  function run() {
+    var checks = [];
+
+    function check(name, fn) {
+      try {
+        var detail = fn();
+        checks.push({ name: name, ok: detail !== false, detail: detail === false ? '断言不成立' : (detail || '') });
+      } catch (error) {
+        checks.push({ name: name, ok: false, detail: String(error && error.message ? error.message : error) });
+      }
+    }
+
+    check('序列 1001 发 6 位 = 100110', function () {
+      var order = Sim.buildEmitOrder({ sequence: '1001', emitCount: 6 });
+      return arraysEqual(order, [1, 0, 0, 1, 1, 0]) ? '' : '实得 ' + order.join('');
+    });
+
+    check('WAIT111 通关 13 ticks', function () {
+      var sample = Samples.byId('wait111');
+      var result = summarize(sample.document);
+      return result.outcome.success && result.outcome.ticks === 13
+        ? ''
+        : 'success=' + result.outcome.success + ' ticks=' + result.outcome.ticks;
+    });
+
+    check('ONE ONLY 报 📝 预设布局未通关', function () {
+      var sample = Samples.byId('one_only');
+      var result = summarize(sample.document);
+      var text = result.outcome.report;
+      return !result.outcome.success && text.indexOf('📝 预设布局未通关') === 0 ? '' : text.split('\n')[0];
+    });
+
+    check('NOT LAB 逐位匹配 0000', function () {
+      var sample = Samples.byId('not_lab');
+      var result = summarize(sample.document);
+      var received = result.outcome.result.receivers[0];
+      if (!received) return '没有接收器结果';
+      if (!result.outcome.success) return '未通关：' + result.outcome.report.replace(/\n/g, ' ');
+      return arraysEqual(received.received, [0, 0, 0, 0]) ? '' : '实收 ' + received.received.join('');
+    });
+
+    check('越界格被跳过并报问题', function () {
+      var result = summarize({
+        schema: 2, displayName: 'EDGE', width: 3, height: 3,
+        elements: [
+          { kind: 'Emitter', x: 9, y: 0, dir: 'Right', sequence: '1', count: 1 },
+          { kind: 'Receiver', x: 2, y: 0, dir: 'Down', sequence: '1', count: 1 }
+        ]
+      });
+      var hit = false;
+      for (var i = 0; i < result.read.problems.length; i++) {
+        if (result.read.problems[i].indexOf('越界') >= 0) hit = true;
+      }
+      return hit ? '' : 'problems=' + JSON.stringify(result.read.problems);
+    });
+
+    check('两个发射器抢同一格 → Conflict', function () {
+      var read = Doc.read({
+        schema: 2, displayName: 'CLASH', width: 5, height: 5,
+        elements: [
+          { kind: 'Emitter', x: 0, y: 2, dir: 'Right', sequence: '11', count: 2 },
+          { kind: 'Emitter', x: 2, y: 2, dir: 'Left', sequence: '00', count: 2 },
+          { kind: 'Receiver', x: 4, y: 0, dir: 'Up', sequence: '1', count: 1 }
+        ]
+      }, Catalog.builtin);
+      var simulation = new Sim.Simulation(read.definition);
+      var report = simulation.step();
+      var conflict = false;
+      for (var i = 0; i < report.destroyed.length; i++) {
+        if (report.destroyed[i].reason === 'Conflict' && report.destroyed[i].bitId === 0) conflict = true;
+      }
+      if (!conflict) return false;
+      return '';
+    });
+
+    var passed = 0;
+    for (var i = 0; i < checks.length; i++) {
+      if (checks[i].ok) passed++;
+    }
+
+    return {
+      ok: passed === checks.length,
+      passed: passed,
+      total: checks.length,
+      checks: checks,
+      fixtureCount: Samples.SAMPLES.length
+    };
+  }
+
+  var api = { run: run };
+  root.BitFlowSelfTest = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+/* ===== grid.js ===== */
+/* 棋盘渲染器：DOM 格子。
+ *
+ * 为什么从 canvas 换成 DOM：格子里要写字（元件缩写、箭头、角标、坐标、位），
+ * canvas 得自己算字号和基线，格子一小就糊；交给浏览器排版则天然清晰，
+ * 还白拿原生 title 悬浮提示与 CSS 状态类。棋盘上限 40×40，节点量扛得住。
+ *
+ * 坐标约定：y=0 在最下面，与 wallRows 的行序、游戏内的网格一致。
+ */
+(function (root) {
+  'use strict';
+
+  var Doc = root.BitFlowDocument;
+  var D = root.BitFlowDir;
+
+  var KIND_COLORS = {
+    0: '#5b6673', // Wall
+    1: '#b48ead', // Emitter
+    2: '#5aa9e6', // Receiver
+    3: '#e0a458', // Splitter
+    4: '#7ee787', // NotGate
+    5: '#d98cb3', // Filter
+    6: '#8fbcbb'  // DelayGate
+  };
+
+  var KIND_SHORT = { 0: '#', 1: 'E', 2: 'R', 3: 'L', 4: 'N', 5: 'F', 6: 'D' };
+
+  var KIND_LABELS = {
+    0: '墙 Wall',
+    1: '发射器 Emitter',
+    2: '接收器 Receiver',
+    3: '分流器 Splitter',
+    4: '非门 NotGate',
+    5: '过滤器 Filter',
+    6: '延迟器 DelayGate'
+  };
+
+  var DIR_NAMES = ['Up', 'Right', 'Down', 'Left'];
+
+  function key(x, y) { return x + ',' + y; }
+
+  function span(className) {
+    var node = document.createElement('span');
+    node.className = className;
+    return node;
+  }
+
+  function directionList(element) {
+    if (!element) return [];
+    if (element.kind === 1) return [element.facing];
+    if (element.kind === 2) return element.acceptAnyFace ? [] : [element.feedFace];
+    if (element.kind === 3) {
+      var list = [element.oneArm];
+      if (element.zeroArm !== undefined && element.zeroArm !== element.oneArm) list.push(element.zeroArm);
+      return list;
+    }
+    if (element.kind === 4 || element.kind === 5) return [element.outputDir];
+    return [];
+  }
+
+  function badgeText(element) {
+    if (!element) return '';
+    if (element.kind === 1 && isFinite(element.emitCount)) return '×' + element.emitCount;
+    if (element.kind === 2 && isFinite(element.targetCount)) return '×' + element.targetCount;
+    if (element.kind === 6 && isFinite(element.delayTicks)) return 'D' + element.delayTicks;
+    return '';
+  }
+
+  /* 一格的全部信息：给 title 用，也给舞台右上角的坐标条用。 */
+  function describeCell(document_, catalog, x, y) {
+    var doc = document_ || {};
+    var list = Array.isArray(doc.elements) ? doc.elements : [];
+    var raw = null;
+    for (var i = 0; i < list.length; i++) {
+      if ((list[i].x | 0) === x && (list[i].y | 0) === y) { raw = list[i]; break; }
+    }
+    var element = raw ? Doc.resolveCell(raw, catalog) : null;
+    var rows = Array.isArray(doc.wallRows) ? doc.wallRows : [];
+    var isWall = (rows[y] || '').charAt(x) === '#';
+
+    var parts = ['(' + x + ', ' + y + ')'];
+    if (element) {
+      parts.push(KIND_LABELS[element.kind] || ('kind ' + element.kind));
+      var dirs = directionList(element);
+      if (dirs.length === 1) parts.push('朝向 ' + D.mark(dirs[0]));
+      else if (dirs.length > 1) parts.push('出口 ' + dirs.map(function (dir) { return D.mark(dir); }).join(' '));
+      if (element.kind === 2) parts.push(element.acceptAnyFace ? '四面可收' : '只认进料面');
+      if (element.kind === 1 && raw) parts.push('序列 ' + (raw.sequence || '') );
+      if (element.kind === 2 && isFinite(element.targetCount)) parts.push('目标 ×' + element.targetCount);
+      if (element.kind === 6 && isFinite(element.delayTicks)) parts.push('停 ' + element.delayTicks + ' 拍');
+      if (raw && raw.type) parts.push('type ' + raw.type);
+      if (element.playerEditable) parts.push('玩家可搬');
+    } else if (isWall) {
+      parts.push('墙');
+    } else {
+      parts.push('空');
+    }
+    return parts.join(' · ');
+  }
+
+  /* 从任意事件反查格子（事件可能落在 span 上）。 */
+  function cellFromEvent(event) {
+    var node = event && event.target ? event.target : null;
+    while (node && node.classList) {
+      if (node.classList.contains('cell')) {
+        var x = parseInt(node.getAttribute('data-x'), 10);
+        var y = parseInt(node.getAttribute('data-y'), 10);
+        if (isFinite(x) && isFinite(y)) return { x: x, y: y };
+        return null;
+      }
+      node = node.parentNode;
+    }
+    return null;
+  }
+
+  function Grid(container) {
+    this.container = container;
+    this.viewport = container.parentNode || container;
+    this.inner = document.createElement('div');
+    this.inner.className = 'grid-inner';
+    container.appendChild(this.inner);
+
+    this.document = null;
+    this.catalog = null;
+    this.frame = null;
+    this.selection = null;
+    this.hover = null;
+    this.brush = null;
+    this.tool = 'paint';
+
+    this.width = 0;
+    this.height = 0;
+    this.builtKey = '';
+    this.cells = [];
+    this.cellSize = 32;
+
+    /* 舞台高度会随「清单 / 检查器」内容变化，光靠 window.resize 不够。 */
+    var self = this;
+    this.observer = null;
+    if (typeof ResizeObserver === 'function') {
+      this.observer = new ResizeObserver(function () { self.draw(); });
+      this.observer.observe(this.viewport);
+    }
+  }
+
+  /* 部分更新：ui.js 会分几次塞 document / frame / hover。 */
+  Grid.prototype.setState = function (state) {
+    if (!state) return;
+    if (state.document) this.document = state.document;
+    if (state.catalog) this.catalog = state.catalog;
+    if (state.frame !== undefined) this.frame = state.frame;
+    if (state.selection !== undefined) this.selection = state.selection;
+    if (state.hover !== undefined) this.hover = state.hover;
+    if (state.brush !== undefined) this.brush = state.brush;
+    if (state.tool !== undefined) this.tool = state.tool;
+    this.draw();
+  };
+
+  Grid.prototype.resize = function () { this.draw(); };
+
+  Grid.prototype.draw = function () {
+    if (!this.document) return;
+    this.build();
+    this.layout();
+    this.paint();
+  };
+  /* 量父容器（滚动盒）而不是 #grid 自身：内容变大会把 #grid 撑大，
+   * 反过来再量它就会越算越大。 */
+  Grid.prototype.layout = function () {
+    var box = this.viewport;
+    var width = Math.max(1, this.width);
+    var height = Math.max(1, this.height);
+    var rect = box.getBoundingClientRect ? box.getBoundingClientRect() : { width: 640, height: 480 };
+    var gap = 3;
+    var availWidth = Math.max(200, (rect.width || 640) - 24);
+    var availHeight = Math.max(160, (rect.height || 480) - 24);
+
+    var size = Math.floor(Math.min(
+      (availWidth - gap * (width - 1)) / width,
+      (availHeight - gap * (height - 1)) / height
+    ));
+    if (!isFinite(size)) size = 32;
+    size = Math.max(26, Math.min(96, size));
+
+    this.cellSize = size;
+    this.inner.style.width = (size * width + gap * (width - 1)) + 'px';
+    this.inner.style.height = (size * height + gap * (height - 1)) + 'px';
+    this.inner.style.gridTemplateColumns = 'repeat(' + width + ', ' + size + 'px)';
+    this.inner.style.gridTemplateRows = 'repeat(' + height + ', ' + size + 'px)';
+    this.inner.style.setProperty('--cell', size + 'px');
+    /* 格子够大才显示格内坐标，否则太挤。 */
+    this.inner.classList.toggle('with-coords', size >= 46);
+  };
+
+  /* 尺寸变了才重建节点；其余情况复用，逐 tick 重画才不卡。 */
+  Grid.prototype.build = function () {
+    var doc = this.document;
+    var width = Math.max(1, doc.width | 0);
+    var height = Math.max(1, doc.height | 0);
+    var signature = width + 'x' + height;
+
+    this.width = width;
+    this.height = height;
+    if (signature === this.builtKey) return false;
+
+    this.inner.innerHTML = '';
+    this.cells = [];
+
+    for (var row = 0; row < height; row++) {
+      for (var col = 0; col < width; col++) {
+        var node = document.createElement('div');
+        node.className = 'cell';
+        node.setAttribute('data-x', String(col));
+        node.setAttribute('data-y', String(height - 1 - row));
+
+        node.appendChild(span('coord'));
+        node.appendChild(span('glyph'));
+
+        var arrows = [];
+        for (var d = 0; d < 4; d++) {
+          var arrow = span('arrow ' + DIR_NAMES[d].toLowerCase());
+          node.appendChild(arrow);
+          arrows.push(arrow);
+        }
+        node.appendChild(span('badge'));
+        node.appendChild(span('bit'));
+
+        node._coord = node.children[0];
+        node._glyph = node.children[1];
+        node._arrows = arrows;
+        node._badge = node.children[6];
+        node._bit = node.children[7];
+
+        this.inner.appendChild(node);
+        this.cells.push(node);
+      }
+    }
+
+    this.builtKey = signature;
+    return true;
+  };
+  Grid.prototype.paint = function () {
+    var doc = this.document;
+    var width = this.width;
+    var height = this.height;
+    var rows = Array.isArray(doc.wallRows) ? doc.wallRows : [];
+    var elements = Array.isArray(doc.elements) ? doc.elements : [];
+    var catalog = this.catalog;
+
+    var byCell = {};
+    var byId = {};
+    for (var i = 0; i < elements.length; i++) {
+      var element = Doc.resolveCell(elements[i], catalog);
+      if (!element) continue;
+      byCell[key(element.x, element.y)] = { element: element, cell: elements[i] };
+      if (element.id !== undefined && element.id !== null) byId[element.id] = element;
+    }
+
+    var bits = {};
+    var frame = this.frame;
+    if (frame && frame.bits) {
+      for (var b = 0; b < frame.bits.length; b++) {
+        bits[key(frame.bits[b].x, frame.bits[b].y)] = frame.bits[b].value;
+      }
+    }
+
+    var hit = {};
+    var miss = {};
+    var destroyed = {};
+    var absorbed = {};
+    var report = frame && frame.report ? frame.report : null;
+    if (report) {
+      for (var g = 0; g < report.destroyed.length; g++) {
+        destroyed[key(report.destroyed[g].x, report.destroyed[g].y)] = true;
+      }
+      for (var h = 0; h < report.delayAbsorbed.length; h++) {
+        absorbed[key(report.delayAbsorbed[h].x, report.delayAbsorbed[h].y)] = true;
+      }
+      for (var de = 0; de < report.deliveries.length; de++) {
+        var target = byId[report.deliveries[de].receiverId];
+        if (!target) continue;
+        if (report.deliveries[de].matched) hit[key(target.x, target.y)] = true;
+        else miss[key(target.x, target.y)] = true;
+      }
+    }
+
+    var selection = this.selection;
+    var hover = this.hover;
+    var brush = this.brush;
+    var ghost = this.tool === 'paint' && brush && brush.kind !== Doc.KIND.Wall;
+
+    this.inner.classList.toggle('tool-select', this.tool === 'select');
+    this.inner.classList.toggle('tool-paint', this.tool !== 'select');
+
+    for (var row = 0; row < height; row++) {
+      var gridY = height - 1 - row;
+      var line = rows[gridY] || '';
+      for (var col = 0; col < width; col++) {
+        var node = this.cells[row * width + col];
+        var cellKey = key(col, gridY);
+        var entry = byCell[cellKey] || null;
+        var element = entry ? entry.element : null;
+        var isWall = line.charAt(col) === '#';
+        var isHovered = !!(hover && hover.x === col && hover.y === gridY);
+
+        var classes = ['cell'];
+        if (element) classes.push('kind-' + element.kind);
+        else if (isWall) classes.push('wall');
+        else classes.push('empty');
+        if (element && element.playerEditable) classes.push('pe');
+        if (selection && selection.x === col && selection.y === gridY) classes.push('selected');
+        if (isHovered) classes.push('hover');
+        if (destroyed[cellKey]) classes.push('fx-destroy');
+        if (hit[cellKey]) classes.push('fx-hit');
+        if (miss[cellKey]) classes.push('fx-miss');
+        if (absorbed[cellKey]) classes.push('fx-absorb');
+        node.className = classes.join(' ');
+
+        node.title = describeCell(doc, catalog, col, gridY);
+        node._coord.textContent = col + ',' + gridY;
+
+        node._glyph.className = 'glyph';
+        if (element) {
+          node._glyph.textContent = KIND_SHORT[element.kind] || '?';
+        } else if (isWall) {
+          node._glyph.textContent = '#';
+        } else if (ghost && isHovered) {
+          node._glyph.textContent = KIND_SHORT[brush.kind] || '?';
+          node._glyph.className = 'glyph ghost-glyph';
+        } else {
+          node._glyph.textContent = '';
+        }
+
+        var dirs = directionList(element);
+        for (var d = 0; d < 4; d++) {
+          node._arrows[d].textContent = dirs.indexOf(d) >= 0 ? D.mark(d) : '';
+        }
+
+        node._badge.textContent = badgeText(element);
+
+        var value = bits[cellKey];
+        node._bit.textContent = (value === 0 || value === 1) ? String(value) : '';
+        node._bit.className = 'bit' + (value === 1 ? ' b1' : (value === 0 ? ' b0' : ''));
+      }
+    }
+  };
+
+  var api = {
+    Grid: Grid,
+    KIND_COLORS: KIND_COLORS,
+    KIND_SHORT: KIND_SHORT,
+    KIND_LABELS: KIND_LABELS,
+    describeCell: describeCell,
+    cellFromEvent: cellFromEvent
+  };
+
+  root.BitFlowGrid = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+/* ===== timeline.js ===== */
+/* 时间轴：把一关跑完并把每个 tick 的快照存下来，支持前进 / 后退 / 播放 / 拖动。
+ *
+ * 为什么先整关跑完再回放（而不是边走边算）：作者要能反复对比"第 7 拍和第 8 拍"，
+ * 后退必须是真的后退。一关几千 tick、每帧只有几十个位，全部存下来也就几 MB。
+ */
+(function (root) {
+  'use strict';
+
+  var Sim = root.BitFlowSimulation;
+  var Check = root.BitFlowCheck;
+  if (!Sim && typeof require === 'function') Sim = require('./engine/simulation.js');
+  if (!Check && typeof require === 'function') Check = require('./engine/check.js');
+
+  var DEFAULT_MAX_FRAMES = 1200;
+
+  function snapshot(simulation, report) {
+    return {
+      tick: simulation.tickIndex,
+      bits: simulation.getBits(),
+      report: report,
+      emitters: simulation.getEmitterProgress(),
+      receivers: simulation.getReceiverProgress(),
+      delays: simulation.getDelayGateProgress(),
+      finished: simulation.finished
+    };
+  }
+
+  /* 跑完整关，返回帧序列 + 结算。maxFrames 只影响回放长度，不影响自检结论。 */
+  function build(definition, options) {
+    var settings = options || {};
+    var maxFrames = settings.maxFrames || DEFAULT_MAX_FRAMES;
+    var simulation = new Sim.Simulation(definition);
+    var safety = Math.max(Check.safetyTicks(definition), simulation.safetyTickLimit);
+
+    var frames = [snapshot(simulation, null)];
+    var steps = 0;
+
+    while (!simulation.finished && steps < safety && frames.length < maxFrames) {
+      var report = simulation.step();
+      steps++;
+      frames.push(snapshot(simulation, report));
+    }
+
+    return {
+      frames: frames,
+      result: simulation.buildResult(),
+      finished: simulation.finished,
+      truncated: !simulation.finished,
+      totalTicks: simulation.tickIndex,
+      safety: safety
+    };
+  }
+
+  /* 播放器：只管"第几帧"和播放态，UI 通过 onFrame 重画。 */
+  function Player(timeline, onFrame) {
+    this.timeline = timeline;
+    this.onFrame = onFrame || function () { };
+    this.index = 0;
+    this.speed = 1;
+    this.playing = false;
+    this.timer = null;
+    this.tickInterval = 0.35;
+  }
+
+  Player.prototype.setTickInterval = function (seconds) {
+    this.tickInterval = Math.max(0.05, Number(seconds) || 0.35);
+  };
+
+  Player.prototype.frame = function () {
+    return this.timeline.frames[Math.min(this.index, this.timeline.frames.length - 1)];
+  };
+
+  Player.prototype.emit = function () {
+    this.onFrame(this.frame(), this.index, this.timeline.frames.length);
+  };
+
+  Player.prototype.seek = function (index) {
+    var max = this.timeline.frames.length - 1;
+    this.index = Math.max(0, Math.min(max, index | 0));
+    this.emit();
+  };
+
+  Player.prototype.stepBy = function (delta) {
+    this.pause();
+    this.seek(this.index + delta);
+  };
+
+  Player.prototype.restart = function () {
+    this.pause();
+    this.seek(0);
+  };
+
+  Player.prototype.play = function () {
+    if (this.playing) return;
+    if (this.index >= this.timeline.frames.length - 1) this.index = 0;
+
+    var self = this;
+    this.playing = true;
+    var delay = Math.max(24, Math.round((this.tickInterval * 1000) / this.speed));
+
+    this.timer = setInterval(function () {
+      if (self.index >= self.timeline.frames.length - 1) {
+        self.pause();
+        self.emit();
+        return;
+      }
+      self.index++;
+      self.emit();
+    }, delay);
+
+    this.emit();
+  };
+
+  Player.prototype.pause = function () {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.playing = false;
+  };
+
+  Player.prototype.toggle = function () {
+    if (this.playing) this.pause();
+    else this.play();
+    this.emit();
+  };
+
+  Player.prototype.setSpeed = function (speed) {
+    this.speed = Math.max(0.25, Math.min(8, Number(speed) || 1));
+    if (this.playing) {
+      this.pause();
+      this.play();
+    }
+  };
+
+  var api = { build: build, Player: Player, DEFAULT_MAX_FRAMES: DEFAULT_MAX_FRAMES };
+  root.BitFlowTimeline = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+/* ===== docs.js ===== */
+/* 内置文档：单文件交付不能读 docs/*.md，帮助面板的内容就写在这里。
+ * 只写"作者改关卡时真正会用到的"，不复述 C# 注释。 */
+(function (root) {
+  'use strict';
+
+  var SECTIONS = [
+    {
+      title: '5 分钟上手',
+      html: [
+        '<p>左边是棋盘，右边是检查器。点画笔再点格子就能放件；右键擦除；按住 Shift 点件是旋转。</p>',
+        '<ol>',
+        '<li>选一件画笔（或按 1-7），在格子上落件。</li>',
+        '<li>选中格子后在右边改参数：朝向、序列、数量、进料面、延迟 tick。</li>',
+        '<li>点 <b>自检</b>：这里跑的就是游戏里那份模拟器，结论措辞也和游戏一致。</li>',
+        '<li>时间轴可以逐 tick 前进/后退/播放，确认第一次销毁、第一次收货发生在第几拍。</li>',
+        '<li>导出 JSON，放回 <code>Resources/BitFlow/Levels/</code> 或直接在游戏里导入。</li>',
+        '</ol>',
+        '<p>所有数据都自动存在浏览器本地（localStorage）。换浏览器/清缓存就没了，重要的关一定导出。</p>'
+      ].join('')
+    },
+    {
+      title: '关卡 JSON（schema 2）',
+      html: [
+        '<p>字段只增不改：旧文件缺字段就用默认值。坐标 y 向上，<code>wallRows[0]</code> 是最下面一行（y=0）。</p>',
+        '<table class="doc-table"><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody>',
+        '<tr><td>schema</td><td>当前 2</td></tr>',
+        '<tr><td>displayName / width / height / tickInterval</td><td>关卡名、尺寸、每 tick 秒数（0.05~5）</td></tr>',
+        '<tr><td>wallRows</td><td>墙字符画，一行一个 y，<code>#</code> 是墙；也可用旧写法 <code>wallMap</code>（\\n 分行）</td></tr>',
+        '<tr><td>elements[]</td><td>元件格：<code>type</code>（精确类型）或 <code>kind</code>（宽松），<code>x/y</code>，<code>rot</code>，<code>dir/dir2</code>，<code>sequence</code>，<code>count</code>，<code>face</code>，<code>pass</code>，<code>delay</code>，<code>playerEditable</code></td></tr>',
+        '<tr><td>supplies[]</td><td>手牌：<code>type</code>/<code>kind</code> + <code>count</code>（-1 = 1 张，0 = 跳过并报警）</td></tr>',
+        '<tr><td>allowBuild</td><td>允许玩家进关后自己搬件；有手牌时自动视为 true</td></tr>',
+        '</tbody></table>',
+        '<p><b>type 模式</b>：朝向由类型快照 + <code>rot</code> 决定，且 <code>pass</code> 被忽略（游戏里就是这么读的）。<br>',
+        '<b>kind 模式</b>：<code>dir</code>/<code>dir2</code> 是绝对朝向，<code>rot</code> 不参与。<br>',
+        '<code>type</code> 在本工具里找不到时，会退回 <code>kind</code> 的默认值并记一条问题 —— 和游戏侧一致。</p>'
+      ].join('')
+    },
+    {
+      title: '元件规则（模拟器语义）',
+      html: [
+        '<table class="doc-table"><thead><tr><th>件</th><th>行为</th></tr></thead><tbody>',
+        '<tr><td>发射器 E</td><td>按朝向每 tick 吐一位；前方被占/是墙/是发射器机身就顺延。序列按"末字符先弹"组成循环单元，再循环填满 <code>count</code> 位（count=6、序列 1001 → 1,0,0,1,1,0）。</td></tr>',
+        '<tr><td>接收器 R</td><td>默认四面可收；<code>face=in</code> 时只认进料面，其余面撞上即销毁。按 <code>sequence</code> 循环逐位比对，收满 <code>count</code> 且全对才算成功，超收也算失败。</td></tr>',
+        '<tr><td>分流器 L</td><td>值 1 走 OneArm、值 0 走 ZeroArm；从任一出口面逆行撞入 → 销毁。</td></tr>',
+        '<tr><td>非门 N</td><td>值取反后从输出面射出；逆行 → 销毁。</td></tr>',
+        '<tr><td>过滤器 F</td><td>只放行指定值，其余销毁；逆行 → 销毁。</td></tr>',
+        '<tr><td>延迟器 D</td><td>进队即离场（不占格），比直通多停 N 拍后从进入方向原样穿出。队列上限 8，满了再进 → 销毁。四面等价，旋转没有意义。</td></tr>',
+        '<tr><td>墙</td><td>撞上即销毁；发射器正前方是墙则永久顺延。</td></tr>',
+        '</tbody></table>',
+        '<p>每 tick 固定四步：<b>延迟器放行 → 发射 → 前进（含链式阻塞/抢格/对穿）→ 元件裁决</b>。顺序换了结果就会变，所以时间轴逐 tick 回放和游戏逐帧一致。</p>',
+        '<p>结束条件：所有发射器吐完、场上无位、延迟器无存货；或到达 5000 tick 安全上限（自检会额外用 max(128, W×H×8) 兜底，两者取大）。</p>'
+      ].join('')
+    },
+    {
+      title: '自检在查什么',
+      html: [
+        '<p>不是"能跑就存"，只查那些<b>无论玩家怎么动都救不回来</b>的错：</p>',
+        '<ul>',
+        '<li>没有接收器 / 没有发射器（Blocking）</li>',
+        '<li>没有手牌，但预设布局跑不通（Blocking）</li>',
+        '<li>手牌里发了发射器或接收器（Blocking —— 那是题面，不是牌）</li>',
+        '<li>空位格数 &lt; 总牌数（Blocking —— 一定有几张放不下）</li>',
+        '<li>有手牌，但预设布局自己就能通关（Advisory —— 手牌是摆设，能存但该想想）</li>',
+        '</ul>',
+        '<p>报告措辞与游戏内自检一致：<code>✅ 通关</code> / <code>📝 预设布局未通关（有手牌的关，这是预期）</code> / <code>❌ 未通过</code>；实收超过 24 位会截断。</p>'
+      ].join('')
+    },
+    {
+      title: '手牌试玩（Solve）',
+      html: [
+        '<p>手牌关光看自检不够：得亲手按<b>玩家规则</b>摆一遍，确认这套牌真能解。点舞台栏的 <b>🧩 试玩</b>。</p>',
+        '<ul>',
+        '<li>棋盘换上手牌的临时副本：左侧 <b>手牌</b> 栏列出每摞牌与余量，点一张牌选中，再点空格落件。</li>',
+        '<li><b>锁定件</b> = 进场时 <code>playerEditable=false</code> 的那些格：搬不动、也压不掉；指针落在上面会直接拒绝。</li>',
+        '<li>点自己放的件 → 拾回原摞（两摞同类型也不会串味）；右键 / Shift+左键 → 旋转（墙、延迟器不转）。</li>',
+        '<li><b>BUFFER</b> 这类工具卡不上棋盘：选中它再点锁定件，就把那枚预设件收回手牌。</li>',
+        '<li>试玩有独立撤销栈（40 步），Ctrl+Z 撤销的是试玩，不碰作者的编辑历史。</li>',
+        '<li>点 <b>自检</b>：跑通后「采用解」才可点 —— 它把这些件写成预设件（<code>playerEditable=false</code>），手牌原样保留。</li>',
+        '<li>点「退出」直接丢弃试玩布局，回到试玩前的预设；试玩期间不写回、也不覆盖本地自动保存。</li>',
+        '</ul>',
+        '<p>规则本身写在 <code>src/hand.js</code>，有 <code>tests/hand.js</code> 单测覆盖；界面只负责把点击翻成"人话"提示。</p>'
+      ].join('')
+    },
+    {
+      title: '键盘与鼠标',
+      html: [
+        '<table class="doc-table"><thead><tr><th>操作</th><th>效果</th></tr></thead><tbody>',
+        '<tr><td>左键</td><td>用当前画笔落件；<b>点在已有元件的格子上只选中，不会覆写</b></td></tr>',
+        '<tr><td>右键</td><td>擦除（元件与墙一起清；空格上右键只选中）</td></tr>',
+        '<tr><td>选择工具 V / 0 / Esc</td><td>进入纯选择状态：左键只选，不落件</td></tr>',
+        '<tr><td>Shift + 左键 / R</td><td>旋转选中件（延迟器跳过）</td></tr>',
+        '<tr><td>1 ~ 7</td><td>切换画笔：墙 / 发射器 / 接收器 / 分流器 / 非门 / 过滤器 / 延迟器</td></tr>',
+        '<tr><td>Ctrl + Z / Ctrl + Y / Ctrl + Shift + Z</td><td>撤销 / 重做（最多 60 步；导入、载入样例会清空历史）</td></tr>',
+        '<tr><td>Delete / Backspace</td><td>删除选中件</td></tr>',
+        '<tr><td>← →</td><td>时间轴单步</td></tr>',
+        '<tr><td>空格</td><td>播放 / 暂停</td></tr>',
+        '<tr><td>Ctrl + S</td><td>导出 JSON（不触发浏览器保存网页）</td></tr>',
+        '</tbody></table>'
+      ].join('')
+    },
+    {
+      title: '为什么能相信它和游戏一致',
+      html: [
+        '<p>浏览器里的这份引擎是 <code>Assets/Scripts/Gameplay/BitFlow/Runtime/Core/*.cs</code> 的逐行移植，',
+        '并且用真代码做过对拍：</p>',
+        '<ul>',
+        '<li><code>tests/parity-csharp/</code> 用 <code>Compile Include</code> 把<b>游戏同一份 Core 源文件</b>编进一个 dotnet 控制台程序，',
+        '读同一批 fixture，导出 expected-csharp.json。</li>',
+        '<li><code>node tests/parity.js --check</code> 把 JS 结果与它逐字段比对：',
+        '元件定义（含 Id 分配顺序）、构建问题文案、tick 数、结算明细、自检意见、报告全文。</li>',
+        '</ul>',
+        '<p>当前状态见页脚：对拍 fixture 数、自检通过项数、构建时间。</p>'
+      ].join('')
+    }
+  ];
+
+  var api = { SECTIONS: SECTIONS };
+  root.BitFlowDocs = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+/* ===== hand.js ===== */
+/* 手牌试玩（Solve）的规则内核 —— LevelDraftInventory.cs 的浏览器版。
+ *
+ * 为什么单独一个文件、不写进 ui.js：
+ *  - 这些规则（锁定格不能搬、BUFFER 收预设件、按 type 记账、延迟器不能转）
+ *    是游戏侧已经在跑的语义，必须能脱离 DOM 跑单测（tests/hand.js）；
+ *  - ui.js 只负责「点哪一格 → 调哪个方法 → 把人话写到屏幕上」，
+ *    规则与像素分开，改措辞不会碰规则。
+ *
+ * 与引擎的分工：本文件只做「准入检查 + 改文档」，真正判定仍然由
+ * document.js 的 read() 和 check.js 的 run() 完成 —— 所以手牌再多也不会
+ * 冒出第二套「能不能通关」的答案。
+ */
+(function (root) {
+  'use strict';
+
+  var Doc = root.BitFlowDocument;
+  var D = root.BitFlowDir;
+  var Catalog = root.BitFlowCatalog;
+  if (!Doc && typeof require === 'function') Doc = require('./engine/document.js');
+  if (!D && typeof require === 'function') D = require('./engine/dir.js');
+  if (!Catalog && typeof require === 'function') Catalog = require('./engine/catalog.js');
+
+  var KIND = Doc.KIND;
+
+  /* BUFFER 能收回来的件。发射器 / 接收器是关卡骨架，游戏里也不允许被收走。 */
+  var RETRACTABLE = [KIND.Wall, KIND.Splitter, KIND.NotGate, KIND.Filter, KIND.DelayGate];
+
+  function key(x, y) { return x + ',' + y; }
+
+  function clone(value) { return JSON.parse(JSON.stringify(value)); }
+
+  function str(value) { return typeof value === 'string' ? value : ''; }
+
+  function cellKeyOf(pile) {
+    return pile.type !== '' ? 'type:' + pile.type : 'kind:' + Doc.kindName(pile.kind);
+  }
+
+  /* kind 优先信 type 快照：同一摞牌在游戏里是按 type 读的。 */
+  function supplyKind(supply, catalog) {
+    var typed = catalog && catalog.find ? catalog.find(str(supply.type)) : null;
+    if (typed) {
+      var fromType = Doc.parseKind(typed.kind);
+      if (fromType !== null) return fromType;
+    }
+    return Doc.parseKind(supply.kind);
+  }
+
+  function wallRows(document_) {
+    if (!Array.isArray(document_.wallRows)) document_.wallRows = [];
+    return document_.wallRows;
+  }
+
+  function wallAt(document_, x, y) {
+    return (wallRows(document_)[y] || '').charAt(x) === '#';
+  }
+
+  function setWall(document_, x, y, on) {
+    var rows = wallRows(document_);
+    while (rows.length <= y) rows.push('');
+    var row = rows[y] || '';
+    while (row.length <= x) row += '.';
+    rows[y] = row.substring(0, x) + (on ? '#' : '.') + row.substring(x + 1);
+  }
+
+  function elementIndex(document_, x, y) {
+    var list = Array.isArray(document_.elements) ? document_.elements : [];
+    for (var i = 0; i < list.length; i++) {
+      if ((list[i].x | 0) === x && (list[i].y | 0) === y) return i;
+    }
+    return -1;
+  }
+
+  /* 一摞牌：type 优先；只有 kind 时按 kind 记账。count -1 = 1 张、0 = 跳过。 */
+  function buildPiles(document_, catalog, warnings) {
+    var piles = [];
+    var byKey = Object.create(null);
+    var supplies = Array.isArray(document_.supplies) ? document_.supplies : [];
+
+    for (var i = 0; i < supplies.length; i++) {
+      var supply = supplies[i];
+      if (!supply || typeof supply !== 'object') continue;
+
+      var type = str(supply.type);
+      var kind = supplyKind(supply, catalog);
+      if (type === '' && kind === null) {
+        warnings.push('手牌第 ' + (i + 1) + ' 摞既没有 type 也认不出 kind，已跳过（游戏里也会跳过）');
+        continue;
+      }
+
+      var count = typeof supply.count === 'number' ? Math.trunc(supply.count) : -1;
+      if (count === 0) {
+        warnings.push('手牌第 ' + (i + 1) + ' 摞 count = 0，游戏会跳过并记一条问题');
+        continue;
+      }
+      if (count < 0) count = 1; /* 与 LevelSupply 的 -1 语义一致 */
+
+      var spec = type !== '' && catalog && catalog.find ? catalog.find(type) : null;
+      var pile = {
+        type: type,
+        kind: kind === null ? KIND.Wall : kind,
+        label: spec ? str(spec.label) : '',
+        tool: !!(spec && spec.tool),
+        total: count,
+        left: count
+      };
+      pile.key = cellKeyOf(pile);
+
+      var existing = byKey[pile.key];
+      if (existing) {
+        existing.total += pile.total;
+        existing.left += pile.left;
+      } else {
+        byKey[pile.key] = pile;
+        piles.push(pile);
+        if (spec && spec.kind && Doc.parseKind(spec.kind) !== pile.kind) {
+          warnings.push('手牌 ' + type + ' 的 kind 与类型快照不一致，按 type 生效');
+        }
+      }
+    }
+
+    return piles;
+  }
+
+  /* 从手牌摆出来的一格：参数直接取类型快照（没有快照就取 kind 默认值），
+   * 这样「试玩时放的 L1」与「作者手画的 L1」在引擎里读出来是同一个件。 */
+  function cellFromPile(pile, catalog, x, y) {
+    var defaults = Doc.kindDefaults(pile.kind);
+    var spec = pile.type !== '' && catalog && catalog.find ? catalog.find(pile.type) : null;
+    var source = spec || defaults;
+
+    function dirOf(value, fallback) {
+      var parsed = D.parse(value);
+      return D.name(parsed === null ? fallback : parsed);
+    }
+
+    return {
+      type: pile.type,
+      kind: Doc.kindName(pile.kind),
+      x: x,
+      y: y,
+      rot: 0,
+      dir: dirOf(source.dir, defaults.dir),
+      dir2: dirOf(source.dir2, defaults.dir2),
+      sequence: str(source.sequence) || defaults.sequence,
+      count: typeof source.count === 'number' ? Math.trunc(source.count) : defaults.count,
+      face: pile.kind === KIND.Receiver ? (source.acceptAnyFace === false ? 'in' : 'any') : '',
+      pass: pile.kind === KIND.Filter
+        ? (typeof source.pass === 'number' ? Math.trunc(source.pass) : defaults.pass) : -1,
+      delay: pile.kind === KIND.DelayGate
+        ? (typeof source.delay === 'number' ? Math.trunc(source.delay) : defaults.delay) : -1,
+      playerEditable: true
+    };
+  }
+
+  function Hand(document_, catalog) {
+    this.document = document_;
+    this.catalog = catalog || Catalog.builtin;
+    this.original = clone(document_);
+    this.warnings = [];
+    this.piles = buildPiles(document_, this.catalog, this.warnings);
+    this.locked = Object.create(null);
+    this.origin = Object.create(null); /* 'x,y' → 牌摞 key（玩家亲手放的） */
+
+    /* 锁定 = 进场那一刻的快照。用实时 playerEditable 会让「试玩时放的件」
+     * 在采用解之后反过来锁住自己。 */
+    var cells = Array.isArray(document_.elements) ? document_.elements : [];
+    for (var i = 0; i < cells.length; i++) {
+      if (!cells[i].playerEditable) this.locked[key(cells[i].x | 0, cells[i].y | 0)] = true;
+    }
+  }
+
+  Hand.prototype.pile = function (pileKey) {
+    for (var i = 0; i < this.piles.length; i++) {
+      if (this.piles[i].key === pileKey) return this.piles[i];
+    }
+    return null;
+  };
+
+  Hand.prototype.inBounds = function (x, y) {
+    return x >= 0 && y >= 0 && x < this.document.width && y < this.document.height;
+  };
+
+  Hand.prototype.busy = function (x, y) {
+    return elementIndex(this.document, x, y) >= 0 || wallAt(this.document, x, y);
+  };
+
+  Hand.prototype.isPlaced = function (x, y) {
+    return !!this.origin[key(x, y)];
+  };
+
+  Hand.prototype.canPlace = function (pileKey, x, y) {
+    var pile = this.pile(pileKey);
+    if (!pile) return { ok: false, reason: 'NoPile' };
+    if (pile.tool) return { ok: false, reason: 'NotPlaceable' };
+    if (!this.inBounds(x, y)) return { ok: false, reason: 'OutOfBounds' };
+    if (pile.left <= 0) return { ok: false, reason: 'OutOfStock' };
+    if (this.locked[key(x, y)]) return { ok: false, reason: 'Locked' };
+    if (this.busy(x, y)) return { ok: false, reason: 'Occupied' };
+    return { ok: true, reason: '' };
+  };
+
+  Hand.prototype.place = function (pileKey, x, y) {
+    var check = this.canPlace(pileKey, x, y);
+    if (!check.ok) return check;
+
+    var pile = this.pile(pileKey);
+    if (pile.kind === KIND.Wall) setWall(this.document, x, y, true);
+    else this.document.elements.push(cellFromPile(pile, this.catalog, x, y));
+
+    pile.left--;
+    this.origin[key(x, y)] = pile.key;
+    return { ok: true, reason: '', pile: pile };
+  };
+
+  Hand.prototype.canPick = function (x, y) {
+    if (!this.inBounds(x, y)) return { ok: false, reason: 'OutOfBounds' };
+    if (this.locked[key(x, y)]) return { ok: false, reason: 'Locked' };
+    if (this.isPlaced(x, y)) return { ok: true, reason: '' };
+    if (this.busy(x, y)) return { ok: false, reason: 'NotPlayerPiece' };
+    return { ok: false, reason: 'EmptyCell' };
+  };
+
+  /* 拾回：返还到「放它的那一摞」，而不是按 kind 猜 —— 两摞同为分流器时不能串味。 */
+  Hand.prototype.pick = function (x, y) {
+    var check = this.canPick(x, y);
+    if (!check.ok) return check;
+
+    var pile = this.pile(this.origin[key(x, y)]);
+
+    var index = elementIndex(this.document, x, y);
+    if (index >= 0) this.document.elements.splice(index, 1);
+    else setWall(this.document, x, y, false);
+
+    delete this.origin[key(x, y)];
+    if (pile) pile.left++;
+    return { ok: true, reason: '', pile: pile };
+  };
+
+  /* BUFFER：把一枚「锁定件」收回手牌（工具卡本身不进棋盘）。 */
+  Hand.prototype.canRetract = function (x, y, pileKey) {
+    var pile = this.pile(pileKey);
+    if (!pile || !pile.tool) return { ok: false, reason: 'NotPile' };
+    if (!this.inBounds(x, y)) return { ok: false, reason: 'OutOfBounds' };
+    if (pile.left <= 0) return { ok: false, reason: 'OutOfStock' };
+    if (!this.locked[key(x, y)]) return { ok: false, reason: 'NotLocked' };
+
+    var index = elementIndex(this.document, x, y);
+    if (index < 0) return { ok: false, reason: 'NoElement' };
+
+    var kind = Doc.parseKind(this.document.elements[index].kind);
+    if (kind === null || RETRACTABLE.indexOf(kind) < 0) return { ok: false, reason: 'NotBufferable' };
+    return { ok: true, reason: '' };
+  };
+
+  /* 收回的件进「同 type / 同 kind」的那一摞；没有就先建一摞（游戏里也是 +1 张）。 */
+  Hand.prototype.grant = function (cell) {
+    var kind = Doc.parseKind(cell.kind);
+    var pile = {
+      type: str(cell.type),
+      kind: kind === null ? KIND.Wall : kind,
+      label: '', tool: false, total: 0, left: 0
+    };
+    var spec = pile.type !== '' && this.catalog.find ? this.catalog.find(pile.type) : null;
+    if (spec) pile.label = str(spec.label);
+    pile.key = cellKeyOf(pile);
+
+    var existing = this.pile(pile.key);
+    if (existing) {
+      existing.left++;
+      return existing;
+    }
+    pile.left = 1;
+    this.piles.push(pile);
+    return pile;
+  };
+
+  Hand.prototype.retract = function (x, y, pileKey) {
+    var check = this.canRetract(x, y, pileKey);
+    if (!check.ok) return check;
+
+    var pile = this.pile(pileKey);
+    var index = elementIndex(this.document, x, y);
+    var cell = this.document.elements[index];
+    this.document.elements.splice(index, 1);
+    delete this.locked[key(x, y)];
+
+    var target = this.grant(cell);
+    pile.left--;
+    return { ok: true, reason: '', pile: target };
+  };
+
+  /* 旋转：只转玩家自己放的；延迟器 / 墙没有朝向。 */
+  Hand.prototype.rotate = function (x, y) {
+    if (!this.isPlaced(x, y)) return false;
+    var index = elementIndex(this.document, x, y);
+    if (index < 0) return false;
+
+    var cell = this.document.elements[index];
+    var kind = Doc.parseKind(cell.kind);
+    if (kind === KIND.DelayGate || kind === KIND.Wall) return false;
+
+    if (str(cell.type) !== '') {
+      cell.rot = ((cell.rot | 0) + 1) % 4;
+      return true;
+    }
+
+    var dir = D.parse(cell.dir);
+    cell.dir = D.name(D.clockwise(dir === null ? D.RIGHT : dir));
+    if (kind === KIND.Splitter) {
+      var dir2 = D.parse(cell.dir2);
+      cell.dir2 = D.name(D.clockwise(dir2 === null ? D.DOWN : dir2));
+    }
+    return true;
+  };
+
+  Hand.prototype.remaining = function () {
+    var left = 0;
+    for (var i = 0; i < this.piles.length; i++) left += Math.max(0, this.piles[i].left);
+    return left;
+  };
+
+  Hand.prototype.status = function () {
+    var doc = this.document;
+    var walls = 0;
+    var rows = Array.isArray(doc.wallRows) ? doc.wallRows : [];
+    for (var i = 0; i < rows.length; i++) {
+      for (var c = 0; c < (rows[i] || '').length; c++) if (rows[i].charAt(c) === '#') walls++;
+    }
+
+    var total = 0;
+    for (var p = 0; p < this.piles.length; p++) total += this.piles[p].total;
+
+    return {
+      left: this.remaining(),
+      total: total,
+      placed: Object.keys(this.origin).length,
+      empty: Math.max(0, doc.width * doc.height - doc.elements.length - walls),
+      warnings: this.warnings.length
+    };
+  };
+
+  /* 撤销用：牌库余量 + 锁定表 + 哪一格是哪摞放的一起存。
+   * 少了 piles / origin，撤销后数量就会与盘面脱节（最容易被忽略的一处）。 */
+  Hand.prototype.serialize = function () {
+    var piles = [];
+    for (var i = 0; i < this.piles.length; i++) {
+      var pile = this.piles[i];
+      piles.push({
+        key: pile.key, type: pile.type, kind: pile.kind, label: pile.label,
+        tool: pile.tool, total: pile.total, left: pile.left
+      });
+    }
+    return {
+      document: clone(this.document),
+      original: clone(this.original),
+      piles: piles,
+      locked: clone(this.locked),
+      origin: clone(this.origin),
+      warnings: this.warnings.slice()
+    };
+  };
+
+  /* 还原时要深拷贝：快照存在撤销栈里，若共享对象，下一次 place/pick 会就地改掉
+   * 栈里那份，撤销回去看到的就是"改过之后"的旧步。 */
+  Hand.restore = function (snapshot, catalog) {
+    var hand = new Hand(clone(snapshot.document), catalog);
+    hand.original = snapshot.original ? clone(snapshot.original) : hand.original;
+    hand.piles = snapshot.piles ? clone(snapshot.piles) : hand.piles;
+    hand.locked = snapshot.locked ? clone(snapshot.locked) : Object.create(null);
+    hand.origin = snapshot.origin ? clone(snapshot.origin) : Object.create(null);
+    if (snapshot.warnings) hand.warnings = snapshot.warnings.slice();
+    return hand;
+  };
+
+  /* 采用这套解：手牌留下的件全部转成预设件，手牌原样保留（作者再调）。 */
+  Hand.prototype.adopt = function () {
+    var output = clone(this.document);
+    var cells = Array.isArray(output.elements) ? output.elements : [];
+    for (var i = 0; i < cells.length; i++) cells[i].playerEditable = false;
+    return output;
+  };
+
+  Hand.prototype.preset = function () { return clone(this.original); };
+
+  var api = {
+    Hand: Hand,
+    RETRACTABLE: RETRACTABLE,
+    create: function (document_, catalog) { return new Hand(document_, catalog); },
+    restore: Hand.restore,
+    cellFromPile: cellFromPile
+  };
+
+  root.BitFlowHand = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+/* ===== ui.js ===== */
+/* 编辑器主逻辑。
+ *
+ * 数据模型刻意贴住关卡 JSON 本身（wallRows 是墙层，elements 是元件格），
+ * 这样导入 → 编辑 → 导出不会因为"内部模型更漂亮"而丢掉字段。
+ */
+(function (root) {
+  'use strict';
+
+  var Doc = root.BitFlowDocument;
+  var D = root.BitFlowDir;
+  var Check = root.BitFlowCheck;
+  var Catalog = root.BitFlowCatalog;
+  var Samples = root.BitFlowSamples;
+  var Docs = root.BitFlowDocs;
+  var Timeline = root.BitFlowTimeline;
+  var GridLib = root.BitFlowGrid;
+  var SelfTest = root.BitFlowSelfTest;
+  var HandLib = root.BitFlowHand;
+
+  var KIND = Doc.KIND;
+  var STORAGE_KEY = 'shiftgo.levelLab.v1';
+  var BUILD_STAMP = '2026-11-14 21:47';
+
+  var PALETTE = [
+    { kind: KIND.Wall, label: '墙', en: 'Wall', short: '#', key: '1', color: '#5b6673' },
+    { kind: KIND.Emitter, label: '发射器', en: 'Emitter', short: 'E', key: '2', color: '#b48ead' },
+    { kind: KIND.Receiver, label: '接收器', en: 'Receiver', short: 'R', key: '3', color: '#5aa9e6' },
+    { kind: KIND.Splitter, label: '分流器', en: 'Splitter', short: 'L', key: '4', color: '#e0a458' },
+    { kind: KIND.NotGate, label: '非门', en: 'NotGate', short: 'N', key: '5', color: '#7ee787' },
+    { kind: KIND.Filter, label: '过滤器', en: 'Filter', short: 'F', key: '6', color: '#d98cb3' },
+    { kind: KIND.DelayGate, label: '延迟器', en: 'DelayGate', short: 'D', key: '7', color: '#8fbbbc' }
+  ];
+
+  /* 选择工具不是画笔：它只改 selection，不碰文档。 */
+  var TOOL_SELECT = { tool: 'select', label: '选择', en: 'Select', short: '▣', key: 'V', color: '#c9d1d9' };
+
+  var state = {
+    document: null,
+    brush: null,
+    tool: 'paint',
+    selection: null,
+    hover: null,
+    timeline: null,
+    player: null,
+    view: null,
+    lastCheck: null,
+    storageOk: true,
+    saveTimer: null,
+    solve: null
+  };
+
+  var dom = {};
+
+  function $(id) { return document.getElementById(id); }
+
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      for (var key in attrs) {
+        if (key === 'class') node.className = attrs[key];
+        else if (key === 'text') node.textContent = attrs[key];
+        else if (key.indexOf('on') === 0) node.addEventListener(key.substring(2), attrs[key]);
+        else node.setAttribute(key, attrs[key]);
+      }
+    }
+    if (children) {
+      for (var i = 0; i < children.length; i++) {
+        if (children[i]) node.appendChild(children[i]);
+      }
+    }
+    return node;
+  }
+
+  function clampInt(value, fallback, min, max) {
+    var parsed = typeof value === 'number' ? Math.trunc(value) : parseInt(value, 10);
+    if (!isFinite(parsed)) parsed = fallback;
+    return Math.max(min, Math.min(max, parsed));
+  }
+
+  function str(value) { return typeof value === 'string' ? value : ''; }
+
+  function kindDefaults(kind) { return Doc.kindDefaults(kind); }
+
+
+  /* 一行算空：一个 '#' 都没有（'.' 只是占位符）。
+   * 注意不能反过来「删掉 '#' 再判长度」——那样「整行都是墙」会被当成空行丢掉，
+   * 舞台与导出会同时少一堵墙。 */
+  function isEmptyRow(row) { return !row || row.indexOf('#') < 0; }
+
+  /* 把任意 JSON 收敛成编辑器能安全操作的结构（不丢信息、不猜错类型）。 */
+  function normalizeDocument(raw) {
+    var source = raw && typeof raw === 'object' ? raw : {};
+    var width = clampInt(source.width, 9, 1, 40);
+    var height = clampInt(source.height, 8, 1, 40);
+
+    var result = {
+      schema: Doc.CURRENT_SCHEMA,
+      displayName: str(source.displayName) || 'NEW LEVEL',
+      width: width,
+      height: height,
+      tickInterval: typeof source.tickInterval === 'number' && isFinite(source.tickInterval)
+        ? Math.max(0.05, Math.min(5, source.tickInterval)) : 0.35,
+      wallRows: [],
+      elements: [],
+      supplies: [],
+      allowBuild: !!source.allowBuild
+    };
+
+    var rows = [];
+    if (Array.isArray(source.wallRows)) {
+      for (var i = 0; i < source.wallRows.length; i++) rows.push(str(source.wallRows[i]));
+    } else if (typeof source.wallMap === 'string' && source.wallMap !== '') {
+      rows = source.wallMap.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    }
+    while (rows.length < height) rows.push('');
+    result.wallRows = rows.slice(0, height);
+
+    var cells = Array.isArray(source.elements) ? source.elements : [];
+    for (var c = 0; c < cells.length; c++) {
+      var cell = cells[c];
+      if (!cell || typeof cell !== 'object') continue;
+      var kind = Doc.parseKind(cell.kind);
+      if (kind === null) kind = KIND.Wall;
+      var defaults = kindDefaults(kind);
+
+      result.elements.push({
+        type: str(cell.type),
+        kind: Doc.kindName(kind),
+        x: clampInt(cell.x, 0, -1, 999),
+        y: clampInt(cell.y, 0, -1, 999),
+        rot: ((clampInt(cell.rot, 0, -99, 99) % 4) + 4) % 4,
+        dir: str(cell.dir) || D.name(defaults.dir),
+        dir2: str(cell.dir2) || D.name(defaults.dir2),
+        sequence: str(cell.sequence) || defaults.sequence,
+        count: typeof cell.count === 'number' ? Math.trunc(cell.count) : defaults.count,
+        face: str(cell.face) || (kind === KIND.Receiver ? (defaults.acceptAnyFace ? 'any' : 'in') : ''),
+        pass: typeof cell.pass === 'number' ? Math.trunc(cell.pass) : (kind === KIND.Filter ? defaults.pass : -1),
+        delay: typeof cell.delay === 'number' ? Math.trunc(cell.delay) : (kind === KIND.DelayGate ? defaults.delay : -1),
+        playerEditable: !!cell.playerEditable
+      });
+    }
+
+    var supplies = Array.isArray(source.supplies) ? source.supplies : [];
+    for (var s = 0; s < supplies.length; s++) {
+      var supply = supplies[s];
+      if (!supply || typeof supply !== 'object') continue;
+      var supplyKind = Doc.parseKind(supply.kind);
+      result.supplies.push({
+        type: str(supply.type),
+        kind: supplyKind === null ? '' : Doc.kindName(supplyKind),
+        count: typeof supply.count === 'number' ? Math.trunc(supply.count) : -1
+      });
+    }
+
+    result.allowBuild = !!source.allowBuild || result.supplies.length > 0;
+    return result;
+  }
+
+
+  /* 导出用的文档：只写 schema 2 的字段，顺序固定，方便 diff。 */
+  function buildDocument() {
+    var source = state.document;
+    var elements = [];
+
+    for (var i = 0; i < source.elements.length; i++) {
+      var cell = source.elements[i];
+      elements.push({
+        type: cell.type,
+        kind: cell.kind,
+        x: cell.x,
+        y: cell.y,
+        rot: cell.rot,
+        dir: cell.dir,
+        dir2: cell.dir2,
+        sequence: cell.sequence,
+        count: cell.count,
+        face: cell.face,
+        pass: cell.pass,
+        delay: cell.delay,
+        playerEditable: !!cell.playerEditable
+      });
+    }
+
+    var wallRows = source.wallRows.slice(0, source.height);
+    while (wallRows.length > 0 && isEmptyRow(wallRows[wallRows.length - 1])) {
+      wallRows.pop();
+    }
+
+    return {
+      schema: Doc.CURRENT_SCHEMA,
+      displayName: source.displayName,
+      width: source.width,
+      height: source.height,
+      tickInterval: source.tickInterval,
+      wallType: '',
+      wallRows: wallRows,
+      elements: elements,
+      supplies: source.supplies.map(function (supply) {
+        return { type: supply.type, kind: supply.kind, count: supply.count };
+      }),
+      allowBuild: !!source.allowBuild
+    };
+  }
+
+  /* ---------------- 本地存储（失败也不炸） ---------------- */
+  function readStorage() {
+    try {
+      var text = window.localStorage.getItem(STORAGE_KEY);
+      if (!text) return null;
+      return JSON.parse(text);
+    } catch (error) {
+      state.storageOk = false;
+      return null;
+    }
+  }
+
+  function writeStorage() {
+    if (!state.storageOk) return;
+    /* 试玩中盘面是临时解，不能顶替作者自动保存的那一份。 */
+    if (state.solve) return;
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        savedAt: new Date().toISOString(),
+        document: buildDocument()
+      }));
+    } catch (error) {
+      state.storageOk = false;
+      showStorageBanner('本地存储不可用（' + (error && error.message ? error.message : error) +
+        '）。改动只在本页有效，请及时「导出 JSON」。');
+    }
+  }
+
+  function showStorageBanner(message) {
+    if (!dom.storageBanner) return;
+    dom.storageBanner.textContent = message;
+    dom.storageBanner.classList.remove('hidden');
+    if (dom.footerStorage) {
+      dom.footerStorage.textContent = '本地存储 不可用';
+      dom.footerStorage.className = 'bad';
+    }
+  }
+
+  function scheduleSave() {
+    if (state.saveTimer) clearTimeout(state.saveTimer);
+    state.saveTimer = setTimeout(function () {
+      state.saveTimer = null;
+      writeStorage();
+      if (dom.metaHint) dom.metaHint.textContent = '已自动保存';
+    }, 350);
+  }
+
+  /* 改动后统一走这里：重画 + 存盘 + 让上一次自检结论失效（避免看着旧结论改数据）。 */
+  function changed(options) {
+    var settings = options || {};
+    scheduleSave();
+
+    /* 约定：plain changed() 表示文档真的改了；keepCheck 的调用是纯 UI 动作
+     * （切画笔、选格子、载入），不该进撤销栈。
+     * 试玩中走自己的快照栈（solve.stack），不污染作者编辑历史。 */
+    if (!settings.keepCheck && !settings.silentHistory && !state.solve) {
+      recordHistory(settings.label || '编辑', { merge: settings.merge !== false });
+    }
+
+    if (!settings.keepCheck) {
+      state.lastCheck = null;
+      if (state.player) state.player.pause();
+      state.player = null;
+      state.timeline = null;
+      if (dom.scrub) { dom.scrub.min = '0'; dom.scrub.max = '0'; dom.scrub.value = '0'; }
+      if (dom.tickLabel) dom.tickLabel.textContent = 'tick 0 / 0';
+      if (dom.btnPlay) dom.btnPlay.textContent = '▶';
+      if (dom.reportText) {
+        dom.reportText.textContent = '数据已改动，自检结论已过期，请重新运行。';
+        dom.reportText.className = 'report';
+      }
+      if (dom.issueList) dom.issueList.innerHTML = '';
+      if (dom.problemList) dom.problemList.innerHTML = '';
+    }
+    renderMeta();
+    renderSupplies();
+    renderInspector();
+    renderPalette();
+    renderInventory();
+    renderHand();
+    if (state.view) {
+      state.view.setState({
+        document: buildDocument(),
+        catalog: Catalog.builtin,
+        selection: state.selection,
+        brush: state.solve ? null : state.brush,
+        tool: state.solve ? 'select' : state.tool,
+        hover: state.hover,
+        frame: state.player ? state.player.frame() : null
+      });
+    }
+    updateHistoryButtons();
+  }
+
+  /* ---------------- 撤销 / 重做 ----------------
+   * 快照式：每一步存一份 {document, selection} 的 JSON。
+   * 不做命令式 diff 的原因：所有编辑最终都收敛到同一份文档，快照实现短、
+   * 不会漏字段（万一以后加新参数也不用改历史代码），40×40 一份也就几 KB。
+   * 同一标签 700ms 内连改（拖手牌数量、连续打字）并成一步，免得撤销十几次。
+   */
+  var HISTORY = { stack: [], index: 0, label: '', at: 0, limit: 60 };
+
+  function snapshotText() {
+    return JSON.stringify({ document: buildDocument(), selection: state.selection });
+  }
+
+  function resetHistory() {
+    HISTORY.stack = [snapshotText()];
+    HISTORY.index = 0;
+    HISTORY.label = '';
+    HISTORY.at = 0;
+    updateHistoryButtons();
+  }
+
+  /* 必须在改动落定之后再调，否则存进去的是改动前的样子。 */
+  function recordHistory(label, options) {
+    if (HISTORY.stack.length === 0) { resetHistory(); return; }
+
+    var text = snapshotText();
+    if (text === HISTORY.stack[HISTORY.index]) return; /* 没真改（比如点了同值） */
+
+    var settings = options || {};
+    var now = Date.now();
+    var merge = settings.merge !== false && label === HISTORY.label &&
+      now - HISTORY.at < 700 && HISTORY.index > 0;
+
+    HISTORY.stack.length = HISTORY.index + 1; /* 有新改动就丢掉 redo 分支 */
+    if (merge) {
+      HISTORY.stack[HISTORY.index] = text;
+    } else {
+      HISTORY.stack.push(text);
+      HISTORY.index = HISTORY.stack.length - 1;
+    }
+    if (HISTORY.stack.length > HISTORY.limit) {
+      HISTORY.stack.shift();
+      HISTORY.index = HISTORY.stack.length - 1;
+    }
+
+    HISTORY.label = label;
+    HISTORY.at = now;
+    updateHistoryButtons();
+  }
+
+  function applySnapshot(text) {
+    var snapshot = JSON.parse(text);
+    state.document = normalizeDocument(snapshot.document);
+
+    var selection = snapshot.selection;
+    var inside = !!selection && selection.x >= 0 && selection.y >= 0 &&
+      selection.x < state.document.width && selection.y < state.document.height;
+    state.selection = inside ? { x: selection.x, y: selection.y } : null;
+
+    HISTORY.label = '';
+    HISTORY.at = 0;
+    changed({ silentHistory: true });
+  }
+
+  function undo() {
+    if (state.solve) { solveUndo(); return; }
+    if (HISTORY.index <= 0) return;
+    HISTORY.index--;
+    applySnapshot(HISTORY.stack[HISTORY.index]);
+  }
+
+  function redo() {
+    if (state.solve) { solveRedo(); return; }
+    if (HISTORY.index >= HISTORY.stack.length - 1) return;
+    HISTORY.index++;
+    applySnapshot(HISTORY.stack[HISTORY.index]);
+  }
+
+  function updateHistoryButtons() {
+    if (state.solve) {
+      var solve = state.solve;
+      var canUndoS = solve.index > 0;
+      var canRedoS = solve.index < solve.stack.length - 1;
+      if (dom.btnUndo) {
+        dom.btnUndo.disabled = !canUndoS;
+        dom.btnUndo.title = canUndoS ? '撤销上一步试玩（Ctrl+Z）· 还能退 ' + solve.index + ' 步' : '试玩还没有可撤销的改动';
+      }
+      if (dom.btnRedo) {
+        dom.btnRedo.disabled = !canRedoS;
+        dom.btnRedo.title = canRedoS ? '重做（Ctrl+Y）' : '没有可重做的试玩改动';
+      }
+      return;
+    }
+
+    var canUndo = HISTORY.index > 0;
+    var canRedo = HISTORY.index < HISTORY.stack.length - 1;
+    if (dom.btnUndo) {
+      dom.btnUndo.disabled = !canUndo;
+      dom.btnUndo.title = canUndo
+        ? '撤销上一步（Ctrl+Z）· 还能退 ' + HISTORY.index + ' 步'
+        : '没有可撤销的改动';
+    }
+    if (dom.btnRedo) {
+      dom.btnRedo.disabled = !canRedo;
+      dom.btnRedo.title = canRedo
+        ? '重做（Ctrl+Y）· 还有 ' + (HISTORY.stack.length - 1 - HISTORY.index) + ' 步'
+        : '没有可重做的改动';
+    }
+  }
+
+  /* ---------------- 画笔 ---------------- */
+  function makeBrush(kind) {
+    var defaults = kindDefaults(kind);
+    return {
+      kind: kind,
+      type: '',
+      dir: D.name(defaults.dir),
+      dir2: D.name(defaults.dir2),
+      sequence: defaults.sequence,
+      count: defaults.count,
+      acceptAnyFace: kind === KIND.Receiver ? true : defaults.acceptAnyFace,
+      pass: defaults.pass,
+      delay: defaults.delay,
+      playerEditable: false
+    };
+  }
+
+  function setBrush(kind) {
+    state.brush = makeBrush(kind);
+    state.tool = 'paint';
+    state.selection = null;
+    changed({ keepCheck: true });
+  }
+
+  function setTool(tool) {
+    state.tool = tool === 'select' ? 'select' : 'paint';
+    changed({ keepCheck: true });
+  }
+
+  function renderPalette() {
+    if (!dom.palette) return;
+    dom.palette.innerHTML = '';
+
+    var entries = [TOOL_SELECT].concat(PALETTE);
+    for (var i = 0; i < entries.length; i++) {
+      var entry = entries[i];
+      var isTool = entry.tool === 'select';
+      var active = isTool
+        ? state.tool === 'select'
+        : (state.tool === 'paint' && state.brush && state.brush.kind === entry.kind);
+
+      var button = el('button', {
+        class: 'brush' + (active ? ' active' : '') + (isTool ? ' tool' : ''),
+        title: isTool
+          ? '选择工具：左键只选不落件（V / 0 / Esc）'
+          : entry.label + ' · ' + entry.en + '（按 ' + entry.key + '）',
+        onclick: isTool
+          ? function () { setTool('select'); }
+          : (function (kind) {
+              return function () { setBrush(kind); };
+            })(entry.kind)
+      }, [
+        el('span', { class: 'glyph', text: entry.short }),
+        el('span', { class: 'name', text: entry.label }),
+        el('span', { class: 'key', text: entry.key })
+      ]);
+      button.firstChild.style.color = entry.color;
+      dom.palette.appendChild(button);
+    }
+  }
+
+  /* ---------------- 格子操作 ---------------- */
+  function findCellIndex(x, y) {
+    var list = state.document.elements;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].x === x && list[i].y === y) return i;
+    }
+    return -1;
+  }
+
+  function setWallCell(x, y, on) {
+    var rows = state.document.wallRows;
+    while (rows.length <= y) rows.push('');
+    var row = rows[y] || '';
+    while (row.length <= x) row += '.';
+    row = row.substring(0, x) + (on ? '#' : '.') + row.substring(x + 1);
+    rows[y] = row;
+  }
+
+  function makeCell(kind, x, y) {
+    var brush = state.brush || makeBrush(kind);
+    var defaults = kindDefaults(kind);
+    return {
+      type: '',
+      kind: Doc.kindName(kind),
+      x: x,
+      y: y,
+      rot: 0,
+      dir: brush.kind === kind ? brush.dir : D.name(defaults.dir),
+      dir2: brush.kind === kind ? brush.dir2 : D.name(defaults.dir2),
+      sequence: brush.kind === kind ? brush.sequence : defaults.sequence,
+      count: brush.kind === kind ? brush.count : defaults.count,
+      face: kind === KIND.Receiver ? ((brush.kind === kind ? brush.acceptAnyFace : true) ? 'any' : 'in') : '',
+      pass: kind === KIND.Filter ? (brush.kind === kind ? brush.pass : defaults.pass) : -1,
+      delay: kind === KIND.DelayGate ? (brush.kind === kind ? brush.delay : defaults.delay) : -1,
+      playerEditable: !!(brush.kind === kind && brush.playerEditable)
+    };
+  }
+
+  function wallAt(x, y) {
+    return ((state.document.wallRows[y] || '').charAt(x)) === '#';
+  }
+
+  function selectCell(x, y) {
+    if (!state.selection || state.selection.x !== x || state.selection.y !== y) {
+      state.selection = { x: x, y: y };
+    }
+    changed({ keepCheck: true });
+  }
+
+  /* 左键的规则：格子已经被占用就只选中，绝不覆写（这就是旧版覆盖 bug 的根因）。
+   * 只有「画笔模式 + 格子是空的」才落件；纯选择工具下永远只选。 */
+  function applyBrushAt(x, y) {
+    var brush = state.brush;
+    var existing = findCellIndex(x, y);
+
+    if (state.tool === 'select' || existing >= 0) {
+      selectCell(x, y);
+      return;
+    }
+    if (!brush) return;
+
+    if (brush.kind === KIND.Wall) {
+      if (wallAt(x, y)) { selectCell(x, y); return; }
+      setWallCell(x, y, true);
+      state.selection = { x: x, y: y };
+      changed({ label: '画墙', merge: false });
+      return;
+    }
+
+    setWallCell(x, y, false);
+    var cell = makeCell(brush.kind, x, y);
+    if (cell.type === '' && brush.type) cell.type = brush.type;
+    state.document.elements.push(cell);
+    state.selection = { x: x, y: y };
+    changed({ label: '落件', merge: false });
+  }
+
+  function eraseAt(x, y) {
+    var index = findCellIndex(x, y);
+    if (index < 0 && !wallAt(x, y)) { selectCell(x, y); return; }
+
+    if (index >= 0) state.document.elements.splice(index, 1);
+    setWallCell(x, y, false);
+    if (state.selection && state.selection.x === x && state.selection.y === y) state.selection = null;
+    changed({ label: '擦除', merge: false });
+  }
+
+  function clearAll() {
+    var doc = state.document;
+    if (doc.elements.length === 0 && doc.wallRows.join('').indexOf('#') < 0) {
+      if (dom.metaHint) dom.metaHint.textContent = '棋盘已经是空的';
+      return;
+    }
+
+    doc.elements = [];
+    doc.wallRows = [];
+    while (doc.wallRows.length < doc.height) doc.wallRows.push('');
+    state.selection = null;
+    changed({ label: '清空', merge: false });
+  }
+
+  /* 旋转：kind 模式转绝对朝向，type 模式加 rot（游戏里就是这两种语义）。 */
+  function rotateCell(cell) {
+    if (!cell) return false;
+    var kind = Doc.parseKind(cell.kind);
+    if (kind === KIND.DelayGate || kind === KIND.Wall) return false;
+
+    if (cell.type !== '' && cell.type) {
+      cell.rot = ((cell.rot | 0) + 1) % 4;
+      return true;
+    }
+
+    var dir = D.parse(cell.dir);
+    if (dir === null) dir = D.RIGHT;
+    cell.dir = D.name(D.clockwise(dir));
+
+    if (kind === KIND.Splitter) {
+      var dir2 = D.parse(cell.dir2);
+      cell.dir2 = D.name(D.clockwise(dir2 === null ? D.DOWN : dir2));
+    }
+    return true;
+  }
+
+  function rotateSelection() {
+    if (!state.selection) return;
+    var index = findCellIndex(state.selection.x, state.selection.y);
+    if (index < 0) return;
+    if (rotateCell(state.document.elements[index])) changed({ label: '旋转', merge: false });
+  }
+
+  function setHover(cell) {
+    state.hover = cell;
+    if (dom.coordLabel) {
+      dom.coordLabel.textContent = cell
+        ? GridLib.describeCell(state.document, Catalog.builtin, cell.x, cell.y)
+        : '悬停格子看坐标与参数';
+    }
+    if (state.view) state.view.setState({ hover: cell });
+  }
+
+  function bindCanvas() {
+    var stage = dom.grid;
+
+    stage.addEventListener('contextmenu', function (event) { event.preventDefault(); });
+
+    stage.addEventListener('pointermove', function (event) {
+      setHover(GridLib.cellFromEvent(event));
+    });
+
+    stage.addEventListener('pointerleave', function () { setHover(null); });
+
+    stage.addEventListener('pointerdown', function (event) {
+      var cell = GridLib.cellFromEvent(event);
+      if (!cell) return;
+
+      if (state.solve) {
+        solvePointer(cell, event);
+        return;
+      }
+
+      if (event.button === 2) {
+        eraseAt(cell.x, cell.y);
+        return;
+      }
+
+      if (event.shiftKey) {
+        state.selection = { x: cell.x, y: cell.y };
+        rotateSelection();
+        return;
+      }
+
+      applyBrushAt(cell.x, cell.y);
+    });
+  }
+
+  /* ---------------- 手牌试玩（Solve） ----------------
+   * 规则全在 hand.js（tests/hand.js 单测覆盖），这里只做「点哪一格 → 调哪个方法 → 写句人话」。
+   * 进入试玩时把 state.document 换成手牌那份副本，网格 / 清单 / 自检 / 时间轴都不用改。
+   * 退出或采用解时再把文档换回去，所以作者原稿不会被试玩改动污染。
+   */
+  var SOLVE_REASONS = {
+    NoPile: '先在手牌里选一张牌',
+    NotPlaceable: '工具卡不放上棋盘：选中它再点带锁的预设件',
+    OutOfBounds: '越界了：这一格不在棋盘上',
+    OutOfStock: '这张牌已经用完了',
+    Locked: '这一格是预设件：带锁的件不能搬（BUFFER 除外）',
+    Occupied: '这一格已经有东西了',
+    NotPlayerPiece: '这一格不是你自己放的件，搬不动',
+    EmptyCell: '这一格是空的',
+    NotLocked: 'BUFFER 只收带锁的预设件，自己放的不需要它',
+    NoElement: '这一格没有元件',
+    NotBufferable: '发射器 / 接收器是关卡骨架，BUFFER 也收不走'
+  };
+
+  function reasonText(reason) {
+    return SOLVE_REASONS[reason] || ('这一步不行（' + reason + '）');
+  }
+
+  function describePile(pile) {
+    if (!pile) return '未知元件';
+    if (pile.label) return pile.label + (pile.type ? '（' + pile.type + '）' : '');
+    return GridLib.KIND_LABELS[pile.kind] || Doc.kindName(pile.kind);
+  }
+
+  function solveMessage(text, bad) {
+    if (!dom.handMsg) return;
+    dom.handMsg.textContent = text;
+    dom.handMsg.className = 'hand-msg' + (bad ? ' bad' : '');
+  }
+
+  /* 试玩中检查器只读：手牌是规则，参数得回编辑器改。 */
+  function renderSolveInspector(box) {
+    var solve = state.solve;
+    var hand = solve.hand;
+    if (dom.inspectorTitle) dom.inspectorTitle.textContent = '试玩 · 手牌';
+    if (dom.inspectorHint) dom.inspectorHint.textContent = '规则与游戏一致 · 只读';
+
+    var pile = hand.pile(solve.selected);
+    if (pile) {
+      box.appendChild(el('div', { class: 'field' }, [
+        el('label', { text: '选中的牌' }),
+        el('div', { text: describePile(pile) + ' · 剩 ' + pile.left + '/' + pile.total }),
+        el('div', {
+          class: 'hint',
+          text: pile.tool
+            ? '工具卡：点带锁的预设件把它收回手牌（发射器 / 接收器收不走）'
+            : '点空格落件；右键或 Shift+左键旋转；点自己放的件拾回'
+        })
+      ]));
+    }
+
+    var status = hand.status();
+    box.appendChild(el('div', { class: 'field' }, [
+      el('label', { text: '手牌' }),
+      el('div', { text: '剩 ' + status.left + '/' + status.total + ' 张 · 盘面自己放 ' + status.placed + ' 件' }),
+      el('div', { class: 'hint', text: '锁定件 = 作者预设（playerEditable = false），搬不动也不能覆盖' })
+    ]));
+
+    if (hand.warnings.length) {
+      box.appendChild(el('div', { class: 'field' }, [
+        el('label', { text: '手牌警告' }),
+        el('div', { class: 'hint', text: hand.warnings.join(' / ') })
+      ]));
+    }
+
+    box.appendChild(el('div', {
+      class: 'hint',
+      text: '试玩期间不写回原稿、也不覆盖本地自动保存：「采用解」才会把布局写回关卡。'
+    }));
+  }
+
+  function renderHand() {
+    var solve = state.solve;
+    if (!dom.handPiles) return;
+    if (!solve) {
+      if (dom.handTray) dom.handTray.classList.add('hidden');
+      return;
+    }
+    if (dom.handTray) dom.handTray.classList.remove('hidden');
+
+    var hand = solve.hand;
+    var status = hand.status();
+    if (dom.handStatus) {
+      dom.handStatus.textContent = '剩 ' + status.left + '/' + status.total + ' 张 · 已放 ' +
+        status.placed + ' · 空格 ' + status.empty;
+    }
+
+    dom.handPiles.innerHTML = '';
+    if (hand.piles.length === 0) {
+      dom.handPiles.appendChild(el('div', { class: 'muted', text: '这一关没有手牌（supplies 为空）。' }));
+      return;
+    }
+
+    for (var i = 0; i < hand.piles.length; i++) {
+      (function (pile) {
+        var active = pile.key === solve.selected;
+        var glyph = pile.label ? pile.label.charAt(0) : (GridLib.KIND_LABELS[pile.kind] || '?').charAt(0);
+        var button = el('button', {
+          class: 'pile' + (active ? ' active' : '') + (pile.left <= 0 ? ' empty' : '') + (pile.tool ? ' tool' : ''),
+          title: describePile(pile) + ' · ' + (pile.tool
+            ? '工具卡：选中后点带锁的预设件把它收回手牌'
+            : '选中后点空格落件；右键 / Shift+左键旋转'),
+          onclick: function () {
+            solve.selected = pile.key;
+            changed({ keepCheck: true });
+            solveMessage('已选中 ' + describePile(pile) + '（剩 ' + pile.left + ' 张）');
+          }
+        }, [
+          el('span', { class: 'pile-glyph', text: glyph }),
+          el('span', { class: 'pile-count', text: '×' + pile.left }),
+          el('span', { class: 'pile-kind', text: describePile(pile) })
+        ]);
+        if (pile.tool) button.appendChild(el('span', { class: 'pile-tool', text: '工具' }));
+        dom.handPiles.appendChild(button);
+      })(hand.piles[i]);
+    }
+  }
+
+  function stopSolve() {
+    state.solve = null;
+    document.body.classList.remove('solving');
+    if (dom.btnSolve) dom.btnSolve.textContent = '🧩 试玩';
+    if (dom.handTray) dom.handTray.classList.add('hidden');
+    if (dom.btnHandAdopt) dom.btnHandAdopt.disabled = true;
+  }
+
+  function enterSolve() {
+    if (state.solve) return;
+    var hand = HandLib.create(buildDocument(), Catalog.builtin);
+    if (hand.piles.length === 0) {
+      if (dom.metaHint) dom.metaHint.textContent = '这一关没有手牌（supplies 为空），没什么可试玩的：先加一摞手牌。';
+      solveMessage('这一关没有手牌。', true);
+      return;
+    }
+
+    state.solve = { hand: hand, stack: [], index: -1, selected: hand.piles[0].key };
+    state.document = hand.document;
+    state.selection = null;
+    state.lastCheck = null;
+    state.timeline = null;
+    if (state.player) state.player.pause();
+    state.player = null;
+
+    document.body.classList.add('solving');
+    if (dom.btnSolve) dom.btnSolve.textContent = '🧩 试玩中';
+    pushSolve();
+    changed({ silentHistory: true });
+
+    var warningText = hand.warnings.length ? ' · 手牌有 ' + hand.warnings.length + ' 条警告（见「自检」）' : '';
+    solveMessage('点一张牌，再点棋盘落件；右键旋转；点自己的件拾回；BUFFER 点锁定件收回。' + warningText);
+  }
+
+  function exitSolve() {
+    if (!state.solve) return;
+    var original = state.solve.hand.original;
+    stopSolve();
+    state.document = normalizeDocument(original);
+    state.selection = null;
+    state.lastCheck = null;
+    state.timeline = null;
+    changed({ silentHistory: true });
+    if (dom.metaHint) dom.metaHint.textContent = '已结束试玩，回到预设布局（试玩时的改动没有写回）';
+  }
+
+  /* 采用解：这套布局转成预设件（玩家进关后搬不动），手牌原样保留。 */
+  function adoptSolve() {
+    if (!state.solve) return;
+    var adopted = state.solve.hand.adopt();
+    stopSolve();
+    state.document = normalizeDocument(adopted);
+    state.selection = null;
+    state.lastCheck = null;
+    state.timeline = null;
+    changed({ label: '采用解', merge: false });
+    if (dom.metaHint) dom.metaHint.textContent = '已采用试玩布局：这些件变成预设件（不可搬），手牌保留';
+  }
+
+  function pushSolve() {
+    var solve = state.solve;
+    if (!solve) return;
+    solve.stack.length = solve.index + 1;
+    solve.stack.push(solve.hand.serialize());
+    if (solve.stack.length > 40) solve.stack.shift();
+    solve.index = solve.stack.length - 1;
+    updateHistoryButtons();
+  }
+
+  function applySolve(snapshot) {
+    var hand = HandLib.restore(snapshot, Catalog.builtin);
+    state.solve.hand = hand;
+    state.document = hand.document;
+    state.selection = null;
+    changed({ silentHistory: true });
+    updateHistoryButtons();
+  }
+
+  function solveUndo() {
+    var solve = state.solve;
+    if (!solve || solve.index <= 0) return;
+    solve.index--;
+    applySolve(solve.stack[solve.index]);
+    solveMessage('已撤销一步试玩改动');
+  }
+
+  function solveRedo() {
+    var solve = state.solve;
+    if (!solve || solve.index >= solve.stack.length - 1) return;
+    solve.index++;
+    applySolve(solve.stack[solve.index]);
+    solveMessage('已重做');
+  }
+
+  /* 左键：落件 / 拾回 / BUFFER 收回；右键或 Shift+左键：旋转自己的件。 */
+  function solvePointer(cell, event) {
+    var solve = state.solve;
+    if (!solve) return;
+    var hand = solve.hand;
+    var x = cell.x;
+    var y = cell.y;
+
+    if (event.button === 2 || event.shiftKey) {
+      if (hand.rotate(x, y)) {
+        pushSolve();
+        changed({ silentHistory: true });
+        solveMessage('旋转了 (' + x + ',' + y + ')');
+      } else {
+        solveMessage('这里没有可以旋转的件（墙 / 延迟器 / 预设件不转）', true);
+      }
+      return;
+    }
+
+    var pile = hand.pile(solve.selected);
+    if (pile && pile.tool) {
+      var retracted = hand.retract(x, y, pile.key);
+      if (!retracted.ok) { solveMessage(reasonText(retracted.reason), true); return; }
+      pushSolve();
+      changed({ silentHistory: true });
+      solveMessage('BUFFER 收回一枚 ' + describePile(retracted.pile) + '，已进手牌');
+      return;
+    }
+
+    if (hand.isPlaced(x, y)) {
+      var picked = hand.pick(x, y);
+      if (!picked.ok) { solveMessage(reasonText(picked.reason), true); return; }
+      pushSolve();
+      changed({ silentHistory: true });
+      solveMessage('拾回一枚 ' + describePile(picked.pile));
+      return;
+    }
+
+    if (!pile) { solveMessage(reasonText('NoPile'), true); return; }
+
+    var placed = hand.place(pile.key, x, y);
+    if (!placed.ok) { solveMessage(reasonText(placed.reason), true); return; }
+    pushSolve();
+    changed({ silentHistory: true });
+    solveMessage('落件 ' + describePile(pile) + ' @ (' + x + ',' + y + ')');
+  }
+
+  /* ---------------- 检查器 ---------------- */
+  /* ---------------- 检查器 ---------------- */
+  function field(label, control, hint) {
+    var wrap = el('div', { class: 'field' }, [
+      el('label', { text: label }),
+      control
+    ]);
+    if (hint) wrap.appendChild(el('div', { class: 'hint', text: hint }));
+    return wrap;
+  }
+
+  function dirSelect(value, onChange) {
+    var select = el('select');
+    for (var dir = 0; dir < 4; dir++) {
+      var option = el('option', { value: D.name(dir), text: D.mark(dir) + ' ' + D.chineseName(dir) });
+      if (D.parse(value) === dir) option.selected = true;
+      select.appendChild(option);
+    }
+    select.addEventListener('change', function () { onChange(select.value); });
+    return select;
+  }
+
+  function textInput(value, onChange, placeholder) {
+    var input = el('input', { type: 'text', value: value });
+    if (placeholder) input.placeholder = placeholder;
+    input.addEventListener('change', function () { onChange(input.value); });
+    return input;
+  }
+
+  function numberInput(value, onChange, min, max) {
+    var input = el('input', { type: 'number', value: String(value) });
+    if (typeof min === 'number') input.min = String(min);
+    if (typeof max === 'number') input.max = String(max);
+    input.addEventListener('change', function () {
+      onChange(clampInt(input.value, value, typeof min === 'number' ? min : -999, typeof max === 'number' ? max : 999));
+    });
+    return input;
+  }
+
+  function checkbox(checked, onChange, labelText) {
+    var input = el('input', { type: 'checkbox' });
+    input.checked = !!checked;
+    input.addEventListener('change', function () { onChange(input.checked); });
+    return el('label', { class: 'row' }, [input, el('span', { text: labelText })]);
+  }
+
+  function renderInspector() {
+    var box = dom.inspector;
+    if (!box) return;
+    box.innerHTML = '';
+
+    if (state.solve) { renderSolveInspector(box); return; }
+
+    var cellIndex = state.selection ? findCellIndex(state.selection.x, state.selection.y) : -1;
+    var cell = cellIndex >= 0 ? state.document.elements[cellIndex] : null;
+    var target = cell || state.brush;
+
+    dom.inspectorTitle.textContent = cell ? '选中的格子' : '画笔参数';
+    dom.inspectorHint.textContent = cell
+      ? cell.kind + ' @ ' + cell.x + ',' + cell.y
+      : '下一次落件用的默认值';
+
+    if (!target) return;
+
+    var kind = cell ? Doc.parseKind(cell.kind) : state.brush.kind;
+
+    if (cell) {
+      box.appendChild(field('类型 type', textInput(cell.type, function (value) {
+        cell.type = value.trim();
+        changed();
+      }, '空 = 用 kind 默认值'), '写了 type 就按类型快照 + rot 读，pass 被忽略'));
+      box.appendChild(field('旋转 rot', numberInput(cell.rot, function (value) {
+        cell.rot = ((value % 4) + 4) % 4;
+        changed();
+      }, 0, 3), '只对 type 模式生效（顺时针 90°/档）'));
+    }
+
+    if (kind === KIND.Emitter || kind === KIND.NotGate || kind === KIND.Filter) {
+      box.appendChild(field('朝向 dir', dirSelect(target.dir, function (value) {
+        target.dir = value;
+        changed();
+      })));
+    }
+
+    if (kind === KIND.Splitter) {
+      box.appendChild(field('1-臂 dir', dirSelect(target.dir, function (value) {
+        target.dir = value;
+        changed();
+      })));
+      box.appendChild(field('0-臂 dir2', dirSelect(target.dir2, function (value) {
+        target.dir2 = value;
+        changed();
+      })));
+    }
+
+    if (kind === KIND.Receiver) {
+      box.appendChild(field('进料面 dir', dirSelect(target.dir, function (value) {
+        target.dir = value;
+        changed();
+      }), cell ? 'type 模式下由类型 + rot 决定，这里的值不生效' : '四面可收时只作显示朝向'));
+    }
+
+    if (kind === KIND.Emitter || kind === KIND.Receiver) {
+      box.appendChild(field('序列 sequence', textInput(target.sequence, function (value) {
+        target.sequence = value.trim();
+        changed();
+      }, '只认 0/1，其它字符忽略')));
+      box.appendChild(field('数量 count', numberInput(target.count, function (value) {
+        target.count = Math.max(0, value);
+        changed();
+      }, 0, 999), kind === KIND.Emitter ? '总共吐几位（循环填满）' : '总共要收几位'));
+    }
+
+    if (kind === KIND.Receiver) {
+      if (!cell) target.face = target.acceptAnyFace === false ? 'in' : 'any';
+      var faceSelect = el('select');
+      [['any', 'any · 四面可收'], ['in', 'in · 只认进料面']].forEach(function (pair) {
+        var option = el('option', { value: pair[0], text: pair[1] });
+        if ((target.face || 'any') === pair[0]) option.selected = true;
+        faceSelect.appendChild(option);
+      });
+      faceSelect.addEventListener('change', function () {
+        target.face = faceSelect.value;
+        if (cell) {
+          changed();
+        } else {
+          target.acceptAnyFace = faceSelect.value === 'any';
+          renderInspector();
+        }
+      });
+      box.appendChild(field('进料面 face', faceSelect));
+    }
+
+    if (kind === KIND.Filter) {
+      var passSelect = el('select');
+      [[0, '放行 0'], [1, '放行 1']].forEach(function (pair) {
+        var option = el('option', { value: String(pair[0]), text: pair[1] });
+        if ((target.pass | 0) === pair[0]) option.selected = true;
+        passSelect.appendChild(option);
+      });
+      passSelect.addEventListener('change', function () {
+        target.pass = parseInt(passSelect.value, 10);
+        changed();
+      });
+      box.appendChild(field('放行 pass', passSelect));
+    }
+
+    if (kind === KIND.DelayGate) {
+      box.appendChild(field('延迟 delay', numberInput(target.delay, function (value) {
+        target.delay = Math.max(1, Math.min(4, value));
+        changed();
+      }, 1, 4), '比直通多停 N 拍，1~4'));
+    }
+
+    if (cell) {
+      box.appendChild(field('玩家可搬', checkbox(cell.playerEditable, function (value) {
+        cell.playerEditable = value;
+        changed();
+      }, 'playerEditable')));
+      box.appendChild(field('', el('button', {
+        class: 'btn small',
+        text: '删除这一格（Delete）',
+        onclick: function () { eraseAt(cell.x, cell.y); }
+      })));
+    } else {
+      box.appendChild(field('玩家可搬', checkbox(!!state.brush.playerEditable, function (value) {
+        state.brush.playerEditable = value;
+        renderInspector();
+      }, '新落件的 playerEditable')));
+      box.appendChild(el('div', {
+        class: 'muted',
+        text: '提示：Shift + 点格子可以旋转；右键擦除；墙画在独立的墙层里。'
+      }));
+    }
+  }
+
+  /* ---------------- 关卡属性 ---------------- */
+  function resizeDocument(width, height) {
+    var doc = state.document;
+    if (width === doc.width && height === doc.height) return;
+
+    doc.width = width;
+    doc.height = height;
+
+    while (doc.wallRows.length < height) doc.wallRows.push('');
+    doc.wallRows = doc.wallRows.slice(0, height).map(function (row) { return row.substring(0, width); });
+
+    var kept = [];
+    var dropped = 0;
+    for (var i = 0; i < doc.elements.length; i++) {
+      var cell = doc.elements[i];
+      if (cell.x < width && cell.y < height) kept.push(cell);
+      else dropped++;
+    }
+    doc.elements = kept;
+
+    if (state.selection && (state.selection.x >= width || state.selection.y >= height)) state.selection = null;
+    if (dom.metaHint) {
+      dom.metaHint.textContent = dropped > 0 ? dropped + ' 个越界元件已移除' : '已调整尺寸';
+    }
+    changed({ label: '尺寸', merge: false });
+  }
+
+  function renderMeta() {
+    var box = dom.metaForm;
+    if (!box) return;
+    box.innerHTML = '';
+
+    var doc = state.document;
+
+    box.appendChild(field('关卡名', textInput(doc.displayName, function (value) {
+      doc.displayName = value.trim() || 'NEW LEVEL';
+      changed();
+    })));
+
+    box.appendChild(field('宽 × 高', (function () {
+      var row = el('div', { class: 'row' });
+      row.appendChild(numberInput(doc.width, function (value) {
+        resizeDocument(clampInt(value, doc.width, 1, 40), doc.height);
+      }, 1, 40));
+      row.appendChild(el('span', { class: 'muted', text: '×' }));
+      row.appendChild(numberInput(doc.height, function (value) {
+        resizeDocument(doc.width, clampInt(value, doc.height, 1, 40));
+      }, 1, 40));
+      return row;
+    })(), '画布尺寸；缩小会移除越界元件'));
+
+    box.appendChild(field('tick 秒', (function () {
+      var input = el('input', { type: 'number', value: String(doc.tickInterval) });
+      input.min = '0.05';
+      input.max = '5';
+      input.step = '0.05';
+      input.addEventListener('change', function () {
+        var value = parseFloat(input.value);
+        if (!isFinite(value)) value = 0.35;
+        doc.tickInterval = Math.max(0.05, Math.min(5, value));
+        changed();
+      });
+      return input;
+    })(), '每 tick 的墙钟时长，0.05~5 秒'));
+
+    box.appendChild(field('allowBuild', checkbox(doc.allowBuild, function (value) {
+      doc.allowBuild = value;
+      changed();
+    }, '允许玩家进关后自己搬件')));
+  }
+
+  /* ---------------- 手牌 ---------------- */
+  var SUPPLY_KINDS = [KIND.Wall, KIND.Splitter, KIND.NotGate, KIND.Filter, KIND.DelayGate, KIND.Emitter, KIND.Receiver];
+
+  function renderSupplies() {
+    var box = dom.supplyList;
+    if (!box) return;
+    box.innerHTML = '';
+
+    var supplies = state.document.supplies;
+    if (supplies.length === 0) {
+      box.appendChild(el('div', { class: 'muted', text: '没有手牌：这一关的预设布局必须自己跑通。' }));
+      return;
+    }
+
+    for (var i = 0; i < supplies.length; i++) {
+      (function (index) {
+        var supply = supplies[index];
+        var row = el('div', { class: 'supply-row' });
+
+        row.appendChild(textInput(supply.type, function (value) {
+          supply.type = value.trim();
+          changed();
+        }, 'type（可空）'));
+
+        var kindSelect = el('select');
+        for (var k = 0; k < SUPPLY_KINDS.length; k++) {
+          var kind = SUPPLY_KINDS[k];
+          var option = el('option', { value: Doc.kindName(kind), text: Doc.kindName(kind) });
+          if (Doc.parseKind(supply.kind) === kind) option.selected = true;
+          kindSelect.appendChild(option);
+        }
+        if (Doc.parseKind(supply.kind) === null) kindSelect.value = '';
+        kindSelect.addEventListener('change', function () {
+          supply.kind = kindSelect.value;
+          changed();
+        });
+        row.appendChild(kindSelect);
+
+        row.appendChild(numberInput(supply.count, function (value) {
+          supply.count = value;
+          changed();
+        }, -1, 999));
+
+        row.appendChild(el('button', {
+          class: 'btn small',
+          text: '×',
+          title: '删掉这一摞',
+          onclick: function () {
+            state.document.supplies.splice(index, 1);
+            changed();
+          }
+        }));
+
+        box.appendChild(row);
+      })(i);
+    }
+
+    box.appendChild(el('div', {
+      class: 'muted',
+      text: 'count = -1 表示 1 张；0 会被游戏跳过并记一条问题；空位不够放牌时自检会拦下。'
+    }));
+  }
+
+  /* ---------------- 清单 ----------------
+   * 旧编辑器最救命的一块：不用点开每一格就知道场上有什么、参数对不对。
+   */
+  function describeRawCell(cell) {
+    var kind = Doc.parseKind(cell.kind);
+    var parts = ['(' + cell.x + ',' + cell.y + ')'];
+
+    if (cell.type) parts.push('type ' + cell.type);
+    if (kind === KIND.Emitter) {
+      parts.push(D.mark(D.parse(cell.dir)) + ' 序列 ' + (cell.sequence || '') + ' ×' + cell.count);
+    } else if (kind === KIND.Receiver) {
+      parts.push((cell.face === 'in' ? '只认进料面' : '四面可收') + ' ×' + cell.count);
+    } else if (kind === KIND.Splitter) {
+      parts.push('1' + D.mark(D.parse(cell.dir)) + ' 0' + D.mark(D.parse(cell.dir2)));
+    } else if (kind === KIND.NotGate) {
+      parts.push('出口 ' + D.mark(D.parse(cell.dir)));
+    } else if (kind === KIND.Filter) {
+      parts.push('放行 ' + cell.pass + ' · 出口 ' + D.mark(D.parse(cell.dir)));
+    } else if (kind === KIND.DelayGate) {
+      parts.push('停 ' + cell.delay + ' 拍');
+    }
+    if (cell.playerEditable) parts.push('可搬');
+    return parts.join(' ');
+  }
+
+  function renderInventory() {
+    var box = dom.inventory;
+    if (!box) return;
+    box.innerHTML = '';
+
+    var doc = state.document;
+    var cells = doc.elements;
+    var wallCount = 0;
+    for (var r = 0; r < doc.wallRows.length; r++) {
+      var row = doc.wallRows[r] || '';
+      for (var c = 0; c < row.length; c++) if (row.charAt(c) === '#') wallCount++;
+    }
+
+    var head = el('div', { class: 'inventory-head' });
+    head.appendChild(el('strong', { text: '清单' }));
+    head.appendChild(el('span', {
+      class: 'muted',
+      text: doc.width + '×' + doc.height + ' · ' + cells.length + ' 个元件 · ' + wallCount + ' 面墙 · tick ' +
+        doc.tickInterval + 's · allowBuild ' + (doc.allowBuild ? '开' : '关')
+    }));
+    box.appendChild(head);
+
+    if (cells.length === 0 && wallCount === 0) {
+      box.appendChild(el('div', { class: 'inv-empty', text: '棋盘是空的：选个画笔，左键落件。' }));
+      return;
+    }
+
+    var order = [KIND.Emitter, KIND.Receiver, KIND.Splitter, KIND.NotGate, KIND.Filter, KIND.DelayGate, KIND.Wall];
+    for (var o = 0; o < order.length; o++) {
+      var kind = order[o];
+      var group = [];
+      for (var i = 0; i < cells.length; i++) {
+        if (Doc.parseKind(cells[i].kind) === kind) group.push(cells[i]);
+      }
+      if (group.length === 0) continue;
+
+      var line = el('div', { class: 'inv-group' });
+      var dot = el('span', { class: 'inv-dot' });
+      dot.style.background = GridLib.KIND_COLORS[kind] || '#5b6673';
+      line.appendChild(dot);
+      line.appendChild(el('span', { class: 'inv-name', text: GridLib.KIND_LABELS[kind] + ' ×' + group.length }));
+
+      var body = el('span', { class: 'inv-body' });
+      for (var g = 0; g < group.length; g++) {
+        if (g > 0) body.appendChild(el('span', { class: 'inv-sep', text: ' | ' }));
+        body.appendChild(el('span', { class: 'inv-cell', text: describeRawCell(group[g]) }));
+      }
+      line.appendChild(body);
+      box.appendChild(line);
+    }
+
+    if (doc.supplies.length > 0) {
+      var supplies = [];
+      for (var s = 0; s < doc.supplies.length; s++) {
+        var supply = doc.supplies[s];
+        supplies.push((supply.kind || '?') + '×' + supply.count + (supply.type ? '(' + supply.type + ')' : ''));
+      }
+      box.appendChild(el('div', { class: 'inv-supply', text: '手牌 ' + supplies.join(' · ') }));
+    }
+  }
+
+  /* ---------------- 自检 + 时间轴 ---------------- */
+  function severityLabel(severity) {
+    return severity === 'Blocking' ? '必须改' : '提醒';
+  }
+
+  function renderIssues(issues) {
+    var box = dom.issueList;
+    if (!box) return;
+    box.innerHTML = '';
+
+    if (issues.length === 0) {
+      box.appendChild(el('div', { class: 'issue', text: '没有阻塞性意见：这份数据可以存。' }));
+      return;
+    }
+
+    for (var i = 0; i < issues.length; i++) {
+      var issue = issues[i];
+      box.appendChild(el('div', {
+        class: 'issue ' + (issue.severity === 'Blocking' ? 'blocking' : 'advisory'),
+        text: '[' + severityLabel(issue.severity) + '] ' + issue.message
+      }));
+    }
+  }
+
+  function renderProblems(problems) {
+    var box = dom.problemList;
+    if (!box) return;
+    box.innerHTML = '';
+    if (!problems || problems.length === 0) return;
+
+    for (var i = 0; i < problems.length; i++) {
+      box.appendChild(el('div', { class: 'issue problem', text: '读档问题：' + problems[i] }));
+    }
+  }
+
+  function countReasons(report) {
+    var counts = {};
+    for (var i = 0; i < report.destroyed.length; i++) {
+      var reason = report.destroyed[i].reason;
+      counts[reason] = (counts[reason] || 0) + 1;
+    }
+    var parts = [];
+    for (var key in counts) parts.push(key + '×' + counts[key]);
+    return parts.join(' ');
+  }
+
+  function describeFrame(frame) {
+    if (!frame) return '';
+    if (!frame.report) return 'tick 0 · 初始状态（还没有位出场）';
+
+    var report = frame.report;
+    var parts = ['tick ' + frame.tick];
+    if (report.spawns.length) parts.push('出场 ' + report.spawns.length);
+    if (report.deliveries.length) parts.push('收货 ' + report.deliveries.length);
+    if (report.destroyed.length) parts.push('销毁 ' + report.destroyed.length + '（' + countReasons(report) + '）');
+    if (report.delayAbsorbed.length) parts.push('延迟收纳 ' + report.delayAbsorbed.length);
+    if (report.delayReleased.length) parts.push('延迟放行 ' + report.delayReleased.length);
+    if (report.delayDropped) parts.push('延迟溢出 ' + report.delayDropped);
+    if (report.stalledEmitters) parts.push('发射顺延 ' + report.stalledEmitters);
+    if (report.delayStalled) parts.push('延迟堵口 ' + report.delayStalled);
+    if (report.isFinished) parts.push('（本 tick 结算）');
+    return parts.join(' · ');
+  }
+
+  function onFrame(frame, index, total) {
+    if (state.view) state.view.setState({ frame: frame });
+    if (dom.tickLabel) dom.tickLabel.textContent = 'tick ' + frame.tick + ' / ' + (state.timeline ? state.timeline.totalTicks : 0);
+    if (dom.scrub && dom.scrub.max !== String(total - 1)) dom.scrub.max = String(total - 1);
+    if (dom.scrub) dom.scrub.value = String(index);
+    if (dom.eventLine) dom.eventLine.textContent = describeFrame(frame);
+    if (dom.btnPlay) dom.btnPlay.textContent = state.player && state.player.playing ? '⏸' : '▶';
+  }
+
+  function runCheck() {
+    var document_ = buildDocument();
+    var read = Doc.read(document_, Catalog.builtin);
+    var outcome = Check.run(read.definition, read.definition.hasSupplies);
+    var issues = Check.runForSaveDetailed(read.definition);
+
+    state.lastCheck = { read: read, outcome: outcome, issues: issues };
+
+    if (dom.reportText) {
+      dom.reportText.className = 'report';
+      dom.reportText.textContent = outcome.report;
+    }
+    renderIssues(issues);
+    renderProblems(read.problems);
+
+    if (state.solve) {
+      var solved = !!outcome.success;
+      solveMessage(solved
+        ? '✅ 这套解跑通了：点「采用解」把它写回关卡'
+        : '❌ 还没跑通 —— 看「自检」报告里的第一条', !solved);
+      if (dom.btnHandAdopt) dom.btnHandAdopt.disabled = !solved;
+    }
+
+    state.timeline = Timeline.build(read.definition, { maxFrames: Timeline.DEFAULT_MAX_FRAMES });
+    if (state.player) state.player.pause();
+    state.player = new Timeline.Player(state.timeline, onFrame);
+    state.player.setTickInterval(read.definition.tickInterval);
+
+    if (dom.scrub) {
+      dom.scrub.min = '0';
+      dom.scrub.max = String(state.timeline.frames.length - 1);
+      dom.scrub.value = '0';
+    }
+
+    state.selection = null;
+    state.view.setState({ document: document_, selection: null, frame: null });
+    state.player.seek(0);
+
+    if (state.timeline.truncated) {
+      dom.eventLine.textContent += ' · 回放只到第 ' + state.timeline.frames.length + ' 帧（自检结论仍是完整跑完的）';
+    }
+  }
+
+  /* ---------------- 载入 / 新建 / 导入 / 导出 ---------------- */
+  function loadDocument(raw, options) {
+    var settings = options || {};
+    /* 换关就退出试玩：否则手牌会指向上一关的文档。 */
+    if (state.solve) stopSolve();
+    state.document = normalizeDocument(raw);
+    state.selection = null;
+    state.hover = null;
+    state.lastCheck = null;
+    state.timeline = null;
+    if (state.player) state.player.pause();
+    state.player = null;
+
+    if (settings.focusBrush) state.brush = makeBrush(settings.focusBrush);
+    else if (!state.brush) state.brush = makeBrush(KIND.Emitter);
+
+    if (dom.reportText) {
+      dom.reportText.className = 'report';
+      dom.reportText.textContent = settings.reportText || '尚未运行。点「运行自检」用游戏同一份模拟器跑到底。';
+    }
+    if (dom.issueList) dom.issueList.innerHTML = '';
+    if (dom.problemList) dom.problemList.innerHTML = '';
+    if (dom.eventLine) dom.eventLine.textContent = '自检后可以逐 tick 回放';
+    if (dom.tickLabel) dom.tickLabel.textContent = 'tick 0 / 0';
+    if (dom.scrub) { dom.scrub.min = '0'; dom.scrub.max = '0'; dom.scrub.value = '0'; }
+    if (dom.metaHint) dom.metaHint.textContent = settings.hint || '';
+
+    state.view.resize();
+    resetHistory();
+    changed({ keepCheck: true });
+  }
+
+  function newLevel() {
+    loadDocument(Samples.blank(), { focusBrush: KIND.Emitter, hint: '已新建空白关卡' });
+  }
+
+  function sanitizeFileName(name) {
+    var base = (name || 'level').trim().replace(/[\\/:*?"<>|]+/g, '_');
+    if (base === '') base = 'level';
+    return base + '.json';
+  }
+
+  function exportJson() {
+    /* 试玩中的盘面是临时解，导出会顺手把人骗了：让作者先做选择。 */
+    if (state.solve) {
+      solveMessage('试玩中不导出：先「采用解」写回，或「退出」回到预设布局', true);
+      return;
+    }
+    var document_ = buildDocument();
+    var text = JSON.stringify(document_, null, 2) + '\n';
+
+    try {
+      var blob = new Blob([text], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var link = el('a', { href: url, download: sanitizeFileName(document_.displayName) });
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      if (dom.metaHint) dom.metaHint.textContent = '已导出 ' + sanitizeFileName(document_.displayName);
+    } catch (error) {
+      showStorageBanner('导出失败（' + error + '）。可以打开「导入 JSON」把文本复制出来。');
+    }
+  }
+
+  function openImport() {
+    if (!dom.importModal) return;
+    dom.importError.classList.add('hidden');
+    dom.importError.textContent = '';
+    dom.importText.value = '';
+    dom.importModal.classList.remove('hidden');
+    dom.importText.focus();
+  }
+
+  function closeImport() {
+    if (dom.importModal) dom.importModal.classList.add('hidden');
+  }
+
+  function doImport() {
+    var text = dom.importText.value.trim();
+    if (text === '') {
+      dom.importError.textContent = '请粘贴 JSON，或先选择文件。';
+      dom.importError.classList.remove('hidden');
+      return;
+    }
+
+    var parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (error) {
+      dom.importError.textContent = 'JSON 解析失败：' + error.message;
+      dom.importError.classList.remove('hidden');
+      return;
+    }
+
+    var lost = [];
+    if (!Array.isArray(parsed.elements)) lost.push('elements');
+    if (parsed.wallRows === undefined && parsed.wallMap === undefined) lost.push('wallRows');
+
+    closeImport();
+    loadDocument(parsed, {
+      hint: lost.length ? '已导入（原文件缺少 ' + lost.join(' / ') + '，按空处理）' : '已导入'
+    });
+  }
+
+  /* ---------------- 文档抽屉 ---------------- */
+  function renderDocs() {
+    var body = dom.docsBody;
+    if (!body) return;
+    body.innerHTML = '';
+
+    for (var i = 0; i < Docs.SECTIONS.length; i++) {
+      var section = Docs.SECTIONS[i];
+      body.appendChild(el('h3', { text: section.title }));
+      var content = el('div');
+      content.innerHTML = section.html;
+      body.appendChild(content);
+    }
+  }
+
+  /* ---------------- 页脚 ---------------- */
+  function renderFooter() {
+    if (dom.footerBuild) dom.footerBuild.textContent = 'build ' + BUILD_STAMP;
+
+    var result;
+    try {
+      result = SelfTest.run();
+    } catch (error) {
+      result = {
+        ok: false, passed: 0, total: 0, fixtureCount: 0,
+        checks: [{ name: '自检本身抛错', ok: false, detail: String(error) }]
+      };
+    }
+
+    if (dom.footerSelfTest) {
+      dom.footerSelfTest.textContent = '自检 ' + result.passed + '/' + result.total + (result.ok ? ' 通过' : ' 失败');
+      dom.footerSelfTest.className = result.ok ? 'ok' : 'bad';
+      dom.footerSelfTest.title = result.checks.map(function (check) {
+        return (check.ok ? '✓ ' : '✗ ') + check.name + (check.detail ? ' — ' + check.detail : '');
+      }).join('\n');
+    }
+
+    if (dom.footerParity) {
+      dom.footerParity.textContent = '对拍 ' + result.fixtureCount + ' 关 · tests/parity.js';
+      dom.footerParity.title = 'C# 侧用同一个 Core 源文件跑同一批 fixture，逐字段比对';
+    }
+
+    if (dom.footerStorage && state.storageOk) {
+      dom.footerStorage.textContent = '本地存储 可用';
+      dom.footerStorage.className = 'muted';
+    }
+  }
+
+  function populateSamples() {
+    if (!dom.sampleSelect) return;
+    for (var i = 0; i < Samples.SAMPLES.length; i++) {
+      var sample = Samples.SAMPLES[i];
+      dom.sampleSelect.appendChild(el('option', { value: sample.id, text: sample.title }));
+    }
+  }
+
+  /* ---------------- 事件绑定 ---------------- */
+  function isTypingTarget(target) {
+    if (!target) return false;
+    var tag = (target.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select';
+  }
+
+  function bindEvents() {
+    dom.btnCheck.addEventListener('click', runCheck);
+    dom.btnNew.addEventListener('click', newLevel);
+    dom.btnExport.addEventListener('click', exportJson);
+    dom.btnImport.addEventListener('click', openImport);
+    dom.btnDoImport.addEventListener('click', doImport);
+    dom.btnCancelImport.addEventListener('click', closeImport);
+    dom.btnDocs.addEventListener('click', function () {
+      dom.docsDrawer.classList.remove('hidden');
+      dom.docsDrawer.setAttribute('aria-hidden', 'false');
+    });
+    dom.btnCloseDocs.addEventListener('click', function () {
+      dom.docsDrawer.classList.add('hidden');
+      dom.docsDrawer.setAttribute('aria-hidden', 'true');
+    });
+
+    dom.btnAddSupply.addEventListener('click', function () {
+      state.document.supplies.push({ type: '', kind: 'Splitter', count: 1 });
+      changed({ label: '手牌', merge: false });
+    });
+
+    dom.btnUndo.addEventListener('click', undo);
+    dom.btnRedo.addEventListener('click', redo);
+    if (dom.btnSolve) {
+      dom.btnSolve.addEventListener('click', function () {
+        if (state.solve) exitSolve();
+        else enterSolve();
+      });
+    }
+    if (dom.btnHandExit) dom.btnHandExit.addEventListener('click', exitSolve);
+    if (dom.btnHandAdopt) dom.btnHandAdopt.addEventListener('click', adoptSolve);
+    dom.btnRotate.addEventListener('click', rotateSelection);
+    dom.btnErase.addEventListener('click', function () {
+      if (state.selection) eraseAt(state.selection.x, state.selection.y);
+    });
+    dom.btnClear.addEventListener('click', clearAll);
+
+    dom.sampleSelect.addEventListener('change', function () {
+      var id = dom.sampleSelect.value;
+      dom.sampleSelect.value = '';
+      if (!id) return;
+      var sample = Samples.byId(id);
+      if (!sample) return;
+      loadDocument(Samples.clone(sample.document), { hint: sample.note });
+    });
+
+    dom.importFile.addEventListener('change', function () {
+      var file = dom.importFile.files && dom.importFile.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        dom.importText.value = String(reader.result || '');
+        dom.importError.classList.add('hidden');
+      };
+      reader.onerror = function () {
+        dom.importError.textContent = '读文件失败：' +
+          (reader.error && reader.error.message ? reader.error.message : '未知错误');
+        dom.importError.classList.remove('hidden');
+      };
+      reader.readAsText(file);
+    });
+
+    dom.btnRestart.addEventListener('click', function () {
+      if (state.player) state.player.restart();
+    });
+    dom.btnPrev.addEventListener('click', function () {
+      if (state.player) state.player.stepBy(-1);
+    });
+    dom.btnNext.addEventListener('click', function () {
+      if (state.player) state.player.stepBy(1);
+    });
+    dom.btnPlay.addEventListener('click', function () {
+      if (!state.player) { runCheck(); return; }
+      state.player.toggle();
+    });
+    dom.speedSelect.addEventListener('change', function () {
+      if (state.player) state.player.setSpeed(parseFloat(dom.speedSelect.value));
+    });
+    dom.scrub.addEventListener('input', function () {
+      if (state.player) state.player.seek(parseInt(dom.scrub.value, 10));
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (event.ctrlKey && (event.key === 's' || event.key === 'S')) {
+        event.preventDefault();
+        exportJson();
+        return;
+      }
+      if (isTypingTarget(event.target)) return;
+
+      var key = event.key.toLowerCase();
+      var accel = event.ctrlKey || event.metaKey;
+
+      if (accel && key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (accel && key === 'y') {
+        event.preventDefault();
+        redo();
+        return;
+      }
+
+      /* 试玩中画笔 / 旋转 / 删除快捷键没有意义（棋盘是手牌文档），按了就当没按。 */
+      if (state.solve && (
+        (event.key >= '1' && event.key <= '7') || key === 'v' || event.key === '0' ||
+        key === 'r' || event.key === 'Delete' || event.key === 'Backspace')) {
+        return;
+      }
+
+      if (event.key >= '1' && event.key <= '7') {
+        var index = parseInt(event.key, 10) - 1;
+        if (PALETTE[index]) setBrush(PALETTE[index].kind);
+        return;
+      }
+      if (key === 'v' || event.key === '0') {
+        setTool('select');
+        return;
+      }
+      if (key === 'r') {
+        rotateSelection();
+        return;
+      }
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (state.selection) {
+          event.preventDefault();
+          eraseAt(state.selection.x, state.selection.y);
+        }
+        return;
+      }
+      if (event.key === 'ArrowLeft' && state.player) {
+        event.preventDefault();
+        state.player.stepBy(-1);
+        return;
+      }
+      if (event.key === 'ArrowRight' && state.player) {
+        event.preventDefault();
+        state.player.stepBy(1);
+        return;
+      }
+      if (event.key === ' ') {
+        event.preventDefault();
+        if (!state.player) runCheck();
+        else state.player.toggle();
+        return;
+      }
+      if (event.key === 'Escape') {
+        closeImport();
+        dom.docsDrawer.classList.add('hidden');
+        dom.docsDrawer.setAttribute('aria-hidden', 'true');
+        if (state.tool !== 'select') setTool('select');
+      }
+    });
+
+    window.addEventListener('resize', function () {
+      if (state.view) state.view.resize();
+    });
+  }
+
+  /* ---------------- 启动 ---------------- */
+  function boot() {
+    var ids = [
+      'storageBanner', 'palette', 'grid', 'timelineBar', 'btnRestart', 'btnPrev', 'btnPlay', 'btnNext',
+      'speedSelect', 'tickLabel', 'scrub', 'eventLine', 'reportText', 'issueList', 'problemList',
+      'btnCheck', 'inspector', 'inspectorTitle', 'inspectorHint', 'metaForm', 'metaHint',
+      'supplyList', 'btnAddSupply', 'footerBuild', 'footerSelfTest', 'footerParity', 'footerStorage',
+      'docsDrawer', 'docsBody', 'btnDocs', 'btnCloseDocs', 'importModal', 'importText', 'importFile',
+      'btnDoImport', 'btnCancelImport', 'importError', 'sampleSelect', 'btnNew', 'btnImport', 'btnExport',
+      'btnUndo', 'btnRedo', 'btnRotate', 'btnErase', 'btnClear', 'coordLabel', 'inventory',
+      'handTray', 'handPiles', 'handStatus', 'handMsg', 'btnSolve', 'btnHandAdopt', 'btnHandExit'
+    ];
+    for (var i = 0; i < ids.length; i++) dom[ids[i]] = $(ids[i]);
+
+    state.brush = makeBrush(KIND.Emitter);
+    state.tool = 'paint';
+    state.view = new GridLib.Grid(dom.grid);
+
+    var saved = readStorage();
+    var initial = saved && saved.document
+      ? saved.document
+      : Samples.clone(Samples.byId('wait111').document);
+    var initialHint = saved && saved.document && saved.savedAt
+      ? '已恢复上次编辑（' + saved.savedAt.replace('T', ' ').slice(0, 16) + '）'
+      : '默认载入官方关卡 WAIT111';
+
+    populateSamples();
+    renderDocs();
+    bindEvents();
+    bindCanvas();
+
+    loadDocument(initial, { hint: initialHint });
+    renderFooter();
+
+    requestAnimationFrame(function () {
+      state.view.resize();
+      if (state.player) state.player.emit();
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+</script>
+</body>
+</html>

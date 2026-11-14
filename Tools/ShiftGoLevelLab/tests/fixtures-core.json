@@ -1,0 +1,95 @@
+{
+  "fixtures": [
+    {
+      "name": "one_only",
+      "note": "官方关卡 ONE_ONLY：有手牌、预设布局跑不通（应报 📝）",
+      "document": {
+        "schema": 2,
+        "displayName": "ONE ONLY",
+        "width": 9,
+        "height": 8,
+        "tickInterval": 0.35,
+        "wallType": "Type_Wall",
+        "elements": [
+          { "kind": "Emitter", "x": 0, "y": 4, "dir": "Right", "sequence": "10110000", "count": 8, "playerEditable": false },
+          { "kind": "Receiver", "x": 8, "y": 6, "dir": "Down", "sequence": "11111111", "count": 8, "face": "any", "playerEditable": false }
+        ],
+        "supplies": [
+          { "kind": "Splitter", "type": "Type_Splitter_L1", "count": 1 },
+          { "kind": "NotGate", "type": "Type_NotGate_N1", "count": 1 },
+          { "kind": "Filter", "type": "Type_Filter_F1", "count": 1 }
+        ],
+        "allowBuild": true
+      }
+    },
+    {
+      "name": "wait111",
+      "note": "官方关卡 WAIT111：两个发射器 → 延迟器 D4 → 接收器，无手牌（应报 ✅）",
+      "document": {
+        "schema": 2,
+        "displayName": "WAIT111",
+        "width": 9,
+        "height": 8,
+        "tickInterval": 0.3499999940395355,
+        "wallType": "",
+        "wallRows": [],
+        "wallMap": "",
+        "elements": [
+          { "type": "", "kind": "Emitter", "x": 0, "y": 2, "rot": 0, "dir": "Right", "dir2": "", "sequence": "1011", "count": 4, "face": "", "pass": -1, "delay": -1, "playerEditable": true },
+          { "type": "", "kind": "DelayGate", "x": 3, "y": 2, "rot": 0, "dir": "", "dir2": "", "sequence": "", "count": -1, "face": "", "pass": -1, "delay": 4, "playerEditable": true },
+          { "type": "", "kind": "Receiver", "x": 7, "y": 2, "rot": 0, "dir": "Down", "dir2": "", "sequence": "1101", "count": 4, "face": "any", "pass": -1, "delay": -1, "playerEditable": true },
+          { "type": "", "kind": "Emitter", "x": 0, "y": 6, "rot": 0, "dir": "Right", "dir2": "", "sequence": "1011", "count": 4, "face": "", "pass": -1, "delay": -1, "playerEditable": true },
+          { "type": "", "kind": "Receiver", "x": 7, "y": 6, "rot": 0, "dir": "Down", "dir2": "", "sequence": "1101", "count": 4, "face": "any", "pass": -1, "delay": -1, "playerEditable": true }
+        ],
+        "supplies": [],
+        "allowBuild": false
+      }
+    },
+    {
+      "name": "splitter_route",
+      "note": "分流器按值分道：1 往上出界、0 继续向右进接收器（序列全 0）",
+      "document": {
+        "schema": 2,
+        "displayName": "SPLITTER ROUTE",
+        "width": 9,
+        "height": 8,
+        "elements": [
+          { "kind": "Emitter", "x": 0, "y": 4, "dir": "Right", "sequence": "0000", "count": 4 },
+          { "kind": "Splitter", "x": 2, "y": 4, "dir": "Up", "dir2": "Right" },
+          { "kind": "Receiver", "x": 8, "y": 4, "dir": "Left", "sequence": "0000", "count": 4, "face": "any" }
+        ]
+      }
+    },
+    {
+      "name": "two_emitters_conflict",
+      "note": "两个发射器同 tick 抢同一格 → 一起销毁（bitId=0 的 Conflict 事件）",
+      "document": {
+        "schema": 2,
+        "displayName": "CONFLICT",
+        "width": 5,
+        "height": 5,
+        "elements": [
+          { "kind": "Emitter", "x": 0, "y": 2, "dir": "Right", "sequence": "1111", "count": 4 },
+          { "kind": "Emitter", "x": 2, "y": 2, "dir": "Left", "sequence": "0000", "count": 4 },
+          { "kind": "Receiver", "x": 4, "y": 0, "dir": "Up", "sequence": "1", "count": 1 }
+        ]
+      }
+    },
+    {
+      "name": "delay_overflow",
+      "note": "延迟器出口被墙堵死 → 队列涨到 8 后开始丢位（DelayOverflow）",
+      "document": {
+        "schema": 2,
+        "displayName": "DELAY OVERFLOW",
+        "width": 6,
+        "height": 5,
+        "elements": [
+          { "kind": "Emitter", "x": 0, "y": 2, "dir": "Right", "sequence": "1", "count": 12 },
+          { "kind": "DelayGate", "x": 2, "y": 2, "delay": 4 },
+          { "kind": "Wall", "x": 3, "y": 2 },
+          { "kind": "Receiver", "x": 5, "y": 2, "sequence": "1", "count": 1 }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+# 对拍工装的编译产物
+tests/parity-csharp/bin/
+tests/parity-csharp/obj/
+
+# JS 侧每次生成的快照（expected-csharp.json 是基准，要提交）
+tests/actual-js.json
+
+# 一次性诊断脚本的产物
+tests/_smoke.html
