@@ -1,0 +1,107 @@
+{
+  "schema": 2,
+  "displayName": "FIRE WORK",
+  "width": 9,
+  "height": 8,
+  "tickInterval": 0.35,
+  "wallType": "",
+  "elements": [
+    {
+      "kind": "Emitter",
+      "x": 0,
+      "y": 0,
+      "dir": "Right",
+      "sequence": "1011",
+      "count": 5,
+      "playerEditable": false
+    },
+    {
+      "kind": "Splitter",
+      "x": 2,
+      "y": 0,
+      "dir": "Up",
+      "dir2": "Right",
+      "playerEditable": true
+    },
+    {
+      "kind": "Receiver",
+      "x": 5,
+      "y": 0,
+      "dir": "Down",
+      "sequence": "00000",
+      "count": 5,
+      "face": "any",
+      "playerEditable": false
+    },
+    {
+      "kind": "Splitter",
+      "x": 7,
+      "y": 1,
+      "dir": "Up",
+      "dir2": "Right",
+      "playerEditable": true
+    },
+    {
+      "kind": "Filter",
+      "x": 0,
+      "y": 2,
+      "dir": "Up",
+      "pass": 1,
+      "playerEditable": true
+    },
+    {
+      "kind": "Splitter",
+      "x": 2,
+      "y": 2,
+      "dir": "Left",
+      "dir2": "Up",
+      "playerEditable": false
+    },
+    {
+      "kind": "Filter",
+      "x": 0,
+      "y": 4,
+      "dir": "Right",
+      "pass": 1,
+      "playerEditable": false
+    },
+    {
+      "kind": "Splitter",
+      "x": 4,
+      "y": 4,
+      "dir": "Up",
+      "dir2": "Right",
+      "playerEditable": false
+    },
+    {
+      "kind": "DelayGate",
+      "x": 7,
+      "y": 4,
+      "delay": 2,
+      "playerEditable": true
+    },
+    {
+      "kind": "NotGate",
+      "x": 4,
+      "y": 6,
+      "dir": "Right",
+      "playerEditable": false
+    },
+    {
+      "kind": "Splitter",
+      "x": 7,
+      "y": 6,
+      "dir": "Right",
+      "dir2": "Down",
+      "playerEditable": false
+    }
+  ],
+  "supplies": [
+    {
+      "kind": "Wall",
+      "type": "Type_Buffer",
+      "count": 1
+    }
+  ],
+  "allowBuild": true
+}
