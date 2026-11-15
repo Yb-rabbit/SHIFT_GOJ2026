@@ -3,7 +3,7 @@ using System;
 namespace ShiftGo.BitFlow.Overtime
 {
     /// <summary>
-    /// 工坊尺寸预设。OVERTIME 的 12 题固定分成四档，题号决定尺寸，
+    /// 工坊尺寸预设。OVERTIME 的 8 题固定分成四档，题号决定尺寸，
     /// 测试和玩家都能预期。
     /// </summary>
     public enum OvertimeSizePreset
@@ -30,12 +30,12 @@ namespace ShiftGo.BitFlow.Overtime
     }
 
     /// <summary>
-    /// OVERTIME 的固定口径：12 题上限、文件名格式、题号到尺寸的映射。
+    /// OVERTIME 的固定口径：8 题上限、文件名格式、题号到尺寸的映射。
     /// 所有“魔法数字”只放在这里，生成器 / 写盘 / UI 都从同一份读。
     /// </summary>
     public static class OvertimeConfig
     {
-        public const int MaxProblems = 12;
+        public const int MaxProblems = 8;
         public const int FirstProblem = 1;
         public const int LastProblem = MaxProblems;
 
@@ -48,10 +48,11 @@ namespace ShiftGo.BitFlow.Overtime
         public const string LegacyFolderName = "overtime_legacy";
 
         /// <summary>
-        /// 状态文件 / 题库版本。v2 起是 12 道手工蓝图；v3 把前三题改成碰撞教学题；
-        /// v4 把第 4-12 题也全部换成碰撞题，旧的 12 题存档与关卡会先归档，避免旧题号占住新题面。
+        /// 状态文件 / 题库版本。v2 起是手工蓝图；v3 把前三题改成碰撞教学题；
+        /// v4 把 12 题全部换成碰撞题；v5 收缩为 8 道互不重复的题目，
+        /// 旧存档与 1-12 题旧文件会先归档，避免旧题号占住新题面。
         /// </summary>
-        public const int StateVersion = 4;
+        public const int StateVersion = 5;
 
         /// <summary>OVERTIME 关卡的统一 tick 间隔（秒）。比主线稍快，终端题的节奏更紧。</summary>
         public const float TickInterval = 0.35f;
@@ -63,7 +64,7 @@ namespace ShiftGo.BitFlow.Overtime
         {
             if (index <= 3) return OvertimeSizePreset.Compact;
             if (index <= 6) return OvertimeSizePreset.Standard;
-            if (index <= 9) return OvertimeSizePreset.Wide;
+            if (index <= 7) return OvertimeSizePreset.Wide;
             return OvertimeSizePreset.Deep;
         }
 
@@ -78,32 +79,22 @@ namespace ShiftGo.BitFlow.Overtime
             }
         }
 
-        /// <summary>
-        /// 目标解题件数。前三题是碰撞样板：ERASE 两件、CROSSING 一件、INTERLEAVE 两件；
-        /// 第 4 题起仍与旧走廊蓝图的转角数一致。
-        /// </summary>
-        public static int TargetStepsFor(int index)
-        {
-            switch (index)
-            {
-                case 1:
-                case 3: return 2;
-                case 2: return 1;
-                case 4:
-                case 7: return 3;
-                default: return 4;
-            }
-        }
+        /// <summary>目标解题件数由碰撞题蓝图决定，避免手工 switch 和题面不同步。</summary>
+        public static int TargetStepsFor(int index) => OvertimeCollisionCatalog.SlotCountFor(index);
 
-        /// <summary>终端显示名：<c>OT-PROBLEM 01</c>。</summary>
-        public static string DisplayName(int index) => "OT-PROBLEM " + index.ToString("00");
+        /// <summary>玩家可见的题名；内部文件名仍然保留题号，但 UI 不再显示编号。</summary>
+        public static string DisplayName(int index)
+        {
+            string title = OvertimeCollisionCatalog.TitleFor(index);
+            return string.IsNullOrEmpty(title) ? "OVERTIME" : title;
+        }
 
         /// <summary>磁盘文件名：<c>OT-PROBLEM_001.json</c>（题号固定三位）。</summary>
         public static string FileName(int index) => FilePrefix + index.ToString("000") + ".json";
 
         /// <summary>
         /// 从文件名解析题号；只认 <see cref="FileName"/> 生成的官方名字。
-        /// 12 题是固定集合，<c>OT-PROBLEM_1.json</c> / <c>OT-PROBLEM_0001.json</c>
+        /// 8 题是固定集合，<c>OT-PROBLEM_1.json</c> / <c>OT-PROBLEM_0001.json</c>
         /// 这类手改名不能混进题库，否则 Reconcile 会补出一条指向不存在文件的记录。
         /// </summary>
         public static bool TryParseFileName(string fileName, out int index)

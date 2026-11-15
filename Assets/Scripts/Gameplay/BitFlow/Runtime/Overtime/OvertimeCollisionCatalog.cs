@@ -260,17 +260,21 @@ namespace ShiftGo.BitFlow.Overtime
     }
 
     /// <summary>
-    /// 12 道题全部改成碰撞样板，用来证明"同格争抢"不是事故，而是可以出题的机制：
-    /// 01 ERASE    两条位流并轨，重叠的位一起蒸发，只留下未被擦掉的部分；
-    /// 02 CROSSING 两条位流十字交叉，延迟器把其中一条整体错开，避免同 tick 相撞；
-    /// 03 INTERLEAVE 探针流隔拍擦除主流的位，接收器只看到剩下的序列。
+    /// 8 道题全部是碰撞样板，用来证明"同格争抢"不是事故，而是可以出题的机制：
+    /// 01 MERGE     两条位流并轨，重叠的位一起蒸发，只留下未被擦掉的部分；
+    /// 02 CROSSING  两条位流十字交叉，延迟器把其中一条整体错开，避免同 tick 相撞；
+    /// 03 INTERLEAVE 探针流隔拍擦除主流的位，接收器只看到剩下的序列；
+    /// 04 INVERTED MERGE 并轨后再整体取反；
+    /// 05 FILTERED CROSSING 十字交叉后分流、过滤；
+    /// 06 SPLIT SIGNAL 探针改造后把 0 分到两个接收器；
+    /// 07 DOUBLE PROBE 两道探针连续改造主流；
+    /// 08 FINAL CASCADE 13x9 的终局混合题，合流、延迟与倒相一起用。
     ///
-    /// 04-12 沿用同一套碰撞语言，逐步加长探针、增加分流器、把"避免碰撞"翻成"主动制造碰撞"，
-    /// 让 7x6 → 13x9 的尺寸增长对应机制复杂度，而不是单纯把走廊拉长。
+    /// 题号只决定尺寸档；玩家看到的题名来自 <see cref="TitleFor"/>。
     /// </summary>
     public static class OvertimeCollisionCatalog
     {
-        public const int Count = 12;
+        public const int Count = 8;
 
         static readonly OvertimeCollisionBlueprint[] Blueprints =
         {
@@ -408,56 +412,8 @@ namespace ShiftGo.BitFlow.Overtime
                 },
                 new[] { 0, 1, 2, 3 }),
 
-            // 07 · DOUBLE ERASE · 两条 5 位 1 流并轨，连续擦掉两对，6 位取反后送达。
+            // 07 · DOUBLE PROBE · 两道探针连续改造主流，两次分流/倒相后输出 00000101。
             Define(7, 11, 8, 2,
-                new[]
-                {
-                    Emitter(0, 5, Dir.Right, "11111", 5),
-                    Emitter(0, 2, Dir.Right, "11111", 5),
-                },
-                new[] { Receiver(10, 2, Dir.Left, "000000", 6) },
-                new[]
-                {
-                    P(1, 5), P(2, 5), P(3, 5), P(4, 4), P(4, 3),
-                    P(1, 2), P(2, 2), P(3, 2), P(5, 2), P(6, 2),
-                    P(7, 2), P(8, 2),
-                },
-                new[]
-                {
-                    Slot(4, 5, OvertimePieceRole.FilterOne, 1),
-                    Slot(4, 2, OvertimePieceRole.FilterOne, 0),
-                    Slot(9, 2, OvertimePieceRole.NotGate, 0),
-                },
-                new[] { 0, 1, 2 }),
-
-            // 08 · LONG CROSSING · 长距离十字交叉；延迟器错开横流，两路各送 3 位。
-            Define(8, 11, 8, 0,
-                new[]
-                {
-                    Emitter(0, 4, Dir.Right, "111", 3),
-                    Emitter(6, 0, Dir.Up, "111", 3),
-                },
-                new[]
-                {
-                    Receiver(10, 4, Dir.Left, "111", 3),
-                    Receiver(6, 7, Dir.Down, "000", 3),
-                },
-                new[]
-                {
-                    P(1, 4), P(2, 4), P(3, 4), P(5, 4), P(6, 4),
-                    P(7, 4), P(8, 4), P(6, 1), P(6, 2), P(6, 5),
-                },
-                new[]
-                {
-                    Slot(4, 4, OvertimePieceRole.DelayGate, 0),
-                    Slot(9, 4, OvertimePieceRole.FilterOne, 0),
-                    Slot(6, 3, OvertimePieceRole.NotGate, 3),
-                    Slot(6, 6, OvertimePieceRole.FilterZero, 3),
-                },
-                new[] { 0, 1, 2, 3 }),
-
-            // 09 · DOUBLE INTERLEAVE · 两道探针连续改造主流，输出 00000101。
-            Define(9, 11, 8, 2,
                 new[]
                 {
                     Emitter(0, 2, Dir.Right, "10101010", 8),
@@ -479,62 +435,9 @@ namespace ShiftGo.BitFlow.Overtime
                 },
                 new[] { 0, 1, 2, 3 }),
 
-            // 10 · DELIBERATE COLLISION · 延迟器主动制造一次并轨碰撞，把 4+4 位裁成 3+3。
-            Define(10, 13, 9, 1,
-                new[]
-                {
-                    Emitter(0, 4, Dir.Right, "1111", 4),
-                    Emitter(6, 0, Dir.Up, "1111", 4),
-                },
-                new[]
-                {
-                    Receiver(12, 4, Dir.Left, "111", 3),
-                    Receiver(6, 8, Dir.Down, "000", 3),
-                },
-                new[]
-                {
-                    P(1, 4), P(2, 4), P(3, 4), P(5, 4), P(6, 4),
-                    P(7, 4), P(8, 4), P(9, 4), P(10, 4),
-                    P(6, 1), P(6, 2), P(6, 5), P(6, 6),
-                },
-                new[]
-                {
-                    Slot(4, 4, OvertimePieceRole.DelayGate, 0),
-                    Slot(11, 4, OvertimePieceRole.FilterOne, 0),
-                    Slot(6, 3, OvertimePieceRole.NotGate, 3),
-                    Slot(6, 7, OvertimePieceRole.FilterZero, 3),
-                },
-                new[] { 0, 1, 2, 3 }),
-
-            // 11 · DOUBLE COLLISION · 同为 13x9 的加压版：两条 5 位流连续撞掉两对，各剩 3 位。
-            Define(11, 13, 9, 2,
-                new[]
-                {
-                    Emitter(0, 4, Dir.Right, "11111", 5),
-                    Emitter(6, 0, Dir.Up, "11111", 5),
-                },
-                new[]
-                {
-                    Receiver(12, 4, Dir.Left, "111", 3),
-                    Receiver(6, 8, Dir.Down, "000", 3),
-                },
-                new[]
-                {
-                    P(1, 4), P(2, 4), P(3, 4), P(5, 4), P(6, 4),
-                    P(7, 4), P(8, 4), P(9, 4), P(10, 4),
-                    P(6, 1), P(6, 2), P(6, 5), P(6, 6),
-                },
-                new[]
-                {
-                    Slot(4, 4, OvertimePieceRole.DelayGate, 0),
-                    Slot(11, 4, OvertimePieceRole.FilterOne, 0),
-                    Slot(6, 3, OvertimePieceRole.NotGate, 3),
-                    Slot(6, 7, OvertimePieceRole.FilterZero, 3),
-                },
-                new[] { 0, 1, 2, 3 }),
-
-            // 12 · FINAL CASCADE · 12 位主流 + 8 位探针，两次合流/倒相后分流成 2 + 6 个 0。
-            Define(12, 13, 9, 4,
+            // 08 · FINAL CASCADE · 12 位主流 + 8 位探针，先倒相、延迟，再分流并二次倒相，
+            // 把两条长序列裁成 3 + 2 个 0。非门、延迟器、分流器同时参与，机制不与前七题重合。
+            Define(8, 13, 9, 7,
                 new[]
                 {
                     Emitter(0, 2, Dir.Right, "101010101010", 12),
@@ -542,8 +445,8 @@ namespace ShiftGo.BitFlow.Overtime
                 },
                 new[]
                 {
-                    Receiver(7, 4, Dir.Down, "00", 2),
-                    Receiver(9, 2, Dir.Left, "000000", 6),
+                    Receiver(7, 4, Dir.Down, "000", 3),
+                    Receiver(9, 2, Dir.Left, "00", 2),
                 },
                 new[]
                 {
@@ -552,8 +455,8 @@ namespace ShiftGo.BitFlow.Overtime
                 },
                 new[]
                 {
-                    Slot(6, 3, OvertimePieceRole.Splitter, 2),
-                    Slot(6, 2, OvertimePieceRole.NotGate, 0),
+                    Slot(6, 3, OvertimePieceRole.NotGate, 1),
+                    Slot(6, 2, OvertimePieceRole.DelayGate, 0),
                     Slot(7, 2, OvertimePieceRole.Splitter, 0),
                     Slot(7, 3, OvertimePieceRole.NotGate, 3),
                 },
@@ -562,11 +465,35 @@ namespace ShiftGo.BitFlow.Overtime
 
         public static bool Contains(int index) => index >= 1 && index <= Count;
 
+        public static string TitleFor(int index)
+        {
+            switch (index)
+            {
+                case 1: return "MERGE";
+                case 2: return "CROSSING";
+                case 3: return "INTERLEAVE";
+                case 4: return "INVERTED MERGE";
+                case 5: return "FILTERED CROSSING";
+                case 6: return "SPLIT SIGNAL";
+                case 7: return "DOUBLE PROBE";
+                case 8: return "FINAL CASCADE";
+                default: return string.Empty;
+            }
+        }
+
+        public static int SlotCountFor(int index)
+        {
+            if (!Contains(index)) return 0;
+            return Blueprints[index - 1].Slots.Length;
+        }
+
         public static bool TryBuild(int index, out OvertimeLayout layout)
         {
             layout = null;
             if (!Contains(index)) return false;
             layout = OvertimeCollisionBuilder.Build(Blueprints[index - 1]);
+            layout.Index = index;
+            layout.Title = TitleFor(index);
             return true;
         }
 

@@ -160,7 +160,7 @@ namespace ShiftGo.BitFlow.Tests
         [Test]
         public void WallRing_FlattensOnlyWallsBuriedInsideTheRing()
         {
-            LevelDefinition level = OvertimeLevelAssembler.BuildPlayerLevel(OvertimeCatalog.Build(12), 12);
+            LevelDefinition level = OvertimeLevelAssembler.BuildPlayerLevel(OvertimeCatalog.Build(8), 8);
             LevelBuilder builder = CreateBuilder();
             builder.Prepare(level);
             builder.BuildElementsOfKind(CellKind.Wall);
@@ -208,8 +208,8 @@ namespace ShiftGo.BitFlow.Tests
                 }
             }
 
-            Assert.Greater(fullHeight, 0, "第 12 题必须有贴着走廊的内圈墙");
-            Assert.Greater(baseplate, 0, "第 12 题必须有被墙包住的外圈底座");
+            Assert.Greater(fullHeight, 0, "第 8 题必须有贴着走廊的内圈墙");
+            Assert.Greater(baseplate, 0, "第 8 题必须有被墙包住的外圈底座");
         }
     }
 }

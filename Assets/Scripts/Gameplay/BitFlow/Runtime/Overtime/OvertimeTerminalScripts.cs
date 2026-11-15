@@ -52,7 +52,8 @@ namespace ShiftGo.BitFlow.Overtime
         public static string BriefingBody(OvertimeGenerationResult result, long elapsedMs)
         {
             return "SYSTEM  PROBLEM CONSTRUCTED\n" +
-                   "CHANNEL " + OvertimeConfig.MaxProblems + "\n\n" +
+                   "CHANNEL " + OvertimeConfig.MaxProblems + "\n" +
+                   "NAME      " + OvertimeConfig.DisplayName(result.Layout.Index) + "\n\n" +
                    "GRID      " + result.Level.Width + "x" + result.Level.Height + "\n" +
                    "STREAMS   " + result.Layout.Emitters.Count + "\n" +
                    "STEPS     " + result.Layout.StepCount + "\n" +

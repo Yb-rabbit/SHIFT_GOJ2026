@@ -374,7 +374,7 @@ namespace ShiftGo.BitFlow.View
             // 放在尺寸列表之后，玩家先看到手动选项，再决定要不要让系统出题。
             CreateCaption("LET THE MACHINE PICK", ref y);
             CreateAction("OVERTIME  ·  " + OvertimeProgressLabel(), OpenOvertime, ref y);
-            CreateHint(OvertimeConfig.MaxProblems + " PROBLEMS  ·  FIXED SET", ref y);
+            CreateHint(OvertimeConfig.MaxProblems + " PROBLEMS ", ref y);
 
             CreateAction("BACK", BackToLevels, ref y);
 
@@ -938,7 +938,21 @@ namespace ShiftGo.BitFlow.View
             button.onClick.AddListener(onClick);
 
             string displayName = level != null ? level.displayName : entry.DisplayName;
-            string subtitle = entry != null ? "MY LEVEL  ·  " + entry.Subtitle : string.Empty;
+            string subtitle = string.Empty;
+            if (entry != null)
+            {
+                if (OvertimeConfig.TryParseFileName(entry.Path, out int overtimeIndex))
+                {
+                    OvertimeSize size = OvertimeConfig.SizeFor(overtimeIndex);
+                    int width = entry.Width > 0 ? entry.Width : size.Width;
+                    int height = entry.Height > 0 ? entry.Height : size.Height;
+                    subtitle = "OVERTIME  ·  " + width + "x" + height;
+                }
+                else
+                {
+                    subtitle = "MY LEVEL  ·  " + entry.Subtitle;
+                }
+            }
 
             string label = string.IsNullOrEmpty(displayName)
                 ? "LEVEL " + (row + 1).ToString("00")

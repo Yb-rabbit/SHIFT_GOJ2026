@@ -189,6 +189,8 @@ namespace ShiftGo.BitFlow.Overtime
     /// </summary>
     public sealed class OvertimeLayout
     {
+        public int Index;
+        public string Title = string.Empty;
         public int Width;
         public int Height;
         public int StartValue;

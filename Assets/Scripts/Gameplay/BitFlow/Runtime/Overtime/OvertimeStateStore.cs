@@ -96,7 +96,7 @@ namespace ShiftGo.BitFlow.Overtime
                 OvertimeState state = JsonUtility.FromJson<OvertimeState>(json);
                 if (state == null) return null;
 
-                // v1 是 30 题随机生成；v2 起是 12 题手工蓝图。旧题号和旧文件不能直接沿用，
+                // v1 是 30 题随机生成；v2 起是手工蓝图，v5 收缩为 8 道碰撞题。旧题号和旧文件不能直接沿用，
                 // 先整体挪进 overtime_legacy，再按空状态重建，避免旧布局占住新题号。
                 if (state.version < OvertimeConfig.StateVersion)
                 {
@@ -131,7 +131,9 @@ namespace ShiftGo.BitFlow.Overtime
             List<LevelJsonEntry> entries = LevelJsonLibrary.Scan(out _);
             foreach (LevelJsonEntry entry in entries)
             {
-                if (!OvertimeConfig.TryParseFileName(entry.Path, out _)) continue;
+                // 宽松解析：v4 时代的 9-12 题也必须跟着状态一起归档，
+                // 否则它们会以 MY LEVEL 的身份重新出现在选关列表里。
+                if (!TryParseArchivedFileName(entry.Path, out _)) continue;
                 MoveToLegacy(entry.Path, legacyFolder, safeVersion);
             }
 
@@ -176,8 +178,17 @@ namespace ShiftGo.BitFlow.Overtime
 
             foreach (LevelJsonEntry entry in entries)
             {
-                if (!OvertimeConfig.TryParseFileName(entry.Path, out int index)) continue;
-                if (index > OvertimeCollisionCatalog.Count) continue;
+                if (!TryParseArchivedFileName(entry.Path, out int index)) continue;
+
+                // 1-8 之外全部是旧题库（v4 的 9-12 题），直接归档，不参与当前选关列表。
+                if (index > OvertimeCollisionCatalog.Count)
+                {
+                    if (LevelJsonLibrary.HasLocalFiles) Directory.CreateDirectory(legacyFolder);
+                    MoveToLegacy(entry.Path, legacyFolder, OvertimeConfig.StateVersion);
+                    changed = true;
+                    continue;
+                }
+
                 if (!LevelJsonLibrary.TryLoad(entry.Path, out LevelSO level, out _)) continue;
 
                 int emitters = 0;
@@ -230,7 +241,8 @@ namespace ShiftGo.BitFlow.Overtime
                 state.problems.Add(new OvertimeProblemRecord
                 {
                     index = index,
-                    displayName = entry.DisplayName,
+                    // 旧文件里可能还写着 "OT-PROBLEM 03"；补记录时统一换成蓝图题名。
+                    displayName = OvertimeConfig.DisplayName(index),
                     fileName = OvertimeConfig.FileName(index),
                     width = entry.Width > 0 ? entry.Width : size.Width,
                     height = entry.Height > 0 ? entry.Height : size.Height,
@@ -246,6 +258,26 @@ namespace ShiftGo.BitFlow.Overtime
             state.Normalize();
             if (beforeNext != state.nextProblem) changed = true;
             return changed;
+        }
+
+        /// <summary>
+        /// 归档用宽松解析：只认 OT-PROBLEM_###.json 的形状，但题号允许 1..999。
+        /// 新题库只接受 1..8；这里放宽是为了把 v4 的 9-12 题也一并扫进 legacy。
+        /// </summary>
+        static bool TryParseArchivedFileName(string fileName, out int index)
+        {
+            index = 0;
+            if (string.IsNullOrEmpty(fileName)) return false;
+
+            string name = Path.GetFileName(fileName);
+            if (!name.StartsWith(OvertimeConfig.FilePrefix, StringComparison.OrdinalIgnoreCase)) return false;
+            if (!name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) return false;
+
+            string number = name.Substring(
+                OvertimeConfig.FilePrefix.Length,
+                name.Length - OvertimeConfig.FilePrefix.Length - 5);
+            if (!int.TryParse(number, out index)) return false;
+            return index >= 1 && index <= 999;
         }
     }
 }

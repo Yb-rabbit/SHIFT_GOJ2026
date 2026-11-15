@@ -42,7 +42,8 @@ namespace ShiftGo.BitFlow.Overtime
 
         public static LevelDefinition BuildSolvedLevel(OvertimeLayout layout, int[] slotPieces, int[] slotRotations)
         {
-            LevelDefinition definition = BuildBase(layout, OvertimeConfig.DisplayName(1));
+            string title = string.IsNullOrEmpty(layout.Title) ? OvertimeConfig.DisplayName(layout.Index) : layout.Title;
+            LevelDefinition definition = BuildBase(layout, title);
             if (slotPieces == null) return definition;
 
             int nextId = definition.Elements.Count + 1;
