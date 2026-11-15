@@ -16,11 +16,11 @@ namespace ShiftGo.BitFlow.Overtime
         public static string IntroBody()
         {
             return "SYSTEM  NIGHT SHIFT PROTOCOL\n" +
-                   "CHANNEL 30 // OFF THE CLOCK\n\n" +
+                   "CHANNEL " + OvertimeConfig.MaxProblems + " // OFF THE CLOCK\n\n" +
                    "YOU ARE OUTSIDE THE CATALOG NOW.\n" +
-                   "EVERY PROBLEM IS BUILT ON DEMAND AND CHECKED FOR\n" +
+                   "EVERY PROBLEM IS HAND-CHECKED FOR\n" +
                    "ONE VALID SOLUTION BEFORE IT IS WRITTEN.\n\n" +
-                   "THERE ARE 30 SLOTS. THEN THE TERMINAL GOES QUIET.\n\n" +
+                   "THERE ARE " + OvertimeConfig.MaxProblems + " SLOTS. THEN THE TERMINAL GOES QUIET.\n\n" +
                    "PRESS ENTER TO CONNECT.";
         }
 
@@ -32,7 +32,7 @@ namespace ShiftGo.BitFlow.Overtime
                 : "NO PROBLEMS LEFT";
 
             return "SYSTEM  OVERTIME TERMINAL ONLINE\n" +
-                   "CHANNEL 30 // OFF THE CLOCK\n\n" +
+                   "CHANNEL " + OvertimeConfig.MaxProblems + " // OFF THE CLOCK\n\n" +
                    "PROBLEMS  " + (state != null ? state.GeneratedCount : 0) + " / " + OvertimeConfig.MaxProblems + "\n" +
                    "SEED      0x" + (state != null ? state.baseSeed.ToString("X8") : "00000000") + "\n\n" +
                    "NEXT      " + next + "\n\n" +
@@ -50,7 +50,7 @@ namespace ShiftGo.BitFlow.Overtime
         public static string BriefingBody(OvertimeGenerationResult result, long elapsedMs)
         {
             return "SYSTEM  PROBLEM CONSTRUCTED\n" +
-                   "CHANNEL 30 // NIGHT SHIFT\n\n" +
+                   "CHANNEL " + OvertimeConfig.MaxProblems + " // NIGHT SHIFT\n\n" +
                    "GRID      " + result.Level.Width + "x" + result.Level.Height + "\n" +
                    "STEPS     " + result.Layout.StepCount + "\n" +
                    "SEED      0x" + result.Profile.Seed.ToString("X8") + "\n" +

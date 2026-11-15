@@ -5,13 +5,12 @@ using ShiftGo.BitFlow.Core;
 namespace ShiftGo.BitFlow.Overtime
 {
     /// <summary>
-    /// 构造一条确定性的“蛇形走廊”：
+    /// 把 <see cref="OvertimeBlueprint"/> 展开成可玩的走廊：
     ///
     ///   E -> [转角] ^ [转角] -> [转角] v [转角] -> R
     ///
-    /// 走廊之外的格子全部填成固定墙。这样玩家只有转角格可放件，
-    /// 而每个转角都必须把位转向下一段，因此“所有件都必须用上”是题面本身保证的，
-    /// 求解器只需要枚举转角格的排列 + 旋转，不必搜索整个棋盘。
+    /// 走廊之外的格子全部填成固定墙。玩家只有转角格可放件，每个转角都必须把位转向下一段，
+    /// 因此“所有件都必须用上”是题面本身保证的，求解器只需要枚举转角格的排列 + 旋转。
     /// </summary>
     public static class OvertimeLayoutBuilder
     {
@@ -20,185 +19,197 @@ namespace ShiftGo.BitFlow.Overtime
         const string Filter0Key = "Type_Filter_F0";
         const string Filter1Key = "Type_Filter_F1";
 
-        public static OvertimeLayout Build(OvertimeProfile profile, OvertimeRng rng)
+        public static OvertimeLayout Build(OvertimeBlueprint blueprint)
         {
-            return Build(profile, rng, profile.TargetSteps);
-        }
+            if (blueprint == null) throw new ArgumentNullException(nameof(blueprint));
+            if (blueprint.Width < 5 || blueprint.Height < 5)
+                throw new InvalidOperationException("OVERTIME 网格太小");
+            if (blueprint.Route == null || blueprint.Route.Length < 2)
+                throw new InvalidOperationException("OVERTIME 路线至少需要一段出发和一次折返");
+            if (blueprint.StartValue != 0 && blueprint.StartValue != 1)
+                throw new InvalidOperationException("OVERTIME 起始位只能是 0 或 1");
 
-        public static OvertimeLayout Build(OvertimeProfile profile, OvertimeRng rng, int targetSteps)
-        {
-            if (profile == null) throw new ArgumentNullException(nameof(profile));
-            if (rng == null) throw new ArgumentNullException(nameof(rng));
+            int slotCount = blueprint.Route.Length - 1;
+            if (blueprint.SlotRoles == null || blueprint.SlotRoles.Length != slotCount)
+                throw new InvalidOperationException("OVERTIME 蓝图转角数与元件数对不上");
 
-            int width = profile.Width;
-            int height = profile.Height;
-            int steps = targetSteps >= 6 ? 6 : targetSteps >= 4 ? 4 : 2;
-
-            int y0 = 1;
-            int y1 = Math.Max(y0 + 2, height - 2);
-
-            List<int> turnXs = ChooseTurnColumns(width, steps, rng);
-            if (turnXs.Count == 0) throw new InvalidOperationException("OVERTIME 网格太小，放不下走廊");
+            int[] handOrder = ResolveHandOrder(blueprint.HandOrder, slotCount);
 
             OvertimeLayout layout = new OvertimeLayout
             {
-                Width = width,
-                Height = height,
-                EmitterCoord = new GridPoint(1, y0),
-                EmitterFacing = Dir.Right,
+                Width = blueprint.Width,
+                Height = blueprint.Height,
+                StartValue = blueprint.StartValue,
+                EmitterCoord = blueprint.EmitterCoord,
+                EmitterFacing = blueprint.EmitterFacing,
             };
+
+            if (!Inside(layout, layout.EmitterCoord))
+                throw new InvalidOperationException("OVERTIME 发射器在棋盘外");
 
             HashSet<GridPoint> path = new HashSet<GridPoint>();
             GridPoint cursor = layout.EmitterCoord;
-            int y = y0;
+            Dir previous = blueprint.EmitterFacing;
 
-            foreach (int turnX in turnXs)
+            for (int i = 0; i < blueprint.Route.Length; i++)
             {
-                while (cursor.X < turnX)
+                OvertimeRouteSegment segment = blueprint.Route[i];
+                if (segment == null || segment.Length < 1)
+                    throw new InvalidOperationException("OVERTIME 路线存在空路段");
+
+                if (i > 0)
                 {
-                    cursor = new GridPoint(cursor.X + 1, cursor.Y);
-                    path.Add(cursor);
+                    // 上一段的终点就是这一段的转角；它已经在 path 里，不重复计入。
+                    layout.Slots.Add(new OvertimeSlot(cursor, previous, segment.Direction));
                 }
 
-                Dir vertical = y == y0 ? Dir.Up : Dir.Down;
-                AddTurn(layout, path, cursor, Dir.Right, vertical);
-
-                int targetY = y == y0 ? y1 : y0;
-                while (cursor.Y != targetY)
+                GridPoint offset = DirUtil.ToOffset(segment.Direction);
+                for (int step = 0; step < segment.Length; step++)
                 {
-                    cursor = new GridPoint(cursor.X, cursor.Y + (vertical == Dir.Up ? 1 : -1));
-                    path.Add(cursor);
+                    cursor = cursor + offset;
+                    if (!Inside(layout, cursor))
+                        throw new InvalidOperationException("OVERTIME 路线走出棋盘");
+                    if (!path.Add(cursor))
+                        throw new InvalidOperationException("OVERTIME 路线自交");
+                    layout.PathCells.Add(cursor);
                 }
 
-                AddTurn(layout, path, cursor, vertical, Dir.Right);
-                y = targetY;
+                previous = segment.Direction;
             }
 
-            layout.ReceiverCoord = new GridPoint(cursor.X + 1, cursor.Y);
-            if (layout.ReceiverCoord.X >= width)
-                throw new InvalidOperationException("OVERTIME 走廊没有给接收器留下位置");
+            GridPoint receiver = cursor + DirUtil.ToOffset(blueprint.Route[blueprint.Route.Length - 1].Direction);
+            if (!Inside(layout, receiver))
+                throw new InvalidOperationException("OVERTIME 接收器在棋盘外");
+            if (receiver == layout.EmitterCoord || path.Contains(receiver))
+                throw new InvalidOperationException("OVERTIME 接收器与走廊重叠");
+            layout.ReceiverCoord = receiver;
 
-            for (int yy = 0; yy < height; yy++)
+            for (int y = 0; y < layout.Height; y++)
             {
-                for (int xx = 0; xx < width; xx++)
+                for (int x = 0; x < layout.Width; x++)
                 {
-                    GridPoint coord = new GridPoint(xx, yy);
+                    GridPoint coord = new GridPoint(x, y);
                     if (coord == layout.EmitterCoord || coord == layout.ReceiverCoord) continue;
                     if (path.Contains(coord)) continue;
                     layout.Walls.Add(coord);
                 }
             }
 
-            AssignPieces(layout, rng);
-            return layout;
-        }
+            int[] inputValues = new int[slotCount];
+            int value = blueprint.StartValue;
 
-        static void AddTurn(OvertimeLayout layout, HashSet<GridPoint> path, GridPoint coord, Dir inDir, Dir outDir)
-        {
-            if (path.Add(coord)) layout.PathCells.Add(coord);
-            layout.Slots.Add(new OvertimeSlot(coord, inDir, outDir));
-        }
-
-        static List<int> ChooseTurnColumns(int width, int steps, OvertimeRng rng)
-        {
-            List<int> result = new List<int>();
-            if (width < 7) return result;
-
-            if (steps < 4)
+            for (int i = 0; i < slotCount; i++)
             {
-                int max = width - 3;
-                int x = 2 + rng.Next(Math.Max(1, max - 1));
-                if (x > max) x = max;
-                result.Add(x);
-                return result;
-            }
+                OvertimeSlot slot = layout.Slots[i];
+                OvertimePieceRole role = blueprint.SlotRoles[i];
+                inputValues[i] = value;
 
-            if (steps < 6)
-            {
-                int maxFirst = width - 4;
-                int first = 2 + rng.Next(Math.Max(1, maxFirst - 1));
-                if (first > maxFirst) first = maxFirst;
-
-                int minSecond = first + 1;
-                int maxSecond = width - 3;
-                int second = minSecond + rng.Next(Math.Max(1, maxSecond - minSecond + 1));
-                if (second > maxSecond) second = maxSecond;
-
-                result.Add(first);
-                result.Add(second);
-                return result;
-            }
-
-            // 6 件 = 3 次上下折返，最后仍需一个右转把位送进接收器。
-            int maxA = width - 5;
-            int a = 2 + rng.Next(Math.Max(1, maxA - 1));
-            if (a > maxA) a = maxA;
-
-            int minB = a + 1;
-            int maxB = width - 4;
-            int b = minB + rng.Next(Math.Max(1, maxB - minB + 1));
-            if (b > maxB) b = maxB;
-
-            int minC = b + 1;
-            int maxC = width - 3;
-            int c = minC + rng.Next(Math.Max(1, maxC - minC + 1));
-            if (c > maxC) c = maxC;
-
-            result.Add(a);
-            result.Add(b);
-            result.Add(c);
-            return result;
-        }
-
-        static void AssignPieces(OvertimeLayout layout, OvertimeRng rng)
-        {
-            layout.StartValue = rng.Next(2);
-            int value = layout.StartValue;
-            bool uniform = layout.Slots.Count >= 4;
-            int family = uniform ? rng.Next(3) : -1;
-
-            foreach (OvertimeSlot slot in layout.Slots)
-            {
-                int roll = uniform ? (family == 0 ? 0 : family == 1 ? 50 : 80) : rng.Next(100);
-
-                if (roll < 45)
+                switch (role)
                 {
-                    layout.Pieces.Add(new OvertimePiece
-                    {
-                        TypeKey = NotKey,
-                        Kind = CellKind.NotGate,
-                        SolutionRotation = OvertimePiece.RotationForOutput(slot.OutDir),
-                    });
-                    value = value == 1 ? 0 : 1;
-                }
-                else if (roll < 70)
-                {
-                    bool passOne = value == 1;
-                    layout.Pieces.Add(new OvertimePiece
-                    {
-                        TypeKey = passOne ? Filter1Key : Filter0Key,
-                        Kind = CellKind.Filter,
-                        PassValue = (byte)(passOne ? 1 : 0),
-                        SolutionRotation = OvertimePiece.RotationForOutput(slot.OutDir),
-                    });
-                }
-                else
-                {
-                    if (!OvertimePiece.TrySplitterRotation((byte)value, slot.OutDir, out int rotation))
-                        rotation = OvertimePiece.RotationForOutput(slot.OutDir);
-
-                    layout.Pieces.Add(new OvertimePiece
-                    {
-                        TypeKey = SplitterKey,
-                        Kind = CellKind.Splitter,
-                        SolutionRotation = rotation,
-                    });
+                    case OvertimePieceRole.NotGate:
+                        value = value == 1 ? 0 : 1;
+                        break;
+                    case OvertimePieceRole.FilterZero:
+                        if (value != 0)
+                            throw new InvalidOperationException("OVERTIME 标准解在滤 0 处被挡住");
+                        break;
+                    case OvertimePieceRole.FilterOne:
+                        if (value != 1)
+                            throw new InvalidOperationException("OVERTIME 标准解在滤 1 处被挡住");
+                        break;
+                    case OvertimePieceRole.Splitter:
+                        if (!OvertimePiece.TrySplitterRotation((byte)value, slot.OutDir, out _))
+                            throw new InvalidOperationException("OVERTIME 分叉器无法转向标准解出口");
+                        break;
+                    default:
+                        throw new InvalidOperationException("OVERTIME 蓝图含未知元件");
                 }
             }
 
             layout.TargetValue = value;
+
+            for (int hand = 0; hand < handOrder.Length; hand++)
+            {
+                int slotIndex = handOrder[hand];
+                OvertimeSlot slot = layout.Slots[slotIndex];
+                layout.Pieces.Add(CreatePiece(blueprint.SlotRoles[slotIndex], inputValues[slotIndex], slot.OutDir));
+            }
+
             int last = layout.Slots.Count - 1;
             layout.ReceiverFeedFace = layout.Slots[last].OutDir.Opposite();
+            return layout;
+        }
+
+        static OvertimePiece CreatePiece(OvertimePieceRole role, int inputValue, Dir outDir)
+        {
+            switch (role)
+            {
+                case OvertimePieceRole.NotGate:
+                    return new OvertimePiece
+                    {
+                        TypeKey = NotKey,
+                        Kind = CellKind.NotGate,
+                        SolutionRotation = OvertimePiece.RotationForOutput(outDir),
+                    };
+
+                case OvertimePieceRole.FilterZero:
+                case OvertimePieceRole.FilterOne:
+                {
+                    byte pass = role == OvertimePieceRole.FilterOne ? (byte)1 : (byte)0;
+                    return new OvertimePiece
+                    {
+                        TypeKey = pass == 1 ? Filter1Key : Filter0Key,
+                        Kind = CellKind.Filter,
+                        PassValue = pass,
+                        SolutionRotation = OvertimePiece.RotationForOutput(outDir),
+                    };
+                }
+
+                case OvertimePieceRole.Splitter:
+                {
+                    int rotation;
+                    if (!OvertimePiece.TrySplitterRotation((byte)inputValue, outDir, out rotation))
+                        throw new InvalidOperationException("OVERTIME 分叉器无法转向标准解出口");
+                    return new OvertimePiece
+                    {
+                        TypeKey = SplitterKey,
+                        Kind = CellKind.Splitter,
+                        SolutionRotation = rotation,
+                    };
+                }
+
+                default:
+                    throw new InvalidOperationException("OVERTIME 蓝图含未知元件");
+            }
+        }
+
+        static int[] ResolveHandOrder(int[] handOrder, int slotCount)
+        {
+            if (handOrder == null)
+            {
+                int[] identity = new int[slotCount];
+                for (int i = 0; i < slotCount; i++) identity[i] = i;
+                return identity;
+            }
+
+            if (handOrder.Length != slotCount)
+                throw new InvalidOperationException("OVERTIME 发牌顺序长度与转角数对不上");
+
+            bool[] seen = new bool[slotCount];
+            for (int i = 0; i < handOrder.Length; i++)
+            {
+                int index = handOrder[i];
+                if (index < 0 || index >= slotCount || seen[index])
+                    throw new InvalidOperationException("OVERTIME 发牌顺序不是完整排列");
+                seen[index] = true;
+            }
+
+            return handOrder;
+        }
+
+        static bool Inside(OvertimeLayout layout, GridPoint coord)
+        {
+            return coord.X >= 0 && coord.X < layout.Width && coord.Y >= 0 && coord.Y < layout.Height;
         }
     }
 }

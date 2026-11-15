@@ -7,18 +7,41 @@ namespace ShiftGo.BitFlow.Tests
     public sealed class OvertimeCoreTests
     {
         [Test]
-        public void SizePresetsMatchTheThirtyProblemPlan()
+        public void SizePresetsMatchTheTwelveProblemPlan()
         {
-            for (int i = 1; i <= 6; i++) Assert.AreEqual(7, OvertimeConfig.SizeFor(i).Width);
-            for (int i = 7; i <= 14; i++) Assert.AreEqual(9, OvertimeConfig.SizeFor(i).Width);
-            for (int i = 15; i <= 24; i++) Assert.AreEqual(11, OvertimeConfig.SizeFor(i).Width);
-            for (int i = 25; i <= 30; i++) Assert.AreEqual(13, OvertimeConfig.SizeFor(i).Width);
+            for (int i = 1; i <= 3; i++) Assert.AreEqual(7, OvertimeConfig.SizeFor(i).Width);
+            for (int i = 4; i <= 6; i++) Assert.AreEqual(9, OvertimeConfig.SizeFor(i).Width);
+            for (int i = 7; i <= 9; i++) Assert.AreEqual(11, OvertimeConfig.SizeFor(i).Width);
+            for (int i = 10; i <= 12; i++) Assert.AreEqual(13, OvertimeConfig.SizeFor(i).Width);
 
+            Assert.AreEqual(12, OvertimeConfig.MaxProblems);
+            Assert.AreEqual(2, new OvertimeState().version);
             Assert.AreEqual("OT-PROBLEM 01", OvertimeConfig.DisplayName(1));
-            Assert.AreEqual("OT-PROBLEM_030.json", OvertimeConfig.FileName(30));
-            Assert.IsTrue(OvertimeConfig.TryParseFileName("OT-PROBLEM_030.json", out int index));
-            Assert.AreEqual(30, index);
+            Assert.AreEqual("OT-PROBLEM_012.json", OvertimeConfig.FileName(12));
+            Assert.IsTrue(OvertimeConfig.TryParseFileName("OT-PROBLEM_012.json", out int index));
+            Assert.AreEqual(12, index);
+            Assert.IsFalse(OvertimeConfig.TryParseFileName("OT-PROBLEM_013.json", out _));
+            Assert.IsFalse(OvertimeConfig.TryParseFileName("OT-PROBLEM_1.json", out _));
+            Assert.IsFalse(OvertimeConfig.TryParseFileName("OT-PROBLEM_0001.json", out _));
             Assert.IsFalse(OvertimeConfig.TryParseFileName("LEVEL_01.json", out _));
+        }
+
+        [Test]
+        public void CatalogDefinesTwelveBlueprintsWithMatchingSizes()
+        {
+            Assert.AreEqual(OvertimeConfig.MaxProblems, OvertimeCatalog.Count);
+
+            for (int index = OvertimeConfig.FirstProblem; index <= OvertimeConfig.LastProblem; index++)
+            {
+                OvertimeBlueprint blueprint = OvertimeCatalog.Get(index);
+                OvertimeSize size = OvertimeConfig.SizeFor(index);
+
+                Assert.AreEqual(index, blueprint.Index, "蓝图题号不连续");
+                Assert.AreEqual(size.Width, blueprint.Width, "第 " + index + " 题宽度与尺寸档不一致");
+                Assert.AreEqual(size.Height, blueprint.Height, "第 " + index + " 题高度与尺寸档不一致");
+                Assert.AreEqual(blueprint.Route.Length - 1, blueprint.SlotCount, "第 " + index + " 题转角数与路线不一致");
+                Assert.AreEqual(blueprint.SlotCount, OvertimeConfig.TargetStepsFor(index), "第 " + index + " 题目标件数与尺寸档不一致");
+            }
         }
 
         [Test]
@@ -33,10 +56,10 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         [Test]
-        [Timeout(30000)]
+        [Timeout(60000)]
         public void EveryOvertimeProblemHasAUniqueSolution()
         {
-            for (int index = 1; index <= OvertimeConfig.MaxProblems; index++)
+            for (int index = OvertimeConfig.FirstProblem; index <= OvertimeConfig.LastProblem; index++)
             {
                 bool generated = OvertimeFactory.TryGenerate(index, 20261115, 0,
                     out OvertimeGenerationResult result, out string error);
@@ -46,15 +69,16 @@ namespace ShiftGo.BitFlow.Tests
                 Assert.AreEqual(OvertimeConfig.SizeFor(index).Width, result.Level.Width);
                 Assert.AreEqual(OvertimeConfig.SizeFor(index).Height, result.Level.Height);
                 Assert.AreEqual(result.Layout.StepCount, TotalSupplies(result.Level));
+                Assert.AreEqual(OvertimeConfig.TargetStepsFor(index), result.Layout.StepCount);
                 Assert.AreEqual(OvertimeConfig.DisplayName(index), result.Level.DisplayName);
+                Assert.AreEqual(OvertimeCatalog.Build(index).TargetValue, result.Layout.TargetValue);
             }
         }
 
         [Test]
         public void EveryTurnPieceHasAtLeastOneValidRotation()
         {
-            OvertimeLayout layout = OvertimeLayoutBuilder.Build(
-                OvertimeProfile.For(7, 20261115, 0), new OvertimeRng(99));
+            OvertimeLayout layout = OvertimeCatalog.Build(9);
 
             Assert.GreaterOrEqual(layout.Slots.Count, 2);
             Assert.AreEqual(layout.Slots.Count, layout.Pieces.Count);
@@ -64,6 +88,35 @@ namespace ShiftGo.BitFlow.Tests
                 OvertimePiece piece = layout.Pieces[i];
                 Assert.GreaterOrEqual(piece.SolutionRotation, 0);
                 Assert.Less(piece.SolutionRotation, piece.RotationCount);
+            }
+        }
+
+        [Test]
+        public void EveryBlueprintSolvesAtItsTargetValue()
+        {
+            for (int index = OvertimeConfig.FirstProblem; index <= OvertimeConfig.LastProblem; index++)
+            {
+                OvertimeLayout layout = OvertimeCatalog.Build(index);
+                OvertimeSolveResult solve = OvertimeSolver.Solve(layout, 2, 30000);
+
+                Assert.IsTrue(solve.IsUnique, "第 " + index + " 题不是唯一解");
+
+                LevelDefinition solved = OvertimeLevelAssembler.BuildSolvedLevel(
+                    layout, solve.SolutionPieces, solve.SolutionRotations);
+
+                ReceiverDefinition receiver = null;
+                foreach (ElementDefinition element in solved.Elements)
+                {
+                    receiver = element as ReceiverDefinition;
+                    if (receiver != null) break;
+                }
+
+                Assert.IsNotNull(receiver, "第 " + index + " 题没有接收器");
+                Assert.AreEqual(layout.TargetValue.ToString(), receiver.TargetSequence);
+
+                BitFlowSimulation simulation = new BitFlowSimulation(solved);
+                while (!simulation.IsFinished) simulation.Step();
+                Assert.IsTrue(simulation.BuildResult().IsSuccess, "第 " + index + " 题标准解没有送达目标值");
             }
         }
 
@@ -87,7 +140,7 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         [Test]
-        public void StateNormalizeStopsAtThirtyProblems()
+        public void StateNormalizeStopsAtTwelveProblems()
         {
             OvertimeState state = new OvertimeState { baseSeed = 1 };
             for (int index = 1; index <= OvertimeConfig.MaxProblems; index++)

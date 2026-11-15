@@ -26,7 +26,7 @@ namespace ShiftGo.BitFlow.Overtime
     [Serializable]
     public sealed class OvertimeState
     {
-        public int version = 1;
+        public int version = OvertimeConfig.StateVersion;
         public int baseSeed;
         public int nextProblem = OvertimeConfig.FirstProblem;
         public int minTicks;
@@ -66,7 +66,7 @@ namespace ShiftGo.BitFlow.Overtime
         /// </summary>
         public void Normalize()
         {
-            if (version <= 0) version = 1;
+            if (version < OvertimeConfig.StateVersion) version = OvertimeConfig.StateVersion;
             if (baseSeed == 0) baseSeed = OvertimeSeed.CreateBaseSeed();
             if (minTicks < 0) minTicks = 0;
             if (problems == null) problems = new List<OvertimeProblemRecord>();

@@ -374,7 +374,7 @@ namespace ShiftGo.BitFlow.View
             // 放在尺寸列表之后，玩家先看到手动选项，再决定要不要让系统出题。
             CreateCaption("LET THE MACHINE PICK", ref y);
             CreateAction("OVERTIME  ·  " + OvertimeProgressLabel(), OpenOvertime, ref y);
-            CreateHint("30 GENERATED PROBLEMS", ref y);
+            CreateHint(OvertimeConfig.MaxProblems + " PROBLEMS  ·  FIXED SET", ref y);
 
             CreateAction("BACK", BackToLevels, ref y);
 
@@ -382,8 +382,8 @@ namespace ShiftGo.BitFlow.View
         }
 
         /// <summary>
-        /// OVERTIME 的进度摘要（<c>03/30 CLEARED</c>）。只数实际存在的 OT 文件，
-        /// 和终端状态卡使用同一份口径，避免面板与终端各算各的。
+        /// OVERTIME 的进度摘要（<c>03/12 CLEARED</c>）。只数实际存在且通关的 OT 文件，
+        /// 上限固定为 <see cref="OvertimeConfig.MaxProblems"/>，和终端里的“已生成”是同一道题集合。
         /// </summary>
         string OvertimeProgressLabel()
         {

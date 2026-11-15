@@ -26,7 +26,6 @@ namespace ShiftGo.BitFlow.Overtime
     public static class OvertimeFactory
     {
         public const string FailureMessage = "SIGNAL LOST. TRY AGAIN.";
-        public const int TimeBudgetMs = 2600;
 
         public static bool TryGenerate(int index, int baseSeed, int minTicks,
             out OvertimeGenerationResult result, out string error)
@@ -43,48 +42,53 @@ namespace ShiftGo.BitFlow.Overtime
             Stopwatch watch = Stopwatch.StartNew();
             OvertimeProfile profile = OvertimeProfile.For(index, baseSeed, minTicks);
 
-            for (int attempt = 0; attempt < 24; attempt++)
+            OvertimeLayout layout;
+            try
             {
-                if (watch.ElapsedMilliseconds > TimeBudgetMs - 300) break;
-
-                int steps = attempt >= 10 ? 2 : profile.TargetSteps;
-                int attemptSeed = unchecked(profile.Seed ^ (int)((uint)attempt * 0x9E3779B9u));
-                OvertimeRng rng = new OvertimeRng(attemptSeed);
-
-                OvertimeLayout layout;
-                try
-                {
-                    layout = OvertimeLayoutBuilder.Build(profile, rng, steps);
-                }
-                catch (Exception exception)
-                {
-                    UnityEngine.Debug.LogWarning("[BitFlow] OVERTIME 布局构造失败：" + exception.Message);
-                    continue;
-                }
-
-                // 4 件全排列 x 4 朝向 = 6144 个候选；上限只是兜底，正常远到不了。
-                OvertimeSolveResult solve = OvertimeSolver.Solve(layout, 2, 150000);
-                if (!solve.IsUnique) continue;
-                if (solve.Ticks < Math.Max(0, minTicks)) continue;
-
-                LevelDefinition playerLevel = OvertimeLevelAssembler.BuildPlayerLevel(layout, index);
-                if (playerLevel.Supplies.Count == 0) continue;
-
-                result = new OvertimeGenerationResult
-                {
-                    Profile = profile,
-                    Layout = layout,
-                    Level = playerLevel,
-                    Solve = solve,
-                    Attempts = attempt + 1,
-                    ElapsedMs = watch.ElapsedMilliseconds,
-                    Ticks = solve.Ticks,
-                };
-                return true;
+                layout = OvertimeCatalog.Build(index);
+            }
+            catch (Exception exception)
+            {
+                UnityEngine.Debug.LogError("[BitFlow] OVERTIME 蓝图构造失败：" + exception.Message);
+                error = FailureMessage;
+                return false;
             }
 
-            error = FailureMessage;
-            return false;
+            // 4 件全排列 x 4 朝向 = 6144 个候选；上限只是兜底，正常远到不了。
+            OvertimeSolveResult solve = OvertimeSolver.Solve(layout, 2, 30000);
+            if (!solve.IsUnique)
+            {
+                UnityEngine.Debug.LogError("[BitFlow] OVERTIME 第 " + index + " 题唯一解证明失败。");
+                error = FailureMessage;
+                return false;
+            }
+
+            if (solve.Ticks < Math.Max(0, minTicks))
+            {
+                UnityEngine.Debug.LogError("[BitFlow] OVERTIME 第 " + index + " 题步数 " + solve.Ticks + " 低于要求 " + minTicks + "。");
+                error = FailureMessage;
+                return false;
+            }
+
+            LevelDefinition playerLevel = OvertimeLevelAssembler.BuildPlayerLevel(layout, index);
+            if (playerLevel.Supplies.Count == 0)
+            {
+                UnityEngine.Debug.LogError("[BitFlow] OVERTIME 第 " + index + " 题没有生成手牌。");
+                error = FailureMessage;
+                return false;
+            }
+
+            result = new OvertimeGenerationResult
+            {
+                Profile = profile,
+                Layout = layout,
+                Level = playerLevel,
+                Solve = solve,
+                Attempts = 1,
+                ElapsedMs = watch.ElapsedMilliseconds,
+                Ticks = solve.Ticks,
+            };
+            return true;
         }
     }
 }

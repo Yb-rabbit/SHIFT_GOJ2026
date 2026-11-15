@@ -72,6 +72,15 @@ namespace ShiftGo.BitFlow.Overtime
 
                 OvertimeState state = JsonUtility.FromJson<OvertimeState>(json);
                 if (state == null) return null;
+
+                // v1 是 30 题随机生成；v2 起是 12 题手工蓝图。旧题号和旧文件不能直接沿用，
+                // 先整体挪进 overtime_legacy，再按空状态重建，避免旧布局占住新题号。
+                if (state.version < OvertimeConfig.StateVersion)
+                {
+                    ArchiveLegacy(state.version);
+                    return null;
+                }
+
                 state.Normalize();
                 return state;
             }
@@ -80,6 +89,35 @@ namespace ShiftGo.BitFlow.Overtime
                 Debug.LogWarning("[BitFlow] OVERTIME 状态读不了，按空状态重建：" + exception.Message);
                 return null;
             }
+        }
+
+        /// <summary>
+        /// 把旧版本状态和 OT-PROBLEM_*.json 挪到 LevelJson/overtime_legacy/。
+        /// 只搬不删，玩家想找旧题还能找回来。
+        /// </summary>
+        static void ArchiveLegacy(int version)
+        {
+            string legacyFolder = Path.Combine(LevelJsonLibrary.Folder, OvertimeConfig.LegacyFolderName);
+            Directory.CreateDirectory(legacyFolder);
+
+            if (File.Exists(StatePath))
+            {
+                string backup = Path.Combine(legacyFolder, "overtime_state_v" + Math.Max(1, version) + ".json");
+                if (File.Exists(backup)) File.Delete(backup);
+                File.Move(StatePath, backup);
+            }
+
+            if (!Directory.Exists(LevelJsonLibrary.Folder)) return;
+
+            string[] files = Directory.GetFiles(LevelJsonLibrary.Folder, OvertimeConfig.FilePrefix + "*.json");
+            foreach (string file in files)
+            {
+                string destination = Path.Combine(legacyFolder, Path.GetFileName(file));
+                if (File.Exists(destination)) File.Delete(destination);
+                File.Move(file, destination);
+            }
+
+            Debug.LogWarning("[BitFlow] OVERTIME v" + version + " 旧数据已归档到 " + legacyFolder + "，重建 " + OvertimeConfig.MaxProblems + " 题。");
         }
 
         /// <summary>
