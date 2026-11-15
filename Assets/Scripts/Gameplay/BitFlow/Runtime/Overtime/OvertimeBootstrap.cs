@@ -3,8 +3,8 @@ using UnityEngine;
 namespace ShiftGo.BitFlow.Overtime
 {
     /// <summary>
-    /// 零外部挂载的启动器：场景加载后自动建 OvertimeRoot，再挂上入口按钮。
-    /// 不修改场景，也不改 LevelSelectPanel；入口只在选关面板自己可见时出现。
+    /// 零外部挂载的启动器：场景加载后自动建 OvertimeRoot，供终端与状态存取共用。
+    /// 不修改场景；OVERTIME 的入口在 LevelSelectPanel 的 + NEW LEVEL 子屏里。
     /// </summary>
     [DefaultExecutionOrder(-100)]
     public sealed class OvertimeBootstrap : MonoBehaviour
@@ -45,7 +45,6 @@ namespace ShiftGo.BitFlow.Overtime
 
             instance = this;
             DontDestroyOnLoad(gameObject);
-            gameObject.AddComponent<OvertimeEntryOverlay>();
         }
     }
 }

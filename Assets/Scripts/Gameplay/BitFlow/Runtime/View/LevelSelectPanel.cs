@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
 using ShiftGo.BitFlow.Data;
+using ShiftGo.BitFlow.Overtime;
 
 namespace ShiftGo.BitFlow.View
 {
@@ -369,9 +370,46 @@ namespace ShiftGo.BitFlow.View
                 CreateAction(label, () => BeginWorkshop(captured), ref y);
             }
 
+            // + NEW LEVEL 不只通向“自己画”：也给一条“机器替你出题”的路。
+            // 放在尺寸列表之后，玩家先看到手动选项，再决定要不要让系统出题。
+            CreateCaption("LET THE MACHINE PICK", ref y);
+            CreateAction("OVERTIME  ·  " + OvertimeProgressLabel(), OpenOvertime, ref y);
+            CreateHint("30 GENERATED PROBLEMS", ref y);
+
             CreateAction("BACK", BackToLevels, ref y);
 
             listRoot.sizeDelta = new Vector2(listRoot.sizeDelta.x, Mathf.Max(0f, -y));
+        }
+
+        /// <summary>
+        /// OVERTIME 的进度摘要（<c>03/30 CLEARED</c>）。只数实际存在的 OT 文件，
+        /// 和终端状态卡使用同一份口径，避免面板与终端各算各的。
+        /// </summary>
+        string OvertimeProgressLabel()
+        {
+            OvertimeState state = OvertimeStateStore.LoadOrRebuild();
+            int cleared = 0;
+
+            if (state.problems != null)
+            {
+                foreach (OvertimeProblemRecord record in state.problems)
+                {
+                    if (record == null || !OvertimeConfig.IsValidIndex(record.index)) continue;
+                    if (SaveStore.IsJsonCleared(OvertimeLevelWriter.PathFor(record.index))) cleared++;
+                }
+            }
+
+            return cleared.ToString("00") + "/" + OvertimeConfig.MaxProblems + " CLEARED";
+        }
+
+        /// <summary>
+        /// 从「新建关卡」子屏进入 OVERTIME：先关面板放掉输入锁，再让终端接管。
+        /// 顺序和 Select 一致，避免终端创建期间玩家还能点到旧列表。
+        /// </summary>
+        void OpenOvertime()
+        {
+            Close();
+            OvertimeTerminal.Ensure().Open();
         }
 
         void BeginSizePick()
