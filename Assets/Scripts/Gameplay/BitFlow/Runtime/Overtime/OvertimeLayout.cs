@@ -124,7 +124,68 @@ namespace ShiftGo.BitFlow.Overtime
     }
 
     /// <summary>
+    /// 一道 OVERTIME 题里的一个发射器。旧走廊题只有一个，碰撞题可以有两个以上，
+    /// 让"两条位流在同一个 tick 撞进同一格"成为题面的一部分。
+    /// </summary>
+    public sealed class OvertimeEmitterSpec
+    {
+        public GridPoint Coord;
+        public Dir Facing = Dir.Right;
+        public string Sequence = "1";
+        public int EmitCount = 1;
+        public string TypeKey = "Type_Emitter";
+
+        public OvertimeEmitterSpec(GridPoint coord, Dir facing, string sequence, int emitCount)
+        {
+            Coord = coord;
+            Facing = facing;
+            Sequence = sequence;
+            EmitCount = emitCount;
+        }
+    }
+
+    /// <summary>一道 OVERTIME 题里的一个接收器。碰撞题可以有两个以上，各自校验自己的目标序列。</summary>
+    public sealed class OvertimeReceiverSpec
+    {
+        public GridPoint Coord;
+        public Dir FeedFace;
+        public string TargetSequence = "1";
+        public int TargetCount = 1;
+        public bool AcceptAnyFace = true;
+        public string TypeKey = "Type_Receiver";
+
+        public OvertimeReceiverSpec(GridPoint coord, Dir feedFace, string targetSequence, int targetCount)
+        {
+            Coord = coord;
+            FeedFace = feedFace;
+            TargetSequence = targetSequence;
+            TargetCount = targetCount;
+        }
+    }
+
+    /// <summary>
+    /// 标准解里的一个落子：第 <see cref="SlotIndex"/> 个空位放第 <see cref="PieceIndex"/> 张手牌，旋转为 <see cref="Rotation"/>。
+    /// 它只用于验证"作者心里那套解"和求解器找到的是同一套，不写进关卡文件。
+    /// </summary>
+    public sealed class OvertimePlacement
+    {
+        public int SlotIndex;
+        public int PieceIndex;
+        public int Rotation;
+
+        public OvertimePlacement(int slotIndex, int pieceIndex, int rotation)
+        {
+            SlotIndex = slotIndex;
+            PieceIndex = pieceIndex;
+            Rotation = rotation;
+        }
+    }
+
+    /// <summary>
     /// 生成器构造出来的一条标准解。它不是给玩家看的，而是给求解器做唯一性证明的基准。
+    ///
+    /// 旧走廊题只有一个发射器 / 接收器；碰撞题把这两个字段升级成列表，同时保留
+    /// 单数属性给旧测试和旧求解器路径做兼容（永远指向列表第一项）。
     /// </summary>
     public sealed class OvertimeLayout
     {
@@ -137,11 +198,20 @@ namespace ShiftGo.BitFlow.Overtime
         public GridPoint ReceiverCoord;
         public Dir ReceiverFeedFace;
 
+        /// <summary>本题标准解里预计发生的"同格争抢"对数（每对销毁两颗位）。0 = 不依赖碰撞。</summary>
+        public int ExpectedConflictPairs;
+
+        public readonly System.Collections.Generic.List<OvertimeEmitterSpec> Emitters = new System.Collections.Generic.List<OvertimeEmitterSpec>();
+        public readonly System.Collections.Generic.List<OvertimeReceiverSpec> Receivers = new System.Collections.Generic.List<OvertimeReceiverSpec>();
         public readonly System.Collections.Generic.List<OvertimeSlot> Slots = new System.Collections.Generic.List<OvertimeSlot>();
         public readonly System.Collections.Generic.List<OvertimePiece> Pieces = new System.Collections.Generic.List<OvertimePiece>();
+        public readonly System.Collections.Generic.List<OvertimePlacement> IntendedPlacements = new System.Collections.Generic.List<OvertimePlacement>();
         public readonly System.Collections.Generic.List<GridPoint> PathCells = new System.Collections.Generic.List<GridPoint>();
         public readonly System.Collections.Generic.List<GridPoint> Walls = new System.Collections.Generic.List<GridPoint>();
 
         public int StepCount => Slots.Count;
+
+        /// <summary>是不是"碰撞题"：多发射器 / 多接收器，或者标准解明确依赖同格争抢。</summary>
+        public bool IsCollisionProblem => Emitters.Count > 1 || Receivers.Count > 1 || ExpectedConflictPairs > 0;
     }
 }

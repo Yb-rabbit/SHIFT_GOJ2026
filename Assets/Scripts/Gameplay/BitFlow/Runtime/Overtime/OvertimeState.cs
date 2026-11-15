@@ -19,7 +19,7 @@ namespace ShiftGo.BitFlow.Overtime
     }
 
     /// <summary>
-    /// <c>overtime_state.json</c> 的内存形态。这个文件只保存“生成器需要记住的东西”：
+    /// <c>overtime_state.sav</c> 的内存形态。这个文件只保存“生成器需要记住的东西”：
     /// 基础 seed、下一题题号、是否有开场、以及已生成题目的索引。
     /// 关卡本身仍然是一题一个 JSON，状态丢了可以从目录重建。
     /// </summary>

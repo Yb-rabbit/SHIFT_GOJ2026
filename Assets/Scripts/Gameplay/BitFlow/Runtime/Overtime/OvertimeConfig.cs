@@ -40,11 +40,18 @@ namespace ShiftGo.BitFlow.Overtime
         public const int LastProblem = MaxProblems;
 
         public const string FilePrefix = "OT-PROBLEM_";
-        public const string StateFileName = "overtime_state.json";
+        /// <summary>
+        /// 状态文件名。故意不用 .json：浏览器存储的索引是全局扁平的，LevelJsonLibrary.Scan
+        /// 会把所有 .json 都当成关卡；状态侧车用 .sav 就不会被误扫进选关列表。
+        /// </summary>
+        public const string StateFileName = "overtime_state.sav";
         public const string LegacyFolderName = "overtime_legacy";
 
-        /// <summary>状态文件 / 题库版本。v2 起改为 12 道手工蓝图，旧 v1 存档与关卡会先归档。</summary>
-        public const int StateVersion = 2;
+        /// <summary>
+        /// 状态文件 / 题库版本。v2 起是 12 道手工蓝图；v3 把前三题改成碰撞教学题；
+        /// v4 把第 4-12 题也全部换成碰撞题，旧的 12 题存档与关卡会先归档，避免旧题号占住新题面。
+        /// </summary>
+        public const int StateVersion = 4;
 
         /// <summary>OVERTIME 关卡的统一 tick 间隔（秒）。比主线稍快，终端题的节奏更紧。</summary>
         public const float TickInterval = 0.35f;
@@ -71,14 +78,17 @@ namespace ShiftGo.BitFlow.Overtime
             }
         }
 
-        /// <summary>目标解题件数。与 <see cref="OvertimeCatalog"/> 每题的转角数一致。</summary>
+        /// <summary>
+        /// 目标解题件数。前三题是碰撞样板：ERASE 两件、CROSSING 一件、INTERLEAVE 两件；
+        /// 第 4 题起仍与旧走廊蓝图的转角数一致。
+        /// </summary>
         public static int TargetStepsFor(int index)
         {
             switch (index)
             {
                 case 1:
-                case 2: return 2;
-                case 3:
+                case 3: return 2;
+                case 2: return 1;
                 case 4:
                 case 7: return 3;
                 default: return 4;

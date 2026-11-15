@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using ShiftGo.BitFlow.Core;
 using ShiftGo.BitFlow.Data;
 
 namespace ShiftGo.BitFlow.Overtime
 {
     /// <summary>
-    /// <c>overtime_state.json</c> 的落盘 / 重建。
+    /// <c>overtime_state.sav</c> 的落盘 / 重建。
     ///
     /// 放在 <see cref="Application.persistentDataPath"/> 根目录，而不是 LevelJson 目录：
     /// LevelJson 会被选关面板当成关卡目录扫描，状态文件放进去会被误报成坏关卡。
@@ -17,9 +18,34 @@ namespace ShiftGo.BitFlow.Overtime
     {
         public static string StatePath => Path.Combine(Application.persistentDataPath, OvertimeConfig.StateFileName);
 
+        /// <summary>v2 及以前的状态文件名。读到它就搬到 .sav，然后按旧版本归档。</summary>
+        static string LegacyStatePath => Path.Combine(Application.persistentDataPath, "overtime_state.json");
+
+        static void MigrateLegacyStateFile()
+        {
+            try
+            {
+                if (LevelJsonLibrary.FileExists(StatePath) || !LevelJsonLibrary.FileExists(LegacyStatePath)) return;
+
+                string json = LevelJsonLibrary.ReadAllText(LegacyStatePath);
+                LevelJsonLibrary.WriteAllText(StatePath, json);
+                LevelJsonLibrary.DeleteFile(LegacyStatePath);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("[BitFlow] OVERTIME 旧状态迁移失败：" + exception.Message);
+            }
+        }
+
         public static OvertimeState LoadOrRebuild(out bool rebuilt)
         {
             rebuilt = false;
+            MigrateLegacyStateFile();
+
+            // 浏览器旧版本可能没有状态文件、但 OT-PROBLEM_###.json 还在；
+            // 也可能状态已经是 v3 而前三题还是旧的单发射器走廊题。
+            // 先归档旧形状，避免它们占住碰撞题的题号。
+            if (PruneStaleCollisionLevels()) rebuilt = true;
 
             OvertimeState state = ReadState();
             if (state == null)
@@ -47,13 +73,10 @@ namespace ShiftGo.BitFlow.Overtime
 
             try
             {
-                string folder = Path.GetDirectoryName(StatePath);
-                if (!string.IsNullOrEmpty(folder) && !Directory.Exists(folder)) Directory.CreateDirectory(folder);
-
-                string temporary = StatePath + ".tmp";
-                File.WriteAllText(temporary, JsonUtility.ToJson(state, true));
-                if (File.Exists(StatePath)) File.Delete(StatePath);
-                File.Move(temporary, StatePath);
+                // 走 LevelJsonLibrary 的存储后端：桌面端是 File.WriteAllText，
+                // WebGL 端自动落到 BrowserFileSystem（PlayerPrefs / IndexedDB）。
+                // 这里不再临时文件 + Move：浏览器沙箱没有 Move，重命名也不是原子操作。
+                LevelJsonLibrary.WriteAllText(StatePath, JsonUtility.ToJson(state, true));
             }
             catch (Exception exception)
             {
@@ -65,9 +88,9 @@ namespace ShiftGo.BitFlow.Overtime
         {
             try
             {
-                if (!File.Exists(StatePath)) return null;
+                if (!LevelJsonLibrary.FileExists(StatePath)) return null;
 
-                string json = File.ReadAllText(StatePath);
+                string json = LevelJsonLibrary.ReadAllText(StatePath);
                 if (string.IsNullOrEmpty(json)) return null;
 
                 OvertimeState state = JsonUtility.FromJson<OvertimeState>(json);
@@ -97,27 +120,81 @@ namespace ShiftGo.BitFlow.Overtime
         /// </summary>
         static void ArchiveLegacy(int version)
         {
+            int safeVersion = Math.Max(1, version);
             string legacyFolder = Path.Combine(LevelJsonLibrary.Folder, OvertimeConfig.LegacyFolderName);
-            Directory.CreateDirectory(legacyFolder);
+            if (LevelJsonLibrary.HasLocalFiles) Directory.CreateDirectory(legacyFolder);
 
-            if (File.Exists(StatePath))
+            MoveToLegacy(StatePath, legacyFolder, safeVersion);
+
+            // Scan 在桌面与浏览器里走同一份实现；不能用 Directory.GetFiles，
+            // 浏览器沙箱里那只是 stub，会直接抛 NotSupportedException。
+            List<LevelJsonEntry> entries = LevelJsonLibrary.Scan(out _);
+            foreach (LevelJsonEntry entry in entries)
             {
-                string backup = Path.Combine(legacyFolder, "overtime_state_v" + Math.Max(1, version) + ".json");
-                if (File.Exists(backup)) File.Delete(backup);
-                File.Move(StatePath, backup);
-            }
-
-            if (!Directory.Exists(LevelJsonLibrary.Folder)) return;
-
-            string[] files = Directory.GetFiles(LevelJsonLibrary.Folder, OvertimeConfig.FilePrefix + "*.json");
-            foreach (string file in files)
-            {
-                string destination = Path.Combine(legacyFolder, Path.GetFileName(file));
-                if (File.Exists(destination)) File.Delete(destination);
-                File.Move(file, destination);
+                if (!OvertimeConfig.TryParseFileName(entry.Path, out _)) continue;
+                MoveToLegacy(entry.Path, legacyFolder, safeVersion);
             }
 
             Debug.LogWarning("[BitFlow] OVERTIME v" + version + " 旧数据已归档到 " + legacyFolder + "，重建 " + OvertimeConfig.MaxProblems + " 题。");
+        }
+
+        /// <summary>
+        /// 归档单个文件。桌面端真移动；浏览器端没有目录/改名，改成"读出来 → 写回带版本前缀的新键 → 删旧键"，
+        /// 避免和仍在使用的 OT-PROBLEM_###.json 在扁平存储里撞名。
+        /// </summary>
+        static void MoveToLegacy(string source, string legacyFolder, int version)
+        {
+            if (!LevelJsonLibrary.FileExists(source)) return;
+
+            string fileName = Path.GetFileName(source);
+            string destination = LevelJsonLibrary.HasLocalFiles
+                ? Path.Combine(legacyFolder, fileName)
+                : Path.Combine(legacyFolder, "v" + version + "_" + Path.GetFileNameWithoutExtension(fileName) + ".bak");
+
+            if (LevelJsonLibrary.HasLocalFiles)
+            {
+                if (File.Exists(destination)) File.Delete(destination);
+                File.Move(source, destination);
+                return;
+            }
+
+            string json = LevelJsonLibrary.ReadAllText(source);
+            LevelJsonLibrary.WriteAllText(destination, json);
+            LevelJsonLibrary.DeleteFile(source);
+        }
+
+        /// <summary>
+        /// 状态文件缺失时（尤其是旧 WebGL 版本），前三题可能还是单发射器走廊题。
+        /// 这些文件会被 Reconcile 当成有效题捡回来，必须先把它们归档，v3 的碰撞题才有题号。
+        /// 只处理 1-3 题，且只认"发射器少于 2"的旧形状；v3 新题（2 发射器）会原样保留。
+        /// </summary>
+        static bool PruneStaleCollisionLevels()
+        {
+            bool changed = false;
+            List<LevelJsonEntry> entries = LevelJsonLibrary.Scan(out _);
+            string legacyFolder = Path.Combine(LevelJsonLibrary.Folder, OvertimeConfig.LegacyFolderName);
+
+            foreach (LevelJsonEntry entry in entries)
+            {
+                if (!OvertimeConfig.TryParseFileName(entry.Path, out int index)) continue;
+                if (index > OvertimeCollisionCatalog.Count) continue;
+                if (!LevelJsonLibrary.TryLoad(entry.Path, out LevelSO level, out _)) continue;
+
+                int emitters = 0;
+                LevelDefinition definition = level.ToDefinition();
+                foreach (ElementDefinition element in definition.Elements)
+                {
+                    if (element is EmitterDefinition) emitters++;
+                }
+                LevelJsonLibrary.DestroyLevel(level);
+
+                if (emitters >= 2) continue;
+                if (LevelJsonLibrary.HasLocalFiles) Directory.CreateDirectory(legacyFolder);
+                MoveToLegacy(entry.Path, legacyFolder, OvertimeConfig.StateVersion);
+                changed = true;
+            }
+
+            return changed;
         }
 
         /// <summary>

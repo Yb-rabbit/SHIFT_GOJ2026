@@ -43,6 +43,8 @@ namespace ShiftGo.BitFlow.Overtime
                 EmitterCoord = blueprint.EmitterCoord,
                 EmitterFacing = blueprint.EmitterFacing,
             };
+            layout.Emitters.Add(new OvertimeEmitterSpec(
+                blueprint.EmitterCoord, blueprint.EmitterFacing, blueprint.StartValue.ToString(), 1));
 
             if (!Inside(layout, layout.EmitterCoord))
                 throw new InvalidOperationException("OVERTIME 发射器在棋盘外");
@@ -83,6 +85,11 @@ namespace ShiftGo.BitFlow.Overtime
             if (receiver == layout.EmitterCoord || path.Contains(receiver))
                 throw new InvalidOperationException("OVERTIME 接收器与走廊重叠");
             layout.ReceiverCoord = receiver;
+            layout.Receivers.Add(new OvertimeReceiverSpec(
+                receiver,
+                blueprint.Route[blueprint.Route.Length - 1].Direction,
+                string.Empty,
+                1));
 
             for (int y = 0; y < layout.Height; y++)
             {
@@ -127,16 +134,21 @@ namespace ShiftGo.BitFlow.Overtime
             }
 
             layout.TargetValue = value;
+            layout.Receivers[0].TargetSequence = value.ToString();
+            layout.Receivers[0].TargetCount = 1;
 
             for (int hand = 0; hand < handOrder.Length; hand++)
             {
                 int slotIndex = handOrder[hand];
                 OvertimeSlot slot = layout.Slots[slotIndex];
-                layout.Pieces.Add(CreatePiece(blueprint.SlotRoles[slotIndex], inputValues[slotIndex], slot.OutDir));
+                OvertimePiece piece = CreatePiece(blueprint.SlotRoles[slotIndex], inputValues[slotIndex], slot.OutDir);
+                layout.Pieces.Add(piece);
+                layout.IntendedPlacements.Add(new OvertimePlacement(slotIndex, hand, piece.SolutionRotation));
             }
 
             int last = layout.Slots.Count - 1;
             layout.ReceiverFeedFace = layout.Slots[last].OutDir.Opposite();
+            layout.Receivers[0].FeedFace = layout.ReceiverFeedFace;
             return layout;
         }
 

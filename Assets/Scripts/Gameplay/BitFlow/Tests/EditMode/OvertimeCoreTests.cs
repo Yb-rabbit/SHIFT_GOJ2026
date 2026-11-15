@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using ShiftGo.BitFlow.Core;
+using ShiftGo.BitFlow.Data;
 using ShiftGo.BitFlow.Overtime;
 
 namespace ShiftGo.BitFlow.Tests
@@ -15,7 +17,7 @@ namespace ShiftGo.BitFlow.Tests
             for (int i = 10; i <= 12; i++) Assert.AreEqual(13, OvertimeConfig.SizeFor(i).Width);
 
             Assert.AreEqual(12, OvertimeConfig.MaxProblems);
-            Assert.AreEqual(2, new OvertimeState().version);
+            Assert.AreEqual(4, new OvertimeState().version);
             Assert.AreEqual("OT-PROBLEM 01", OvertimeConfig.DisplayName(1));
             Assert.AreEqual("OT-PROBLEM_012.json", OvertimeConfig.FileName(12));
             Assert.IsTrue(OvertimeConfig.TryParseFileName("OT-PROBLEM_012.json", out int index));
@@ -27,20 +29,28 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         [Test]
-        public void CatalogDefinesTwelveBlueprintsWithMatchingSizes()
+        public void CatalogDefinesTwelveLayoutsWithMatchingSizes()
         {
             Assert.AreEqual(OvertimeConfig.MaxProblems, OvertimeCatalog.Count);
 
             for (int index = OvertimeConfig.FirstProblem; index <= OvertimeConfig.LastProblem; index++)
             {
-                OvertimeBlueprint blueprint = OvertimeCatalog.Get(index);
+                OvertimeLayout layout = OvertimeCatalog.Build(index);
                 OvertimeSize size = OvertimeConfig.SizeFor(index);
 
-                Assert.AreEqual(index, blueprint.Index, "蓝图题号不连续");
-                Assert.AreEqual(size.Width, blueprint.Width, "第 " + index + " 题宽度与尺寸档不一致");
-                Assert.AreEqual(size.Height, blueprint.Height, "第 " + index + " 题高度与尺寸档不一致");
-                Assert.AreEqual(blueprint.Route.Length - 1, blueprint.SlotCount, "第 " + index + " 题转角数与路线不一致");
-                Assert.AreEqual(blueprint.SlotCount, OvertimeConfig.TargetStepsFor(index), "第 " + index + " 题目标件数与尺寸档不一致");
+                Assert.AreEqual(size.Width, layout.Width, "第 " + index + " 题宽度与尺寸档不一致");
+                Assert.AreEqual(size.Height, layout.Height, "第 " + index + " 题高度与尺寸档不一致");
+                Assert.AreEqual(layout.StepCount, layout.Pieces.Count, "第 " + index + " 题空位与手牌数量不一致");
+                Assert.AreEqual(layout.StepCount, OvertimeConfig.TargetStepsFor(index), "第 " + index + " 题目标件数与尺寸档不一致");
+                Assert.Greater(layout.Emitters.Count, 0, "第 " + index + " 题没有发射器");
+                Assert.Greater(layout.Receivers.Count, 0, "第 " + index + " 题没有接收器");
+            }
+
+            for (int index = 1; index <= OvertimeCollisionCatalog.Count; index++)
+            {
+                OvertimeLayout layout = OvertimeCatalog.Build(index);
+                Assert.IsTrue(layout.IsCollisionProblem, "第 " + index + " 题应当是碰撞题");
+                Assert.GreaterOrEqual(layout.Emitters.Count, 2, "碰撞题至少要有两条位流");
             }
         }
 
@@ -112,7 +122,8 @@ namespace ShiftGo.BitFlow.Tests
                 }
 
                 Assert.IsNotNull(receiver, "第 " + index + " 题没有接收器");
-                Assert.AreEqual(layout.TargetValue.ToString(), receiver.TargetSequence);
+                Assert.AreEqual(layout.Receivers[0].TargetSequence, receiver.TargetSequence,
+                    "第 " + index + " 题接收序列必须保留前导 0");
 
                 BitFlowSimulation simulation = new BitFlowSimulation(solved);
                 while (!simulation.IsFinished) simulation.Step();
@@ -140,6 +151,147 @@ namespace ShiftGo.BitFlow.Tests
         }
 
         [Test]
+        public void CollisionSamples_MatchTheirIntendedStoryboard()
+        {
+            for (int index = 1; index <= OvertimeCollisionCatalog.Count; index++)
+            {
+                OvertimeLayout layout = OvertimeCatalog.Build(index);
+                Assert.IsTrue(layout.IsCollisionProblem, "第 " + index + " 题应当是碰撞题");
+                Assert.Greater(layout.Emitters.Count, 1, "碰撞题至少要有两条位流");
+                Assert.AreEqual(layout.Slots.Count, layout.IntendedPlacements.Count);
+
+                LevelDefinition solved = BuildIntendedSolution(layout);
+                List<BitDestroyed> destroyed = RunToEnd(solved, out LevelResult result);
+                Assert.IsTrue(result.IsSuccess, "第 " + index + " 题标准解没有通关");
+
+                int conflicts = 0;
+                foreach (BitDestroyed bit in destroyed)
+                {
+                    if (bit.Reason == DestroyReason.Conflict) conflicts++;
+                }
+
+                Assert.AreEqual(layout.ExpectedConflictPairs * 2, conflicts,
+                    "第 " + index + " 题标准解应产生 " + layout.ExpectedConflictPairs + " 次同格争抢");
+            }
+        }
+
+        [Test]
+        public void CollisionPlayerLevelsKeepEveryEmitterAndReceiver()
+        {
+            for (int index = 1; index <= OvertimeCollisionCatalog.Count; index++)
+            {
+                bool generated = OvertimeFactory.TryGenerate(index, 20261115, 0,
+                    out OvertimeGenerationResult result, out string error);
+                Assert.IsTrue(generated, "第 " + index + " 题生成失败：" + error);
+
+                int emitters = 0;
+                int receivers = 0;
+                foreach (ElementDefinition element in result.Level.Elements)
+                {
+                    if (element is EmitterDefinition) emitters++;
+                    else if (element is ReceiverDefinition) receivers++;
+                }
+
+                Assert.AreEqual(result.Layout.Emitters.Count, emitters);
+                Assert.AreEqual(result.Layout.Receivers.Count, receivers);
+                Assert.AreEqual(result.Layout.StepCount, TotalSupplies(result.Level));
+            }
+        }
+
+        [Test]
+        public void BrowserState_RebuildArchivesStaleCollisionTrial()
+        {
+            BrowserFileSystem.SetForcedForTests(true);
+            try
+            {
+                BrowserFileSystem.ClearAll();
+                BrowserFileSystem.ReloadIndexForTests();
+
+                // 造一份 v2 形状的第 1 题：单发射器走廊题。
+                LevelDefinition stale = new LevelDefinition
+                {
+                    DisplayName = OvertimeConfig.DisplayName(1),
+                    Width = 7,
+                    Height = 6,
+                    TickInterval = OvertimeConfig.TickInterval,
+                };
+                stale.Elements.Add(new EmitterDefinition
+                {
+                    Id = 1,
+                    Coord = new GridPoint(0, 2),
+                    Facing = Dir.Right,
+                    Sequence = "1",
+                    EmitCount = 4,
+                });
+                stale.Elements.Add(new ReceiverDefinition
+                {
+                    Id = 2,
+                    Coord = new GridPoint(6, 2),
+                    FeedFace = Dir.Left,
+                    TargetSequence = "1",
+                    TargetCount = 4,
+                });
+                LevelDocument document = LevelDocumentWriter.FromDefinition(stale, new List<string>());
+                string json = UnityEngine.JsonUtility.ToJson(document, true);
+                string path = System.IO.Path.Combine(LevelJsonLibrary.Folder, OvertimeConfig.FileName(1));
+                LevelJsonLibrary.WriteAllText(path, json);
+
+                OvertimeState state = OvertimeStateStore.LoadOrRebuild(out bool rebuilt);
+
+                Assert.IsTrue(rebuilt);
+                Assert.IsFalse(LevelJsonLibrary.FileExists(path),
+                    "旧的单发射器题应被归档，不能占住 v3 第 1 题");
+                Assert.IsNull(state.Find(1));
+                Assert.AreEqual(OvertimeConfig.FirstProblem, state.nextProblem);
+            }
+            finally
+            {
+                BrowserFileSystem.ClearAll();
+                BrowserFileSystem.SetForcedForTests(false);
+                BrowserFileSystem.ReloadIndexForTests();
+            }
+        }
+
+        [Test]
+        public void StateStore_PersistsInBrowserBackend()
+        {
+            BrowserFileSystem.SetForcedForTests(true);
+            try
+            {
+                BrowserFileSystem.ClearAll();
+                BrowserFileSystem.ReloadIndexForTests();
+
+                OvertimeState state = new OvertimeState
+                {
+                    baseSeed = 0x12345678,
+                    introSeen = true,
+                    minTicks = 7,
+                };
+                state.Normalize();
+                OvertimeStateStore.Save(state);
+
+                List<LevelJsonEntry> entries = LevelJsonLibrary.Scan(out _);
+                Assert.IsFalse(entries.Exists(entry => entry.Path.EndsWith(OvertimeConfig.StateFileName)),
+                    "状态侧车不能被当成关卡扫进选关列表");
+
+                // 模拟关掉页面再打开：丢掉内存索引，从 PlayerPrefs 重新读。
+                BrowserFileSystem.ReloadIndexForTests();
+                OvertimeState loaded = OvertimeStateStore.LoadOrRebuild(out bool rebuilt);
+
+                Assert.IsFalse(rebuilt, "状态文件存在时不应重建");
+                Assert.AreEqual(state.baseSeed, loaded.baseSeed);
+                Assert.AreEqual(7, loaded.minTicks);
+                Assert.IsTrue(loaded.introSeen);
+            }
+            finally
+            {
+                BrowserFileSystem.ClearAll();
+                BrowserFileSystem.SetForcedForTests(false);
+                BrowserFileSystem.ReloadIndexForTests();
+            }
+        }
+
+        [Test]
         public void StateNormalizeStopsAtTwelveProblems()
         {
             OvertimeState state = new OvertimeState { baseSeed = 1 };
@@ -153,6 +305,38 @@ namespace ShiftGo.BitFlow.Tests
             Assert.AreEqual(OvertimeConfig.MaxProblems + 1, state.nextProblem);
             Assert.IsFalse(state.CanGenerate);
             Assert.AreEqual(OvertimeConfig.MaxProblems, state.GeneratedCount);
+        }
+
+        static LevelDefinition BuildIntendedSolution(OvertimeLayout layout)
+        {
+            int[] slotPieces = new int[layout.Slots.Count];
+            int[] slotRotations = new int[layout.Slots.Count];
+            for (int i = 0; i < slotPieces.Length; i++) slotPieces[i] = -1;
+
+            foreach (OvertimePlacement placement in layout.IntendedPlacements)
+            {
+                slotPieces[placement.SlotIndex] = placement.PieceIndex;
+                slotRotations[placement.SlotIndex] = placement.Rotation;
+            }
+
+            return OvertimeLevelAssembler.BuildSolvedLevel(layout, slotPieces, slotRotations);
+        }
+
+        static List<BitDestroyed> RunToEnd(LevelDefinition level, out LevelResult result)
+        {
+            BitFlowSimulation simulation = new BitFlowSimulation(level);
+            List<BitDestroyed> destroyed = new List<BitDestroyed>();
+            int safety = System.Math.Max(LevelCheck.SafetyTicks(level), simulation.SafetyTickLimit);
+            int ticks = 0;
+
+            while (!simulation.IsFinished && ticks < safety)
+            {
+                destroyed.AddRange(simulation.Step().Destroyed);
+                ticks++;
+            }
+
+            result = simulation.BuildResult();
+            return destroyed;
         }
 
         static int TotalSupplies(LevelDefinition level)

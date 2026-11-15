@@ -13,6 +13,15 @@ namespace ShiftGo.BitFlow.View
     {
         readonly Dictionary<int, ElementView> elements = new Dictionary<int, ElementView>();
         readonly Dictionary<GridPoint, ElementView> elementsByCoord = new Dictionary<GridPoint, ElementView>();
+        readonly Dictionary<GridPoint, ElementDefinition> definitionsByCoord = new Dictionary<GridPoint, ElementDefinition>();
+
+        static readonly GridPoint[] NeighborOffsets =
+        {
+            new GridPoint(1, 0),
+            new GridPoint(-1, 0),
+            new GridPoint(0, 1),
+            new GridPoint(0, -1),
+        };
 
         static readonly Color FloorColor = new Color(0.055f, 0.065f, 0.085f);
         static readonly Color GridLineColor = new Color(0.16f, 0.55f, 0.72f);
@@ -50,6 +59,11 @@ namespace ShiftGo.BitFlow.View
             Transform stage = EnsureStageRoot();
             if (definition == null) return;
 
+            foreach (ElementDefinition element in definition.Elements)
+            {
+                if (element != null) definitionsByCoord[element.Coord] = element;
+            }
+
             GameObject bitsRoot = new GameObject("Bits");
             bitsRoot.transform.SetParent(stage, false);
             BitsRoot = bitsRoot.transform;
@@ -81,8 +95,9 @@ namespace ShiftGo.BitFlow.View
             go.transform.SetParent(stage, false);
 
             ElementView view = go.AddComponent<ElementView>();
+            bool outerWall = element is WallDefinition && !TouchesOpenCell(element.Coord);
             view.Build(element, BuildDescription(element), MaterialFactory.Emissive(
-                KindColor(element.Kind), KindEmission(element.Kind)));
+                KindColor(element.Kind), KindEmission(element.Kind)), outerWall);
 
             elements[element.Id] = view;
             elementsByCoord[element.Coord] = view;
@@ -128,6 +143,7 @@ namespace ShiftGo.BitFlow.View
 
             elements.Clear();
             elementsByCoord.Clear();
+            definitionsByCoord.Clear();
             Definition = null;
             BitsRoot = null;
         }
@@ -251,6 +267,26 @@ namespace ShiftGo.BitFlow.View
             renderer.sharedMaterial = material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
+        }
+
+        /// <summary>
+        /// 墙圈的内外分层：贴着任何非墙格（或棋盘外）的墙是承重墙，保留全高；
+        /// 四面都被墙包住的墙只是外圈底座，压成薄板，避免把 13x9 的大棋盘挡成迷宫。
+        /// </summary>
+        bool TouchesOpenCell(GridPoint coord)
+        {
+            for (int i = 0; i < NeighborOffsets.Length; i++)
+            {
+                GridPoint neighbor = coord + NeighborOffsets[i];
+                if (!definitionsByCoord.TryGetValue(neighbor, out ElementDefinition element)
+                    || element == null
+                    || element.Kind != CellKind.Wall)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         static void DestroySafe(Object target)

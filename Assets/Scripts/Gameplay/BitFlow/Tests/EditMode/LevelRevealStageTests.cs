@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using ShiftGo.BitFlow.Core;
+using ShiftGo.BitFlow.Overtime;
 using ShiftGo.BitFlow.View;
 
 namespace ShiftGo.BitFlow.Tests
@@ -154,6 +155,61 @@ namespace ShiftGo.BitFlow.Tests
 
             Assert.AreEqual(level.Elements.Count, Count(builder), "重复全建不应产生第二份视图");
             Assert.AreEqual(stageChildren, builder.StageChildCount);
+        }
+
+        [Test]
+        public void WallRing_FlattensOnlyWallsBuriedInsideTheRing()
+        {
+            LevelDefinition level = OvertimeLevelAssembler.BuildPlayerLevel(OvertimeCatalog.Build(12), 12);
+            LevelBuilder builder = CreateBuilder();
+            builder.Prepare(level);
+            builder.BuildElementsOfKind(CellKind.Wall);
+
+            Dictionary<GridPoint, ElementDefinition> lookup = new Dictionary<GridPoint, ElementDefinition>();
+            foreach (ElementDefinition element in level.Elements) lookup[element.Coord] = element;
+
+            GridPoint[] offsets =
+            {
+                new GridPoint(1, 0), new GridPoint(-1, 0),
+                new GridPoint(0, 1), new GridPoint(0, -1),
+            };
+
+            int fullHeight = 0;
+            int baseplate = 0;
+            foreach (ElementDefinition element in level.ElementsOfKind(CellKind.Wall))
+            {
+                bool touchesOpen = false;
+                for (int i = 0; i < offsets.Length; i++)
+                {
+                    if (!lookup.TryGetValue(element.Coord + offsets[i], out ElementDefinition neighbor)
+                        || neighbor.Kind != CellKind.Wall)
+                    {
+                        touchesOpen = true;
+                        break;
+                    }
+                }
+
+                ElementView view = builder.GetElement(element.Id);
+                Assert.IsNotNull(view, "墙没有建出视图：" + element);
+                Transform block = view.transform.Find("block");
+                Assert.IsNotNull(block, "墙的视觉本体应叫 block：" + element);
+
+                if (touchesOpen)
+                {
+                    fullHeight++;
+                    Assert.AreEqual(0.55f, block.localScale.y, 0.001f, "贴着走廊的墙应保持全高：" + element);
+                    Assert.AreEqual(0.275f, block.localPosition.y, 0.001f);
+                }
+                else
+                {
+                    baseplate++;
+                    Assert.AreEqual(0.08f, block.localScale.y, 0.001f, "被墙包住的墙应压成底座：" + element);
+                    Assert.AreEqual(0.04f, block.localPosition.y, 0.001f);
+                }
+            }
+
+            Assert.Greater(fullHeight, 0, "第 12 题必须有贴着走廊的内圈墙");
+            Assert.Greater(baseplate, 0, "第 12 题必须有被墙包住的外圈底座");
         }
     }
 }

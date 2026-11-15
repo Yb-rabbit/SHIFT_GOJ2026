@@ -336,13 +336,16 @@ namespace ShiftGo.BitFlow.View
             bool emitterFired = false;
             bool receiverMatched = false;
 
-            // 1) 销毁：格子上爆红闪，同时让所在元件红闪（撞墙 / 过滤器拒绝 / 逆行撞入）
+            // 1) 销毁：普通事故爆红闪；同格争抢是 OVERTIME 的合法解法，用中性白蓝闪光，
+            //    也不让元件红闪 —— 否则玩家会把"设计好的擦除"误读成操作失误。
             foreach (BitDestroyed destroyed in report.Destroyed)
             {
-                SpawnFlash(GridMetrics.CellToWorld(destroyed.Coord), new Color(1f, 0.18f, 0.2f));
+                bool conflict = destroyed.Reason == DestroyReason.Conflict;
+                Color flashColor = conflict ? new Color(0.82f, 0.94f, 1f) : new Color(1f, 0.18f, 0.2f);
+                SpawnFlash(GridMetrics.CellToWorld(destroyed.Coord), flashColor);
 
                 ElementView element = builder.GetElementAt(destroyed.Coord);
-                if (element != null) element.PlayError();
+                if (element != null && !conflict) element.PlayError();
 
                 if (bitViews.TryGetValue(destroyed.BitId, out BitActorView destroyedView) && destroyedView != null)
                 {

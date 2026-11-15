@@ -75,28 +75,68 @@ namespace ShiftGo.BitFlow.Overtime
             };
 
             int id = 1;
-            definition.Elements.Add(new EmitterDefinition
-            {
-                Id = id++,
-                Coord = layout.EmitterCoord,
-                Facing = layout.EmitterFacing,
-                Sequence = layout.StartValue.ToString(),
-                EmitCount = 1,
-                PlayerEditable = false,
-                TypeKey = "Type_Emitter",
-            });
 
-            definition.Elements.Add(new ReceiverDefinition
+            if (layout.Emitters.Count > 0)
             {
-                Id = id++,
-                Coord = layout.ReceiverCoord,
-                FeedFace = layout.ReceiverFeedFace,
-                TargetSequence = layout.TargetValue.ToString(),
-                TargetCount = 1,
-                AcceptAnyFace = true,
-                PlayerEditable = false,
-                TypeKey = "Type_Receiver",
-            });
+                foreach (OvertimeEmitterSpec emitter in layout.Emitters)
+                {
+                    definition.Elements.Add(new EmitterDefinition
+                    {
+                        Id = id++,
+                        Coord = emitter.Coord,
+                        Facing = emitter.Facing,
+                        Sequence = string.IsNullOrEmpty(emitter.Sequence) ? "1" : emitter.Sequence,
+                        EmitCount = emitter.EmitCount,
+                        PlayerEditable = false,
+                        TypeKey = string.IsNullOrEmpty(emitter.TypeKey) ? "Type_Emitter" : emitter.TypeKey,
+                    });
+                }
+            }
+            else
+            {
+                definition.Elements.Add(new EmitterDefinition
+                {
+                    Id = id++,
+                    Coord = layout.EmitterCoord,
+                    Facing = layout.EmitterFacing,
+                    Sequence = layout.StartValue.ToString(),
+                    EmitCount = 1,
+                    PlayerEditable = false,
+                    TypeKey = "Type_Emitter",
+                });
+            }
+
+            if (layout.Receivers.Count > 0)
+            {
+                foreach (OvertimeReceiverSpec receiver in layout.Receivers)
+                {
+                    definition.Elements.Add(new ReceiverDefinition
+                    {
+                        Id = id++,
+                        Coord = receiver.Coord,
+                        FeedFace = receiver.FeedFace,
+                        TargetSequence = string.IsNullOrEmpty(receiver.TargetSequence) ? "1" : receiver.TargetSequence,
+                        TargetCount = receiver.TargetCount,
+                        AcceptAnyFace = receiver.AcceptAnyFace,
+                        PlayerEditable = false,
+                        TypeKey = string.IsNullOrEmpty(receiver.TypeKey) ? "Type_Receiver" : receiver.TypeKey,
+                    });
+                }
+            }
+            else
+            {
+                definition.Elements.Add(new ReceiverDefinition
+                {
+                    Id = id++,
+                    Coord = layout.ReceiverCoord,
+                    FeedFace = layout.ReceiverFeedFace,
+                    TargetSequence = layout.TargetValue.ToString(),
+                    TargetCount = 1,
+                    AcceptAnyFace = true,
+                    PlayerEditable = false,
+                    TypeKey = "Type_Receiver",
+                });
+            }
 
             foreach (GridPoint wall in layout.Walls)
             {

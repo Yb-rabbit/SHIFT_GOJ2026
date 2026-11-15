@@ -8,18 +8,20 @@ namespace ShiftGo.BitFlow.Overtime
     /// </summary>
     public static class OvertimeTerminalScripts
     {
-        public const string IntroTitle = "OVERTIME // FIRST CONNECTION";
-        public const string IdleTitle = "OVERTIME // NIGHT SHIFT";
-        public const string ReadyTitle = "OVERTIME // PROBLEM READY";
-        public const string ErrorTitle = "OVERTIME // SIGNAL LOST";
+        public const string IntroTitle = "OVERTIME FIRST CONNECTION";
+        public const string IdleTitle = "OVERTIME SYSTEM";
+        public const string ReadyTitle = "OVERTIME PROBLEM READY";
+        public const string ErrorTitle = "OVERTIME SIGNAL LOST";
 
         public static string IntroBody()
         {
             return "SYSTEM  NIGHT SHIFT PROTOCOL\n" +
-                   "CHANNEL " + OvertimeConfig.MaxProblems + " // OFF THE CLOCK\n\n" +
+                   "CHANNEL " + OvertimeConfig.MaxProblems + "\n\n" +
                    "YOU ARE OUTSIDE THE CATALOG NOW.\n" +
                    "EVERY PROBLEM IS HAND-CHECKED FOR\n" +
                    "ONE VALID SOLUTION BEFORE IT IS WRITTEN.\n\n" +
+                   "WHEN TWO BITS ENTER ONE CELL ON THE\n" +
+                   "SAME TICK, BOTH ARE ERASED. USE IT.\n\n" +
                    "THERE ARE " + OvertimeConfig.MaxProblems + " SLOTS. THEN THE TERMINAL GOES QUIET.\n\n" +
                    "PRESS ENTER TO CONNECT.";
         }
@@ -32,7 +34,7 @@ namespace ShiftGo.BitFlow.Overtime
                 : "NO PROBLEMS LEFT";
 
             return "SYSTEM  OVERTIME TERMINAL ONLINE\n" +
-                   "CHANNEL " + OvertimeConfig.MaxProblems + " // OFF THE CLOCK\n\n" +
+                   "CHANNEL " + OvertimeConfig.MaxProblems + "\n\n" +
                    "PROBLEMS  " + (state != null ? state.GeneratedCount : 0) + " / " + OvertimeConfig.MaxProblems + "\n" +
                    "SEED      0x" + (state != null ? state.baseSeed.ToString("X8") : "00000000") + "\n\n" +
                    "NEXT      " + next + "\n\n" +
@@ -50,8 +52,9 @@ namespace ShiftGo.BitFlow.Overtime
         public static string BriefingBody(OvertimeGenerationResult result, long elapsedMs)
         {
             return "SYSTEM  PROBLEM CONSTRUCTED\n" +
-                   "CHANNEL " + OvertimeConfig.MaxProblems + " // NIGHT SHIFT\n\n" +
+                   "CHANNEL " + OvertimeConfig.MaxProblems + "\n\n" +
                    "GRID      " + result.Level.Width + "x" + result.Level.Height + "\n" +
+                   "STREAMS   " + result.Layout.Emitters.Count + "\n" +
                    "STEPS     " + result.Layout.StepCount + "\n" +
                    "SEED      0x" + result.Profile.Seed.ToString("X8") + "\n" +
                    "CHECK     UNIQUE SOLUTION VERIFIED\n" +

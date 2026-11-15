@@ -25,6 +25,7 @@ namespace ShiftGo.BitFlow.View
         Material bodyMaterial;
         Color bodyBaseColor;
         float bodyBaseEmission;
+        bool outerWall;
 
         Transform progressBar;
         Material progressMaterial;
@@ -63,11 +64,12 @@ namespace ShiftGo.BitFlow.View
         float bufferSinkTarget;
         float bufferSink;
 
-        public void Build(ElementDefinition definition, string description, Material bodySharedMaterial)
+        public void Build(ElementDefinition definition, string description, Material bodySharedMaterial, bool outerWall = false)
         {
             Definition = definition;
             ElementId = definition.Id;
             Description = description;
+            this.outerWall = outerWall;
             name = "Elem_" + definition.Kind + "_" + definition.Id + "_" + definition.Coord;
 
             transform.position = GridMetrics.CellToWorld(definition.Coord);
@@ -75,7 +77,7 @@ namespace ShiftGo.BitFlow.View
             // 每个元件一份材质实例，红闪时只影响自己
             bodyMaterial = new Material(MaterialFactory.LitShader) { name = "M_Elem_" + definition.Id };
             bodyBaseColor = bodySharedMaterial != null ? ReadBaseColor(bodySharedMaterial) : Color.white;
-            bodyBaseEmission = 1.1f;
+            bodyBaseEmission = outerWall ? 0.05f : 1.1f;
             ApplyBodyColors();
 
             BuildShape(definition);
@@ -104,7 +106,15 @@ namespace ShiftGo.BitFlow.View
             switch (definition)
             {
                 case WallDefinition _:
-                    AddBlock(new Vector3(0.96f, 0.55f, 0.96f), 0.275f);
+                    if (outerWall)
+                    {
+                        // 外圈只是压低的底座：把视线留给中间真正的走廊。
+                        AddBlock(new Vector3(0.96f, 0.08f, 0.96f), 0.04f);
+                    }
+                    else
+                    {
+                        AddBlock(new Vector3(0.96f, 0.55f, 0.96f), 0.275f);
+                    }
                     break;
 
                 case EmitterDefinition emitter:

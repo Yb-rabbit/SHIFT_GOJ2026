@@ -12,6 +12,9 @@ namespace ShiftGo.BitFlow.Overtime
         FilterZero = 1,
         FilterOne = 2,
         Splitter = 3,
+
+        /// <summary>只改时间不改路由的延迟器。碰撞题用它把一条位流整体错开，避开/制造同格争抢。</summary>
+        DelayGate = 4,
     }
 
     /// <summary>一条直线路段：从上一段终点出发，沿 <see cref="Direction"/> 走 <see cref="Length"/> 格。</summary>
@@ -59,6 +62,8 @@ namespace ShiftGo.BitFlow.Overtime
         public const int Count = 12;
         public const int FirstProblem = 1;
 
+        // 注意：这 12 项都是 v2 的旧走廊蓝图，只作为历史数据保留；
+        // v4 起 OvertimeCatalog.Build() 全部走 OvertimeCollisionCatalog，TryGet() 也拒绝所有题号。
         static readonly OvertimeBlueprint[] Blueprints =
         {
             // 01 · 7x6 · 两次右转，先滤 0 再取反
@@ -134,12 +139,18 @@ namespace ShiftGo.BitFlow.Overtime
                 Hand(3, 0, 2, 1)),
         };
 
+        /// <summary>
+        /// 取旧走廊蓝图。12 题现在都是碰撞题，不再走走廊蓝图；调用方应优先用
+        /// <see cref="Build"/> 拿统一的 <see cref="OvertimeLayout"/>。
+        /// </summary>
         public static bool TryGet(int index, out OvertimeBlueprint blueprint)
         {
+            blueprint = null;
+            if (OvertimeCollisionCatalog.Contains(index)) return false;
+
             int offset = index - FirstProblem;
             if (offset < 0 || offset >= Blueprints.Length)
             {
-                blueprint = null;
                 return false;
             }
 
@@ -149,18 +160,19 @@ namespace ShiftGo.BitFlow.Overtime
 
         public static OvertimeBlueprint Get(int index)
         {
-            OvertimeBlueprint blueprint;
-            if (!TryGet(index, out blueprint))
-            {
-                throw new ArgumentOutOfRangeException(nameof(index), index, "OVERTIME 题号超出 1.." + Count);
-            }
+            if (TryGet(index, out OvertimeBlueprint blueprint)) return blueprint;
+            if (OvertimeCollisionCatalog.Contains(index))
+                throw new InvalidOperationException("OVERTIME 第 " + index + " 题是碰撞题，没有走廊蓝图；请用 OvertimeCatalog.Build()");
 
-            return blueprint;
+            throw new ArgumentOutOfRangeException(nameof(index), index, "OVERTIME 题号超出 1.." + Count);
         }
 
         /// <summary>按题号生成布局；调用方拿到的 <see cref="OvertimeLayout"/> 已经是完整的标准解形状。</summary>
         public static OvertimeLayout Build(int index)
         {
+            if (OvertimeCollisionCatalog.TryBuild(index, out OvertimeLayout collisionLayout))
+                return collisionLayout;
+
             return OvertimeLayoutBuilder.Build(Get(index));
         }
 
